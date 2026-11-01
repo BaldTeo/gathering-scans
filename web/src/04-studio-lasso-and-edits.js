@@ -2833,7 +2833,8 @@
         const catHits = studioThree.raycaster.intersectObjects(studioThree.categoryGroup.children, true);
         for (const ch of catHits) {
           const cid = ch.object?.userData?.catItemId;
-          if (cid) {
+          const cpart = ch.object?.userData?.catPart;
+          if (cid && (cpart === "trunk" || cpart === "dbh_ring")) {
             bestId = cid;
             break;
           }
@@ -2865,6 +2866,15 @@
               }
             }
           });
+        }
+        if (!bestId) {
+          for (const ch of catHits) {
+            const cid = ch.object?.userData?.catItemId;
+            if (cid) {
+              bestId = cid;
+              break;
+            }
+          }
         }
       }
       if (!bestId) {
@@ -3411,6 +3421,7 @@
     }
     return { y: fallbackY, hit: false };
   }
+  window.getStudioRaycastMeshes = getStudioRaycastMeshes; window.sampleStudioMeshElevationAtLocalXZ = sampleStudioMeshElevationAtLocalXZ;
 
   async function getLaserSpatialIndexAsync(onProgress = null, cancelToken = null) {
     if (!studioThree) return null;

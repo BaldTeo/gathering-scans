@@ -2841,6 +2841,8 @@
       isLassoHighlight: !!options.isLassoHighlight,
       isProfile: !!options.isProfile,
       isCategorize: !!options.isCategorize,
+      isSurveyToolBadge: !!options.isSurveyToolBadge,
+      surveyTool: options.surveyTool || "",
       folderKey: options.folderKey || "",
       isTempDistance: !!options.isTempDistance,
       priority: options.priority !== undefined ? Number(options.priority) : 50,
@@ -2855,6 +2857,7 @@
     }
     return badgeObj;
   }
+  window.localToTwd97 = localToTwd97; window.add3DPinMarker = add3DPinMarker; window.add2DBadge = add2DBadge; window.update2DBadgePositions = update2DBadgePositions;
 
   function update2DBadgePositions() {
     if (!studioThree || !studioThree.camera || !studioThree.renderer) return;
@@ -2927,7 +2930,12 @@
         return;
       }
       if (!isCat) {
-        if ((STATE.categorizeLabelsVisible === false || (panelOpen && !isMobile && x > rightSafeX - 8)) && !b.isTempDistance && !b.isLassoHighlight) {
+        if (b.isSurveyToolBadge) {
+          if (panelOpen && !isMobile && x > rightSafeX + 120) {
+            b.el.style.display = "none";
+            return;
+          }
+        } else if ((STATE.categorizeLabelsVisible === false || (panelOpen && !isMobile && x > rightSafeX - 8)) && !b.isTempDistance && !b.isLassoHighlight) {
           b.el.style.display = "none";
           return;
         }
@@ -4069,6 +4077,9 @@
     }
     if (!keepSidePanel && toolName !== "profile" && typeof clearProfileVisualsOnly === "function") clearProfileVisualsOnly();
     if (!keepSidePanel && toolName !== "drainage" && typeof clearDrainageVisuals3D === "function") clearDrainageVisuals3D();
+    if (!keepSidePanel && toolName !== "gcp_qa" && typeof clearGcpQaMarkers3D === "function") clearGcpQaMarkers3D();
+    if (!keepSidePanel && toolName !== "stationing" && typeof window.clearStationingVisuals3D === "function") window.clearStationingVisuals3D();
+    if (!keepSidePanel && toolName !== "contours" && typeof clearContoursVisualsOnly === "function") clearContoursVisualsOnly();
     if (!keepSidePanel && toolName !== "utilities" && typeof window.onUtilitiesPanelClosed === "function") {
       window.onUtilitiesPanelClosed();
     }
@@ -4105,13 +4116,16 @@
         studioThree.polyPreviewGroup.remove(studioThree.polyPreviewGroup.children[0]);
       }
     }
-    document.querySelectorAll('#bimBottomDock .bim-dock-btn:not([data-tool="snap"]):not([data-tool="first_person"]):not(#btnToggleFirstPerson):not(#btnClearMeasurements):not(#btnMeasureClear), #studioEditingDock .bim-dock-btn, #bimDockQaMenu .bim-dock-btn').forEach((b) => {
+    document.querySelectorAll('#bimBottomDock .bim-dock-btn:not([data-tool="snap"]):not([data-tool="first_person"]):not(#btnToggleFirstPerson):not(#btnClearMeasurements):not(#btnMeasureClear), #studioEditingDock .bim-dock-btn, #bimDockQaMenu .bim-dock-btn, #bimDockSurveyMenu .bim-dock-btn').forEach((b) => {
       const key = b.dataset.tool || b.dataset.dock || "";
       const isActive = key === toolName || (keepSidePanel && openPanelTool && key === openPanelTool);
       b.classList.toggle("active", isActive);
     });
     const qaGroupBtn = document.getElementById("btnDockQaGroup");
     if (qaGroupBtn) qaGroupBtn.classList.toggle("active", toolName === "flatness" || toolName === "drainage" || (keepSidePanel && (openPanelTool === "flatness" || openPanelTool === "drainage")));
+    const surveyGroupBtn = document.getElementById("btnDockSurveyGroup");
+    const surveyTools = ["stakeout", "stationing", "gcp_qa", "contours"];
+    if (surveyGroupBtn) surveyGroupBtn.classList.toggle("active", surveyTools.includes(toolName) || (keepSidePanel && surveyTools.includes(openPanelTool)));
     const bottomDock = document.getElementById("bimBottomDock");
     if (bottomDock && (toolName === "orbit" || window.innerWidth >= 560) && !isG1) {
       bottomDock.scrollLeft = 0;
@@ -4125,6 +4139,7 @@
     if (typeof syncStudioMobileToolHud === "function") syncStudioMobileToolHud();
     update2DBadgePositions();
   }
+  window.updateZoomInvariantElements = updateZoomInvariantElements;
 
   function clearTempDistanceVisuals() {
     if (studioThree && STATE.tempDistanceObjects.length) {
@@ -4220,6 +4235,9 @@
     if (typeof syncCategorizeVisibilityUI === "function") syncCategorizeVisibilityUI();
     if (typeof clearDrainageVisuals3D === "function") clearDrainageVisuals3D();
     if (typeof clearGcpQaMarkers3D === "function") clearGcpQaMarkers3D();
+    if (typeof window.clearStationingVisuals3D === "function") window.clearStationingVisuals3D();
+    if (typeof window.clearStakeoutVisuals3D === "function") window.clearStakeoutVisuals3D();
+    if (typeof clearContoursVisualsOnly === "function") clearContoursVisualsOnly();
     if (typeof clearRtkPhotoFrustums3D === "function") clearRtkPhotoFrustums3D();
     if (typeof clearPhotoTargetVisuals3D === "function") clearPhotoTargetVisuals3D();
     if (studioThree && studioThree.overlayGroup) {
@@ -4261,6 +4279,7 @@
         c === studioThree.drainageGroup ||
         c === studioThree.pondingGroup ||
         c === studioThree.gcpQaGroup ||
+        c === studioThree.stationingGroup ||
         c === studioThree.photoFrustumGroup ||
         c === studioThree.photoTargetGroup ||
         c === studioThree.cameraTrajectoryGroup ||
@@ -4279,7 +4298,7 @@
     });
 
     STATE.badges2D = STATE.badges2D.filter((b) => {
-      if (b.isCommentPin || b.isCategorize || b.isVolume || b.isLassoHighlight || b.isProfile) {
+      if (b.isCommentPin || b.isCategorize || b.isVolume || b.isLassoHighlight || b.isProfile || b.isSurveyToolBadge) {
         return true;
       }
       b.el?.remove();

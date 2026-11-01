@@ -4201,90 +4201,117 @@
         qaMenuEl.classList.remove("open");
         document.getElementById("btnDockQaGroup")?.setAttribute("aria-expanded", "false");
       }
+      const surveyMenuEl = document.getElementById("bimDockSurveyMenu");
+      if (surveyMenuEl && surveyMenuEl.classList.contains("open")) {
+        surveyMenuEl.classList.remove("open");
+        document.getElementById("btnDockSurveyGroup")?.setAttribute("aria-expanded", "false");
+      }
       if (typeof syncStudioMobileToolHud === "function") syncStudioMobileToolHud();
     });
   });
 
-  // Unified QA (品管) Drop-Up Container Hover (Desktop) & Tap/Click (Mobile/Desktop) Wiring
-  (function initBimDockQaDropup() {
-    const wrapEl = document.getElementById("bimDockQaWrap");
-    const groupBtn = document.getElementById("btnDockQaGroup");
-    const menuEl = document.getElementById("bimDockQaMenu");
-    if (!wrapEl || !groupBtn || !menuEl) return;
-    let closeTimer = null;
+  // Unified Survey (測量) & QA (品管) Drop-Up Containers Hover (Desktop) & Tap/Click (Mobile/Desktop) Wiring
+  (function initBimDockDropupMenus() {
+    const dropupConfigs = [
+      { wrapId: "bimDockSurveyWrap", btnId: "btnDockSurveyGroup", menuId: "bimDockSurveyMenu" },
+      { wrapId: "bimDockQaWrap", btnId: "btnDockQaGroup", menuId: "bimDockQaMenu" },
+    ];
+    const activeDropups = [];
 
-    function positionAndOpenQaMenu() {
-      if (closeTimer) {
-        clearTimeout(closeTimer);
-        closeTimer = null;
-      }
-      if (STATE.multiAlign?.active) return;
-      const studioView = document.getElementById("viewStudio") || document.body;
-      if (studioView && menuEl.parentElement !== studioView) {
-        studioView.appendChild(menuEl);
-      }
-      const rect = groupBtn.getBoundingClientRect();
-      const hasRect = Boolean(rect && (rect.width > 0 || rect.height > 0));
-      const centerX = hasRect
-        ? Math.max(64, Math.min(window.innerWidth - 64, rect.left + rect.width * 0.5))
-        : Math.round(window.innerWidth * 0.5);
-      const bottomPx = hasRect ? Math.max(52, window.innerHeight - rect.top + 8) : 64;
-      menuEl.style.left = `${Math.round(centerX)}px`;
-      menuEl.style.bottom = `${Math.round(bottomPx)}px`;
-      menuEl.classList.add("open");
-      groupBtn.setAttribute("aria-expanded", "true");
-    }
+    dropupConfigs.forEach(({ wrapId, btnId, menuId }) => {
+      const wrapEl = document.getElementById(wrapId);
+      const groupBtn = document.getElementById(btnId);
+      const menuEl = document.getElementById(menuId);
+      if (!wrapEl || !groupBtn || !menuEl) return;
+      let closeTimer = null;
 
-    function closeQaMenuSoon(delayMs = 150) {
-      if (closeTimer) clearTimeout(closeTimer);
-      closeTimer = setTimeout(() => {
+      function closeMenuNow() {
+        if (closeTimer) {
+          clearTimeout(closeTimer);
+          closeTimer = null;
+        }
         menuEl.classList.remove("open");
         groupBtn.setAttribute("aria-expanded", "false");
-      }, delayMs);
-    }
+      }
 
-    wrapEl.addEventListener("mouseenter", () => {
-      if (window.matchMedia && window.matchMedia("(hover: hover)").matches) {
-        positionAndOpenQaMenu();
+      function positionAndOpenMenu() {
+        if (closeTimer) {
+          clearTimeout(closeTimer);
+          closeTimer = null;
+        }
+        if (STATE.multiAlign?.active) return;
+        activeDropups.forEach((d) => {
+          if (d.menuEl !== menuEl) d.closeMenuNow();
+        });
+        const studioView = document.getElementById("viewStudio") || document.body;
+        if (studioView && menuEl.parentElement !== studioView) {
+          studioView.appendChild(menuEl);
+        }
+        const rect = groupBtn.getBoundingClientRect();
+        const hasRect = Boolean(rect && (rect.width > 0 || rect.height > 0));
+        const centerX = hasRect
+          ? Math.max(84, Math.min(window.innerWidth - 84, rect.left + rect.width * 0.5))
+          : Math.round(window.innerWidth * 0.5);
+        const bottomPx = hasRect ? Math.max(52, window.innerHeight - rect.top + 8) : 64;
+        menuEl.style.left = `${Math.round(centerX)}px`;
+        menuEl.style.bottom = `${Math.round(bottomPx)}px`;
+        menuEl.classList.add("open");
+        groupBtn.setAttribute("aria-expanded", "true");
       }
-    });
-    wrapEl.addEventListener("mouseleave", () => {
-      if (window.matchMedia && window.matchMedia("(hover: hover)").matches) {
-        closeQaMenuSoon(160);
-      }
-    });
-    menuEl.addEventListener("mouseenter", () => {
-      if (closeTimer) {
-        clearTimeout(closeTimer);
-        closeTimer = null;
-      }
-    });
-    menuEl.addEventListener("mouseleave", () => {
-      if (window.matchMedia && window.matchMedia("(hover: hover)").matches) {
-        closeQaMenuSoon(140);
-      }
-    });
 
-    groupBtn.addEventListener("click", (ev) => {
-      ev.preventDefault();
-      ev.stopPropagation();
-      if (STATE.multiAlign?.active) {
-        showToast("Unavailable during Multi-Scan Editing — merge scans first (or exit Multi-Scan mode)");
-        return;
+      function closeMenuSoon(delayMs = 150) {
+        if (closeTimer) clearTimeout(closeTimer);
+        closeTimer = setTimeout(() => {
+          menuEl.classList.remove("open");
+          groupBtn.setAttribute("aria-expanded", "false");
+        }, delayMs);
       }
-      if (menuEl.classList.contains("open")) {
-        menuEl.classList.remove("open");
-        groupBtn.setAttribute("aria-expanded", "false");
-      } else {
-        positionAndOpenQaMenu();
-      }
+
+      wrapEl.addEventListener("mouseenter", () => {
+        if (window.matchMedia && window.matchMedia("(hover: hover)").matches) {
+          positionAndOpenMenu();
+        }
+      });
+      wrapEl.addEventListener("mouseleave", () => {
+        if (window.matchMedia && window.matchMedia("(hover: hover)").matches) {
+          closeMenuSoon(160);
+        }
+      });
+      menuEl.addEventListener("mouseenter", () => {
+        if (closeTimer) {
+          clearTimeout(closeTimer);
+          closeTimer = null;
+        }
+      });
+      menuEl.addEventListener("mouseleave", () => {
+        if (window.matchMedia && window.matchMedia("(hover: hover)").matches) {
+          closeMenuSoon(140);
+        }
+      });
+
+      groupBtn.addEventListener("click", (ev) => {
+        ev.preventDefault();
+        ev.stopPropagation();
+        if (STATE.multiAlign?.active) {
+          showToast("Unavailable during Multi-Scan Editing — merge scans first (or exit Multi-Scan mode)");
+          return;
+        }
+        if (menuEl.classList.contains("open")) {
+          closeMenuNow();
+        } else {
+          positionAndOpenMenu();
+        }
+      });
+
+      activeDropups.push({ wrapEl, groupBtn, menuEl, closeMenuNow });
     });
 
     document.addEventListener("pointerdown", (ev) => {
-      if (!menuEl.classList.contains("open")) return;
-      if (wrapEl.contains(ev.target) || menuEl.contains(ev.target)) return;
-      menuEl.classList.remove("open");
-      groupBtn.setAttribute("aria-expanded", "false");
+      activeDropups.forEach(({ wrapEl, menuEl, closeMenuNow }) => {
+        if (!menuEl.classList.contains("open")) return;
+        if (wrapEl.contains(ev.target) || menuEl.contains(ev.target)) return;
+        closeMenuNow();
+      });
     });
   })();
 

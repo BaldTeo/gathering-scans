@@ -3010,12 +3010,20 @@ class GatheringScansTestSuite(unittest.TestCase):
         self.assertIn('tr("刪除", "Remove")', js05)
         self.assertIn('tr("重設", "Reset")', js05)
         self.assertIn("trunkMesh.userData.catItemId = t.id;", js05)
+        self.assertIn('trunkMesh.userData.catPart = "trunk";', js05)
+        with open(os.path.join(BASE_DIR, "web", "src", "04-studio-lasso-and-edits.js"), "r", encoding="utf-8") as f:
+            js04 = f.read()
+        self.assertIn('cpart === "trunk" || cpart === "dbh_ring"', js04)
         self.assertIn("vlow_trunk_m =", heur_py)
+        self.assertIn("def _stem_cyl_stats(", heur_py)
+        with open(os.path.join(BASE_DIR, "pc_worker", "surveying", "contours_and_cad.py"), "r", encoding="utf-8") as f:
+            contours_py = f.read()
+        self.assertNotIn("qihutender_1", contours_py.lower())
         with open(os.path.join(BASE_DIR, "pc_worker", "server_cloud_and_tunnel.py"), "r", encoding="utf-8") as f:
             tunnel_py = f.read()
         self.assertIn('elif req_action in ("manual_remove", "manual_add", "manual_reset"):', tunnel_py)
         self.assertIn("upd_cat = SURVEY.modify_saved_categorization(req_sid, p_obj)", tunnel_py)
-        self.assertIn("if not (stream_clean and status_code == 200 and buf_for_cache is not None and len(buf_for_cache) > 2):", tunnel_py)
+        self.assertIn('cat_obj_chk = json.loads(raw_cat_chk.decode("utf-8"))', tunnel_py)
         self.assertIn("saved_cat_fb = SURVEY.get_saved_categorization(req_sid_fb)", tunnel_py)
 
         # 5. Verify sequential manual_remove (no id vs orig_id double-deletion), manual_add, and manual_reset on cached scans
@@ -3047,6 +3055,22 @@ class GatheringScansTestSuite(unittest.TestCase):
             )
             self.assertEqual(len(working_cat["trees"]), len(orig_cat["trees"]) - 1)
             self.assertEqual(working_cat["trees"][-1]["id"], "TM1")
+            working_cat = self.survey.modify_saved_categorization(
+                "QuChi261016_Trees",
+                {"action": "manual_add", "category": "trees", "item": {"trunk_local": [8.0, 0.0, 8.0], "auto_measure": True}},
+            )
+            self.assertEqual(working_cat["trees"][-1]["id"], "TM2")
+            working_cat = self.survey.modify_saved_categorization(
+                "QuChi261016_Trees", {"action": "manual_remove", "item_id": "TM1", "category": "trees"}
+            )
+            self.assertNotIn("TM1", [t["id"] for t in working_cat["trees"]])
+            self.assertNotIn("TM1", (working_cat.get("manual_overrides") or {}).get("removed_ids") or [])
+            working_cat = self.survey.modify_saved_categorization(
+                "QuChi261016_Trees",
+                {"action": "manual_add", "category": "trees", "item": {"trunk_local": [10.0, 0.0, 10.0], "auto_measure": True}},
+            )
+            self.assertEqual(working_cat["trees"][-1]["id"], "TM3")
+            self.assertEqual(len(set(t["id"] for t in working_cat["trees"])), len(working_cat["trees"]))
             working_cat = self.survey.modify_saved_categorization("QuChi261016_Trees", {"action": "manual_reset"})
             self.assertEqual(len(working_cat["trees"]), len(orig_cat["trees"]))
             self.assertEqual([t["orig_id"] for t in working_cat["trees"][:6]], ["T1", "T2", "T3", "T4", "T5", "T6"])

@@ -1667,6 +1667,15 @@ class CloudAndTunnelHandlerMixin:
                 if is_categorize_req:
                     if not (stream_clean and status_code == 200 and buf_for_cache is not None and len(buf_for_cache) > 2):
                         break
+                    try:
+                        raw_cat_chk = bytes(buf_for_cache)
+                        if filtered_hdrs.get("Content-Encoding", "").lower() == "gzip" or filtered_hdrs.get("content-encoding", "").lower() == "gzip":
+                            raw_cat_chk = gzip.decompress(raw_cat_chk)
+                        cat_obj_chk = json.loads(raw_cat_chk.decode("utf-8"))
+                        if not (isinstance(cat_obj_chk, dict) and cat_obj_chk.get("status") == "ok"):
+                            break
+                    except Exception:
+                        break
                     self.send_response(status_code)
                     for hk, hv in filtered_hdrs.items():
                         self.send_header(hk, hv)
@@ -1771,7 +1780,7 @@ class CloudAndTunnelHandlerMixin:
         if is_categorize_req:
             try:
                 req_d_fb = json.loads(body.decode("utf-8")) if body else {}
-                req_sid_fb = str(req_d_fb.get("scan_id") or "").strip()
+                req_sid_fb = str(req_d_fb.get("scan_id") or (parsed_q.get("scan_id") or [""])[0] or "").strip()
                 if req_sid_fb:
                     saved_cat_fb = SURVEY.get_saved_categorization(req_sid_fb)
                     if isinstance(saved_cat_fb, dict) and saved_cat_fb.get("status") == "ok":

@@ -2078,19 +2078,24 @@ class CategorizationIoMixin:
         added_water = list(overrides.get("added_water") or [])
 
         if action == "manual_reset":
-            try:
-                recomp = self.categorize_scan_surfaces_and_objects({
-                    "scan_id": scan_id,
-                    "force_recompute": True,
-                    "reset_manual_overrides": True,
-                })
-                if isinstance(recomp, dict) and recomp.get("status") == "ok" and (recomp.get("trees") or recomp.get("roads") or recomp.get("walls")):
-                    return recomp
-            except Exception:
-                pass
             if isinstance(cached_res.get("_base_trees"), list):
                 cached_res["trees"] = [dict(t) for t in cached_res["_base_trees"] if isinstance(t, dict)]
+                for _bk, _ck in (("_base_walls", "walls"), ("_base_roads", "roads"), ("_base_water_bodies", "water_bodies")):
+                    if isinstance(cached_res.get(_bk), list):
+                        cached_res[_ck] = [dict(x) for x in cached_res[_bk] if isinstance(x, dict)]
+                    else:
+                        cached_res[_ck] = [x for x in (cached_res.get(_ck) or []) if isinstance(x, dict) and not x.get("manual_added")]
             else:
+                try:
+                    recomp = self.categorize_scan_surfaces_and_objects({
+                        "scan_id": scan_id,
+                        "force_recompute": True,
+                        "reset_manual_overrides": True,
+                    })
+                    if isinstance(recomp, dict) and recomp.get("status") == "ok" and (recomp.get("trees") or recomp.get("roads") or recomp.get("walls")):
+                        return recomp
+                except Exception:
+                    pass
                 cached_res["trees"] = [t for t in (cached_res.get("trees") or []) if not t.get("manual_added")]
             empty_ov = {"removed_ids": [], "removed_centers": [], "added_trees": [], "added_walls": [], "added_roads": [], "added_water": []}
             cached_res = self._apply_manual_overrides_to_categorization(scan_id, cached_res, empty_ov)
@@ -2109,6 +2114,9 @@ class CategorizationIoMixin:
                     _it["orig_id"] = str(_it["id"]).strip()
         if not isinstance(cached_res.get("_base_trees"), list):
             cached_res["_base_trees"] = [dict(t) for t in (cached_res.get("trees") or []) if isinstance(t, dict) and not t.get("manual_added")]
+        for _bk, _ck in (("_base_walls", "walls"), ("_base_roads", "roads"), ("_base_water_bodies", "water_bodies")):
+            if not isinstance(cached_res.get(_bk), list):
+                cached_res[_bk] = [dict(x) for x in (cached_res.get(_ck) or []) if isinstance(x, dict) and not x.get("manual_added")]
 
         if action == "manual_remove":
             item_id = str(payload.get("item_id") or "").strip()
@@ -2118,10 +2126,15 @@ class CategorizationIoMixin:
                 return {"ok": False, "error": "Missing item_id"}
             matched_orig_ids: List[str] = []
             meta_oid = str(item_meta.get("orig_id") or "").strip()
-            if meta_oid:
+            is_manual_item = bool(
+                item_meta.get("manual_added")
+                or item_id.startswith(("TM", "WLM", "RM", "WTM"))
+                or meta_oid.startswith(("TM", "WLM", "RM", "WTM"))
+            )
+            if meta_oid and not is_manual_item:
                 matched_orig_ids.append(meta_oid)
             meta_pt = item_meta.get("trunk_twd97")
-            if isinstance(meta_pt, list) and len(meta_pt) >= 2:
+            if isinstance(meta_pt, list) and len(meta_pt) >= 2 and not is_manual_item:
                 removed_centers.append({"category": "trees", "e": float(meta_pt[0]), "n": float(meta_pt[1]), "tol": 0.35})
 
             def _remove_target_from_list(clist: List[Dict[str, Any]], cname: str) -> List[Dict[str, Any]]:
@@ -2137,6 +2150,8 @@ class CategorizationIoMixin:
                     targets = [it for it in clist if str(it.get("orig_id") or "") == item_id]
                 target_refs = {id(t) for t in targets}
                 for it in targets:
+                    if it.get("manual_added") or str(it.get("id") or "").startswith(("TM", "WLM", "RM", "WTM")):
+                        continue
                     oid = str(it.get("orig_id") or it.get("id") or "").strip()
                     if oid:
                         matched_orig_ids.append(oid)
@@ -2151,13 +2166,15 @@ class CategorizationIoMixin:
             cached_res["roads"] = _remove_target_from_list(cached_res.get("roads") or [], "roads")
             cached_res["water_bodies"] = _remove_target_from_list(cached_res.get("water_bodies") or [], "water_bodies")
 
-            for oid in (matched_orig_ids or ([item_id] if item_id else [])):
-                if oid and oid not in removed_ids:
-                    removed_ids.append(oid)
-            added_trees = [t for t in added_trees if str(t.get("id") or "") != item_id and str(t.get("orig_id") or "") not in matched_orig_ids]
-            added_walls = [w for w in added_walls if str(w.get("id") or "") != item_id and str(w.get("orig_id") or "") not in matched_orig_ids]
-            added_roads = [r for r in added_roads if str(r.get("id") or "") != item_id and str(r.get("orig_id") or "") not in matched_orig_ids]
-            added_water = [w for w in added_water if str(w.get("id") or "") != item_id and str(w.get("orig_id") or "") not in matched_orig_ids]
+            if not is_manual_item:
+                for oid in (matched_orig_ids or ([item_id] if item_id else [])):
+                    if oid and oid not in removed_ids:
+                        removed_ids.append(oid)
+            del_match_set = {x for x in (matched_orig_ids + ([item_id] if item_id else []) + ([meta_oid] if meta_oid else [])) if x}
+            added_trees = [t for t in added_trees if str(t.get("id") or "") not in del_match_set and str(t.get("orig_id") or "") not in del_match_set]
+            added_walls = [w for w in added_walls if str(w.get("id") or "") not in del_match_set and str(w.get("orig_id") or "") not in del_match_set]
+            added_roads = [r for r in added_roads if str(r.get("id") or "") not in del_match_set and str(r.get("orig_id") or "") not in del_match_set]
+            added_water = [w for w in added_water if str(w.get("id") or "") not in del_match_set and str(w.get("orig_id") or "") not in del_match_set]
 
         elif action == "manual_add":
             cat_type = str(payload.get("category") or "").strip()
@@ -2222,10 +2239,14 @@ class CategorizationIoMixin:
                 if dbh_cm <= 0.0:
                     dbh_cm = round(max(12.0, 3.2 * tree_h), 1)
                 crown_a = round(math.pi * ((crown_d * 0.5) ** 2), 2)
+                existing_tm_ids = {str(t.get("id") or "") for t in added_trees}
                 idx_m = len(added_trees) + 1
+                while f"TM{idx_m}" in existing_tm_ids:
+                    idx_m += 1
                 tid = f"TM{idx_m}"
                 new_t = {
                     "id": tid,
+                    "orig_id": tid,
                     "name": str(item_data.get("name") or f"喬木 {tid} (手動新增)"),
                     "height_m": tree_h,
                     "dbh_cm": dbh_cm,

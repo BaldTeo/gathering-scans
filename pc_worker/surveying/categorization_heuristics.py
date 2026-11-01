@@ -1867,10 +1867,49 @@ class CategorizationHeuristicsMixin:
                 break
         trees_list.sort(key=lambda x: (x["height_m"], x["dbh_cm"]), reverse=True)
         if all_xy_tree is not None and len(trees_list) >= 2:
+            def _stem_cyl_stats(te_q: float, tn_q: float, tg_q: float) -> Tuple[float, int]:
+                q_idx = all_xy_tree.query_ball_point([te_q, tn_q], r=0.55)
+                if not q_idx:
+                    return 1.0, 0
+                ia_q = np.asarray(q_idx, dtype=np.int32)
+                cc_q = centroids[ia_q]
+                dt_q = np.hypot(cc_q[:, 0] - te_q, cc_q[:, 1] - tn_q)
+                zr_q = cc_q[:, 2] - tg_q
+                bh_q = (dt_q <= 0.48) & (zr_q >= 0.45) & (zr_q <= 1.85) & (nz_abs[ia_q] < 0.48)
+                up_q = (dt_q <= 0.48) & (zr_q >= 1.90) & (zr_q <= 3.50) & (nz_abs[ia_q] < 0.50)
+                if not np.any(bh_q):
+                    return 1.0, int(np.count_nonzero(up_q))
+                nxy_q = normals[ia_q[bh_q], :2]
+                ang2_q = np.arctan2(nxy_q[:, 1], nxy_q[:, 0]) * 2.0
+                r2_q = float(math.hypot(float(np.mean(np.cos(ang2_q))), float(np.mean(np.sin(ang2_q)))))
+                return r2_q, int(np.count_nonzero(up_q))
+
             filtered_trees_list: List[Dict[str, Any]] = []
             for t_cand in trees_list:
                 te_c, tn_c, tg_c = t_cand["trunk_twd97"]
                 th_c = float(t_cand["height_m"])
+                if th_c >= 8.0:
+                    r2_c, n_up_c = _stem_cyl_stats(te_c, tn_c, tg_c)
+                    if r2_c >= 0.52 and n_up_c <= 18:
+                        merged_into_nb = False
+                        for t_nb in trees_list:
+                            if t_nb is t_cand:
+                                continue
+                            te_nb, tn_nb, tg_nb = t_nb["trunk_twd97"]
+                            if math.hypot(te_c - te_nb, tn_c - tn_nb) <= 2.65:
+                                r2_nb, n_up_nb = _stem_cyl_stats(te_nb, tn_nb, tg_nb)
+                                if r2_nb <= 0.30 and n_up_nb >= 80:
+                                    if th_c > float(t_nb["height_m"]):
+                                        t_nb["height_m"] = th_c
+                                        t_nb["top_elevation_m"] = round(float(t_nb["ground_elevation_m"]) + th_c, 3)
+                                        t_nb["crown_diameter_m"] = max(float(t_nb["crown_diameter_m"]), float(t_cand["crown_diameter_m"]))
+                                        t_nb["crown_area_m2"] = max(float(t_nb["crown_area_m2"]), float(t_cand["crown_area_m2"]))
+                                        est_d_nb = 2.65 * (th_c ** 0.92) * (max(float(t_nb["crown_diameter_m"]), 1.5) ** 0.36)
+                                        t_nb["dbh_cm"] = round(float(np.clip(max(float(t_nb["dbh_cm"]), est_d_nb), 7.5, min(95.0, th_c * 4.8))), 1)
+                                    merged_into_nb = True
+                                    break
+                        if merged_into_nb:
+                            continue
                 if th_c >= 8.5 and any(
                     math.hypot(te_c - k["trunk_twd97"][0], tn_c - k["trunk_twd97"][1]) <= 3.00 for k in filtered_trees_list
                 ):
@@ -1890,6 +1929,7 @@ class CategorizationHeuristicsMixin:
                         ):
                             continue
                 filtered_trees_list.append(t_cand)
+            filtered_trees_list.sort(key=lambda x: (x["height_m"], x["dbh_cm"]), reverse=True)
             trees_list = filtered_trees_list
         for idx_t, t_obj in enumerate(trees_list, 1):
             t_obj["id"] = f"T{idx_t}"

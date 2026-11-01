@@ -2449,20 +2449,22 @@ class ContoursAndCadMixin:
         base_key = os.path.basename(norm_key)
         sub_prefix = os.path.dirname(norm_key).strip("/") if "/" in norm_key else ""
 
-        # 1. Exact filename match in catalog (e.g. "catch_QiHuTender_4/Image_001068.jpg")
+        # 1. Exact filename match in catalog
         for cam in catalog:
             if cam.get("filename") == norm_key and os.path.isfile(cam.get("abs_path", "")):
                 return cam["abs_path"]
 
-        # 2. If sub_prefix was specified (e.g. "edited_qihutender_1_edited_346774" or "catch_QiHuTender_4"), match sub_scan or abs_path containing sub_prefix
+        # 2. If sub_prefix was specified, match sub_scan or abs_path containing sub_prefix or matching canonical stem
         if sub_prefix:
             sub_low = sub_prefix.lower()
+            sub_stem = re.sub(r"^(?:edited|catch|merged)_|(?:_edited)?_\d+$", "", sub_low)
             for cam in catalog:
                 if os.path.basename(cam.get("filename", "")) != base_key:
                     continue
                 c_sub = str(cam.get("sub_scan") or "").lower()
+                c_stem = re.sub(r"^(?:edited|catch|merged)_|(?:_edited)?_\d+$", "", c_sub)
                 c_abs = str(cam.get("abs_path") or "").replace("\\", "/").lower()
-                if (c_sub == sub_low or sub_low in c_abs or ("qihutender_1" in sub_low and "qihutender_1" in c_sub)) and os.path.isfile(cam.get("abs_path", "")):
+                if (c_sub == sub_low or sub_low in c_abs or (sub_stem and sub_stem == c_stem)) and os.path.isfile(cam.get("abs_path", "")):
                     return cam["abs_path"]
             for sdir in self._get_candidate_camera_dirs(scan):
                 if sub_low in sdir.replace("\\", "/").lower():

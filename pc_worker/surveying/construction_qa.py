@@ -1046,33 +1046,55 @@ class ConstructionQAMixin:
             scan = self._resolve_scan_record(scan_id)
         scan = scan or {}
 
-        ce = safe_float(scan.get("twd97_e"), 304952.4) or 304952.4
-        cn = safe_float(scan.get("twd97_n"), 2757084.2) or 2757084.2
-        ch = safe_float(scan.get("twd97_h"), 124.8) or 124.8
+        dsm = self._load_or_build_scan_dsm(scan) if hasattr(self, "_load_or_build_scan_dsm") and scan else None
+        if isinstance(dsm, dict) and dsm.get("e_min") is not None and dsm.get("e_max") is not None:
+            ce = (float(dsm["e_min"]) + float(dsm["e_max"])) * 0.5
+            cn = (float(dsm["n_min"]) + float(dsm["n_max"])) * 0.5
+            ch = safe_float(scan.get("twd97_h")) or ((float(dsm.get("z_min", 124.8)) + float(dsm.get("z_max", 124.8))) * 0.5)
+        else:
+            ce = safe_float(scan.get("twd97_e"), 304952.4) or 304952.4
+            cn = safe_float(scan.get("twd97_n"), 2757084.2) or 2757084.2
+            ch = safe_float(scan.get("twd97_h"), 124.8) or 124.8
+
+        design_z_offset = safe_float(payload.get("design_z_offset"), 0.0) or 0.0
+
+        def _sample_z(ev: float, nv: float, fallback_z: float) -> float:
+            if isinstance(dsm, dict) and hasattr(self, "_sample_dsm_elevation"):
+                sampled = self._sample_dsm_elevation(dsm, ev, nv)
+                if sampled is not None and math.isfinite(sampled):
+                    return float(sampled) + design_z_offset
+            return float(fallback_z) + design_z_offset
 
         raw_points = payload.get("points") or payload.get("stakeout_points") or []
         source_mode = str(payload.get("source_mode") or "custom").strip().lower()
 
         # Grid generator mode if requested
         if source_mode == "grid" and (not raw_points or len(raw_points) == 0):
-            orig_e = safe_float(payload.get("grid_origin_e"), ce - 10.0) or (ce - 10.0)
-            orig_n = safe_float(payload.get("grid_origin_n"), cn - 10.0) or (cn - 10.0)
             sp_e = safe_float(payload.get("grid_spacing_e"), 5.0) or 5.0
             sp_n = safe_float(payload.get("grid_spacing_n"), 5.0) or 5.0
             cnt_e = max(1, min(20, int(safe_float(payload.get("grid_count_e"), 4) or 4)))
             cnt_n = max(1, min(20, int(safe_float(payload.get("grid_count_n"), 4) or 4)))
+            half_w = (cnt_e - 1) * sp_e * 0.5
+            half_h = (cnt_n - 1) * sp_n * 0.5
+            orig_e = safe_float(payload.get("grid_origin_e"))
+            if orig_e is None:
+                orig_e = ce - half_w
+            orig_n = safe_float(payload.get("grid_origin_n"))
+            if orig_n is None:
+                orig_n = cn - half_h
             raw_points = []
             pt_num = 1
             for row in range(cnt_n):
                 for col in range(cnt_e):
                     ge = orig_e + col * sp_e
                     gn = orig_n + row * sp_n
+                    gz = _sample_z(ge, gn, ch)
                     raw_points.append(
                         {
                             "id": f"GRID_{pt_num:03d}",
                             "e": ge,
                             "n": gn,
-                            "z": ch,
+                            "z": gz,
                             "code": f"GRID_R{row+1}C{col+1}",
                         }
                     )
@@ -1081,12 +1103,18 @@ class ConstructionQAMixin:
         cleaned_points: List[Dict[str, Any]] = []
         if isinstance(raw_points, list):
             for idx, pt in enumerate(raw_points):
+                loc_x = None
+                loc_y = None
+                loc_z = None
                 if isinstance(pt, dict):
                     pid = str(pt.get("id") or pt.get("name") or pt.get("ptid") or idx + 1).strip()
                     e_v = safe_float(pt.get("e") or pt.get("x") or pt.get("easting"))
                     n_v = safe_float(pt.get("n") or pt.get("y") or pt.get("northing"))
                     z_v = safe_float(pt.get("z") or pt.get("h") or pt.get("elevation"))
                     code = str(pt.get("code") or pt.get("desc") or "STK").strip()
+                    loc_x = safe_float(pt.get("local_x"))
+                    loc_y = safe_float(pt.get("local_y"))
+                    loc_z = safe_float(pt.get("local_z"))
                 elif isinstance(pt, (list, tuple)) and len(pt) >= 3:
                     pid = str(idx + 1)
                     e_v = safe_float(pt[0])
@@ -1098,7 +1126,7 @@ class ConstructionQAMixin:
 
                 if e_v is not None and n_v is not None:
                     if z_v is None:
-                        z_v = ch
+                        z_v = _sample_z(float(e_v), float(n_v), ch)
                     cleaned_points.append(
                         {
                             "ptid": pid,
@@ -1106,20 +1134,39 @@ class ConstructionQAMixin:
                             "northing": round(float(n_v), 3),
                             "elevation": round(float(z_v), 3),
                             "code": code,
-                            "local_x": round(float(e_v) - ce, 3),
-                            "local_y": round(float(z_v) - ch, 3),
-                            "local_z": round(cn - float(n_v), 3),
+                            "local_x": round(float(loc_x) if loc_x is not None else (float(e_v) - ce), 3),
+                            "local_y": round(float(loc_y) if loc_y is not None else (float(z_v) - ch), 3),
+                            "local_z": round(float(loc_z) if loc_z is not None else (cn - float(n_v)), 3),
                         }
                     )
 
-        # Fallback points if empty
+        # Fallback points if empty — sampled directly on terrain DSM
         if len(cleaned_points) == 0:
-            cleaned_points = [
-                {"ptid": "STK-01", "easting": round(ce - 5.0, 3), "northing": round(cn - 5.0, 3), "elevation": round(ch, 3), "code": "FOUNDATION_SW", "local_x": -5.0, "local_y": 0.0, "local_z": 5.0},
-                {"ptid": "STK-02", "easting": round(ce + 5.0, 3), "northing": round(cn - 5.0, 3), "elevation": round(ch, 3), "code": "FOUNDATION_SE", "local_x": 5.0, "local_y": 0.0, "local_z": 5.0},
-                {"ptid": "STK-03", "easting": round(ce + 5.0, 3), "northing": round(cn + 5.0, 3), "elevation": round(ch, 3), "code": "FOUNDATION_NE", "local_x": 5.0, "local_y": 0.0, "local_z": -5.0},
-                {"ptid": "STK-04", "easting": round(ce - 5.0, 3), "northing": round(cn + 5.0, 3), "elevation": round(ch, 3), "code": "FOUNDATION_NW", "local_x": -5.0, "local_y": 0.0, "local_z": -5.0},
+            span_e = 6.0
+            span_n = 6.0
+            if isinstance(dsm, dict) and dsm.get("e_max") is not None and dsm.get("e_min") is not None:
+                span_e = max(3.0, min(14.0, (float(dsm["e_max"]) - float(dsm["e_min"])) * 0.18))
+                span_n = max(3.0, min(14.0, (float(dsm["n_max"]) - float(dsm["n_min"])) * 0.18))
+            seed_defs = [
+                ("STK-01", ce - span_e, cn - span_n, "FOUNDATION_SW"),
+                ("STK-02", ce + span_e, cn - span_n, "FOUNDATION_SE"),
+                ("STK-03", ce + span_e, cn + span_n, "FOUNDATION_NE"),
+                ("STK-04", ce - span_e, cn + span_n, "FOUNDATION_NW"),
             ]
+            for sid, se, sn, scode in seed_defs:
+                sz = _sample_z(se, sn, ch)
+                cleaned_points.append(
+                    {
+                        "ptid": sid,
+                        "easting": round(se, 3),
+                        "northing": round(sn, 3),
+                        "elevation": round(sz, 3),
+                        "code": scode,
+                        "local_x": round(se - ce, 3),
+                        "local_y": round(sz - ch, 3),
+                        "local_z": round(cn - sn, 3),
+                    }
+                )
 
         # 1. Standard CSV export strictly in PtID, Easting, Northing, Elevation, Code order
         csv_lines = [

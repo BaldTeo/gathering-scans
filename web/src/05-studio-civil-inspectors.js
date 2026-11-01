@@ -2032,6 +2032,7 @@
         trunkMesh.userData.isTreeCamBiasElement = true;
         trunkMesh.userData.baseAnchorPt = midPt.clone();
         trunkMesh.userData.catCategory = "trees";
+        trunkMesh.userData.catPart = "trunk";
         trunkMesh.userData.catItemId = t.id;
         grp.add(trunkMesh);
 
@@ -2055,6 +2056,7 @@
         dbhRing.userData.isTreeCamBiasElement = true;
         dbhRing.userData.baseAnchorPt = dbhBasePt;
         dbhRing.userData.catCategory = "trees";
+        dbhRing.userData.catPart = "dbh_ring";
         dbhRing.userData.catItemId = t.id;
         grp.add(dbhRing);
 
@@ -2072,6 +2074,7 @@
         crownMesh.scale.set(1.0, Math.max(0.65, (treeH * 0.55) / Math.max(crownR * 1.6, 1.0)), 1.0);
         crownMesh.renderOrder = 994;
         crownMesh.userData.catCategory = "trees";
+        crownMesh.userData.catPart = "crown";
         crownMesh.userData.catItemId = t.id;
         grp.add(crownMesh);
 
@@ -2092,6 +2095,7 @@
         );
         cRingLine.renderOrder = 998;
         cRingLine.userData.catCategory = "trees";
+        cRingLine.userData.catPart = "crown_ring";
         cRingLine.userData.catItemId = t.id;
         grp.add(cRingLine);
 

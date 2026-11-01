@@ -2189,6 +2189,58 @@
     "302981.0_2770024.0": {
       "is_real_tree": true,
       "object_seen": "Large roadside banyan tree trunk"
+    },
+    "308088.5_2775011.1": {
+      "is_real_tree": false,
+      "object_seen": "Brick wall with ROC flag mural"
+    },
+    "308098.0_2775012.8": {
+      "is_real_tree": false,
+      "object_seen": "Concrete building arcade support column"
+    },
+    "308121.0_2774940.8": {
+      "is_real_tree": true,
+      "object_seen": "Green broadleaf tree canopy and branches"
+    },
+    "308165.2_2775010.1": {
+      "is_real_tree": true,
+      "object_seen": "Large banyan tree trunk with aerial roots"
+    },
+    "308156.7_2775056.7": {
+      "is_real_tree": true,
+      "object_seen": "Street tree trunk in front of building facade"
+    },
+    "308145.2_2775040.8": {
+      "is_real_tree": false,
+      "object_seen": "Metal pull-up bar support frame post"
+    },
+    "308171.4_2775020.5": {
+      "is_real_tree": false,
+      "object_seen": "Metal playground climbing frame structure"
+    },
+    "308169.9_2775024.2": {
+      "is_real_tree": true,
+      "object_seen": "Park tree trunk near slide"
+    },
+    "308155.8_2775004.0": {
+      "is_real_tree": false,
+      "object_seen": "Roof pillar of a roadside corrugated metal structure"
+    },
+    "308163.8_2775024.7": {
+      "is_real_tree": true,
+      "object_seen": "Small park tree trunk behind slide"
+    },
+    "308122.4_2775050.7": {
+      "is_real_tree": false,
+      "object_seen": "Concrete wall and metal fence railing"
+    },
+    "308143.6_2775047.8": {
+      "is_real_tree": true,
+      "object_seen": "Park tree trunk with white tag label"
+    },
+    "308136.4_2775044.8": {
+      "is_real_tree": false,
+      "object_seen": "Dense shrubbery foliage without clear trunk"
     }
   },
   "826546233522334c": {
@@ -9122,5 +9174,1998 @@
       }
     },
     "photo_verified_count": 79
+  },
+  "c2782fa4713357ce": {
+    "ai_verified": true,
+    "ai_model": "Gemini 3.5 Flash Multimodal + Ground Photo Referee",
+    "ai_summary_zh": "【AI 3D 樹幹圓柱斷面與地面實景照片判釋】本測區（LishanFinal）經 TWD97 局部裸地 DTM 分離、1.3m 胸高樹幹圓柱斷面切片（No Trunk = No Tree）與行動裝置 RTK 實景照片雙視角驗證：共確認具實體樹幹之喬木 22 棵，1.3m 胸高斷面 Pratt 圓擬合平均胸徑 DBH 31.3 cm（最大胸徑 67.4 cm）、平均樹高 7.2 m、樹冠投影總面積 3,014.5 m²（已自動排除建築廊柱、街燈桿、號誌桿與圍牆結構）。",
+    "ai_summary_en": "[Gemini Vision + 3D Trunk Cylinder & Ground Photo Referee] Local bare-earth DTM separation, strict 1.3m breast-height trunk cylinder slicing ('No Trunk = No Tree'), and dual-angle RTK mobile photo verification on 'LishanFinal' confirmed 22 standing tree(s) with mean 1.3m DBH 31.3 cm (max DBH 67.4 cm via anti-webbing Pratt circle fit), mean tree height 7.2 m, and total canopy footprint 3,014.5 m² (automatically excluding building columns, lamp posts, utility poles, and walls).",
+    "road_surface_note": "Paved asphalt concrete and campus running track pathways.",
+    "road_corridor_subtype": "paved_asphalt_concrete",
+    "road_corridor_label_zh": "鋪面道路與人行步道",
+    "road_corridor_label_en": "Paved Roads and Walkways",
+    "water_body_label_zh": "無水域",
+    "rejected_false_positive_tags": [
+      "T1",
+      "T13",
+      "T14",
+      "T15",
+      "T2",
+      "T24",
+      "T30",
+      "T5"
+    ],
+    "per_tree_verdicts": {
+      "T2": {
+        "tag": "T2",
+        "is_real_tree": false,
+        "object_seen": "Utility or street light pole on sidewalk",
+        "ai_vision_verified": true
+      },
+      "T3": {
+        "tag": "T3",
+        "is_real_tree": true,
+        "object_seen": "Large banyan tree trunk with aerial roots",
+        "ai_vision_verified": true
+      },
+      "T4": {
+        "tag": "T4",
+        "is_real_tree": true,
+        "object_seen": "Street tree trunk lining the park edge",
+        "ai_vision_verified": true
+      },
+      "T5": {
+        "tag": "T5",
+        "is_real_tree": false,
+        "object_seen": "Outdoor fitness equipment and metal railing",
+        "ai_vision_verified": true
+      },
+      "T6": {
+        "tag": "T6",
+        "is_real_tree": true,
+        "object_seen": "Park tree trunk behind fence",
+        "ai_vision_verified": true
+      },
+      "T7": {
+        "tag": "T7",
+        "is_real_tree": true,
+        "object_seen": "Mature tree trunk behind metal fence",
+        "ai_vision_verified": true
+      },
+      "T8": {
+        "tag": "T8",
+        "is_real_tree": true,
+        "object_seen": "Park tree trunk behind low wall",
+        "ai_vision_verified": true
+      },
+      "T9": {
+        "tag": "T9",
+        "is_real_tree": true,
+        "object_seen": "Tree trunk near basketball court fence",
+        "ai_vision_verified": true
+      },
+      "T10": {
+        "tag": "T10",
+        "is_real_tree": true,
+        "object_seen": "Tree trunk with epiphytes near building",
+        "ai_vision_verified": true
+      },
+      "T11": {
+        "tag": "T11",
+        "is_real_tree": true,
+        "object_seen": "Mature street tree trunk with brown bark",
+        "ai_vision_verified": true
+      },
+      "T12": {
+        "tag": "T12",
+        "is_real_tree": true,
+        "object_seen": "Sidewalk tree trunk near a metal fence",
+        "ai_vision_verified": true
+      },
+      "T13": {
+        "tag": "T13",
+        "is_real_tree": false,
+        "object_seen": "White utility truck bed and sides",
+        "ai_vision_verified": true
+      },
+      "T14": {
+        "tag": "T14",
+        "is_real_tree": false,
+        "object_seen": "Basketball court fence and net structure",
+        "ai_vision_verified": true
+      },
+      "T16": {
+        "tag": "T16",
+        "is_real_tree": true,
+        "object_seen": "Distant tree canopy with green leaves",
+        "ai_vision_verified": true
+      },
+      "T17": {
+        "tag": "T17",
+        "is_real_tree": true,
+        "object_seen": "Dense tree foliage and canopy",
+        "ai_vision_verified": true
+      },
+      "T18": {
+        "tag": "T18",
+        "is_real_tree": true,
+        "object_seen": "Slanted tree trunk behind metal fence",
+        "ai_vision_verified": true
+      },
+      "T19": {
+        "tag": "T19",
+        "is_real_tree": true,
+        "object_seen": "Urban tree trunk behind stone structure",
+        "ai_vision_verified": true
+      },
+      "T20": {
+        "tag": "T20",
+        "is_real_tree": true,
+        "object_seen": "Park tree trunk behind parking sign",
+        "ai_vision_verified": true
+      },
+      "T21": {
+        "tag": "T21",
+        "is_real_tree": true,
+        "object_seen": "Street tree trunk near fence and planter",
+        "ai_vision_verified": true
+      },
+      "T22": {
+        "tag": "T22",
+        "is_real_tree": true,
+        "object_seen": "Green leafy tree foliage and branches",
+        "ai_vision_verified": true
+      },
+      "T23": {
+        "tag": "T23",
+        "is_real_tree": true,
+        "object_seen": "Street tree trunk behind metal fence",
+        "ai_vision_verified": true
+      },
+      "T24": {
+        "tag": "T24",
+        "is_real_tree": false,
+        "object_seen": "Vertical metal utility pole",
+        "ai_vision_verified": true
+      },
+      "T25": {
+        "tag": "T25",
+        "is_real_tree": true,
+        "object_seen": "Large banyan tree trunk with aerial roots",
+        "ai_vision_verified": true
+      },
+      "T26": {
+        "tag": "T26",
+        "is_real_tree": true,
+        "object_seen": "Street tree trunk behind low wall",
+        "ai_vision_verified": true
+      },
+      "T27": {
+        "tag": "T27",
+        "is_real_tree": true,
+        "object_seen": "Large urban shade tree trunk and crown",
+        "ai_vision_verified": true
+      },
+      "T28": {
+        "tag": "T28",
+        "is_real_tree": true,
+        "object_seen": "Street tree canopy and foliage",
+        "ai_vision_verified": true
+      },
+      "T30": {
+        "tag": "T30",
+        "is_real_tree": false,
+        "object_seen": "Metal rack on vehicle roof",
+        "ai_vision_verified": true
+      },
+      "T1": {
+        "tag": "T1",
+        "is_real_tree": false,
+        "object_seen": "Brick wall with ROC flag mural",
+        "ai_vision_verified": true
+      },
+      "T15": {
+        "tag": "T15",
+        "is_real_tree": false,
+        "object_seen": "Concrete building arcade support column",
+        "ai_vision_verified": true
+      },
+      "T29": {
+        "tag": "T29",
+        "is_real_tree": true,
+        "object_seen": "Green broadleaf tree canopy and branches",
+        "ai_vision_verified": true
+      }
+    },
+    "photo_verified_count": 35
+  },
+  "14eb3ddaa6a7d072": {
+    "ai_verified": true,
+    "ai_model": "Gemini 3.5 Flash Multimodal + Ground Photo Referee",
+    "ai_summary_zh": "【AI 3D 樹幹圓柱斷面與地面實景照片判釋】本測區（catch_LishanFinal_HQ）經 TWD97 局部裸地 DTM 分離、1.3m 胸高樹幹圓柱斷面切片（No Trunk = No Tree）與行動裝置 RTK 實景照片雙視角驗證：共確認具實體樹幹之喬木 21 棵，1.3m 胸高斷面 Pratt 圓擬合平均胸徑 DBH 31.2 cm（最大胸徑 55.1 cm）、平均樹高 8.2 m、樹冠投影總面積 12,596.5 m²（已自動排除建築廊柱、街燈桿、號誌桿與圍牆結構）。",
+    "ai_summary_en": "[Gemini Vision + 3D Trunk Cylinder & Ground Photo Referee] Local bare-earth DTM separation, strict 1.3m breast-height trunk cylinder slicing ('No Trunk = No Tree'), and dual-angle RTK mobile photo verification on 'catch_LishanFinal_HQ' confirmed 21 standing tree(s) with mean 1.3m DBH 31.2 cm (max DBH 55.1 cm via anti-webbing Pratt circle fit), mean tree height 8.2 m, and total canopy footprint 12,596.5 m² (automatically excluding building columns, lamp posts, utility poles, and walls).",
+    "road_surface_note": "Paved synthetic/asphalt surface with painted lines representing a campus sports court and surrounding walkways.",
+    "road_corridor_subtype": "paved_asphalt_concrete",
+    "road_corridor_label_zh": "鋪面道路與步道",
+    "road_corridor_label_en": "Paved Road and Walkway",
+    "water_body_label_zh": "場區無水域",
+    "rejected_false_positive_tags": [
+      "T1",
+      "T10",
+      "T11",
+      "T13",
+      "T17",
+      "T19",
+      "T2",
+      "T24",
+      "T29",
+      "T31",
+      "T6"
+    ],
+    "per_tree_verdicts": {
+      "T1": {
+        "tag": "T1",
+        "is_real_tree": false,
+        "object_seen": "Building corner facade and wall structure",
+        "ai_vision_verified": true
+      },
+      "T2": {
+        "tag": "T2",
+        "is_real_tree": false,
+        "object_seen": "Utility or street light pole on sidewalk",
+        "ai_vision_verified": true
+      },
+      "T3": {
+        "tag": "T3",
+        "is_real_tree": true,
+        "object_seen": "Trunk of urban street tree",
+        "ai_vision_verified": true
+      },
+      "T5": {
+        "tag": "T5",
+        "is_real_tree": true,
+        "object_seen": "Trunk of mature street tree",
+        "ai_vision_verified": true
+      },
+      "T6": {
+        "tag": "T6",
+        "is_real_tree": false,
+        "object_seen": "Metal utility pole behind parking sign",
+        "ai_vision_verified": true
+      },
+      "T8": {
+        "tag": "T8",
+        "is_real_tree": true,
+        "object_seen": "Trunk of urban park tree",
+        "ai_vision_verified": true
+      },
+      "T9": {
+        "tag": "T9",
+        "is_real_tree": true,
+        "object_seen": "Trunk of mature park tree",
+        "ai_vision_verified": true
+      },
+      "T11": {
+        "tag": "T11",
+        "is_real_tree": false,
+        "object_seen": "Outdoor fitness equipment and metal railing",
+        "ai_vision_verified": true
+      },
+      "T12": {
+        "tag": "T12",
+        "is_real_tree": true,
+        "object_seen": "Trunk of street tree beside fence",
+        "ai_vision_verified": true
+      },
+      "T15": {
+        "tag": "T15",
+        "is_real_tree": true,
+        "object_seen": "Trunk of park tree near fence",
+        "ai_vision_verified": true
+      },
+      "T16": {
+        "tag": "T16",
+        "is_real_tree": true,
+        "object_seen": "Trunk of urban park tree",
+        "ai_vision_verified": true
+      },
+      "T17": {
+        "tag": "T17",
+        "is_real_tree": false,
+        "object_seen": "Grass lawn area with no tree stem",
+        "ai_vision_verified": true
+      },
+      "T18": {
+        "tag": "T18",
+        "is_real_tree": true,
+        "object_seen": "Street tree trunk behind metal railing",
+        "ai_vision_verified": true
+      },
+      "T21": {
+        "tag": "T21",
+        "is_real_tree": true,
+        "object_seen": "Deciduous street tree trunk and branches",
+        "ai_vision_verified": true
+      },
+      "T22": {
+        "tag": "T22",
+        "is_real_tree": true,
+        "object_seen": "Large urban tree trunk with fence",
+        "ai_vision_verified": true
+      },
+      "T23": {
+        "tag": "T23",
+        "is_real_tree": true,
+        "object_seen": "Green foliage and branches of street tree",
+        "ai_vision_verified": true
+      },
+      "T25": {
+        "tag": "T25",
+        "is_real_tree": true,
+        "object_seen": "Street tree trunk behind concrete wall",
+        "ai_vision_verified": true
+      },
+      "T26": {
+        "tag": "T26",
+        "is_real_tree": true,
+        "object_seen": "Dense leafy canopy of urban street tree",
+        "ai_vision_verified": true
+      },
+      "T27": {
+        "tag": "T27",
+        "is_real_tree": true,
+        "object_seen": "Mature street tree trunk near building",
+        "ai_vision_verified": true
+      },
+      "T29": {
+        "tag": "T29",
+        "is_real_tree": false,
+        "object_seen": "Mosaic tile wall pattern with no tree stem",
+        "ai_vision_verified": true
+      },
+      "T30": {
+        "tag": "T30",
+        "is_real_tree": true,
+        "object_seen": "Dense green street tree canopy and trunk",
+        "ai_vision_verified": true
+      },
+      "T32": {
+        "tag": "T32",
+        "is_real_tree": true,
+        "object_seen": "Mature street tree foliage and branches",
+        "ai_vision_verified": true
+      },
+      "T4": {
+        "tag": "T4",
+        "is_real_tree": true,
+        "object_seen": "Large banyan tree trunk with aerial roots",
+        "ai_vision_verified": true
+      },
+      "T7": {
+        "tag": "T7",
+        "is_real_tree": true,
+        "object_seen": "Street tree trunk in front of building facade",
+        "ai_vision_verified": true
+      },
+      "T10": {
+        "tag": "T10",
+        "is_real_tree": false,
+        "object_seen": "Metal pull-up bar support frame post",
+        "ai_vision_verified": true
+      },
+      "T13": {
+        "tag": "T13",
+        "is_real_tree": false,
+        "object_seen": "Metal playground climbing frame structure",
+        "ai_vision_verified": true
+      },
+      "T14": {
+        "tag": "T14",
+        "is_real_tree": true,
+        "object_seen": "Park tree trunk near slide",
+        "ai_vision_verified": true
+      },
+      "T19": {
+        "tag": "T19",
+        "is_real_tree": false,
+        "object_seen": "Roof pillar of a roadside corrugated metal structure",
+        "ai_vision_verified": true
+      },
+      "T20": {
+        "tag": "T20",
+        "is_real_tree": true,
+        "object_seen": "Small park tree trunk behind slide",
+        "ai_vision_verified": true
+      },
+      "T24": {
+        "tag": "T24",
+        "is_real_tree": false,
+        "object_seen": "Concrete wall and metal fence railing",
+        "ai_vision_verified": true
+      },
+      "T28": {
+        "tag": "T28",
+        "is_real_tree": true,
+        "object_seen": "Park tree trunk with white tag label",
+        "ai_vision_verified": true
+      },
+      "T31": {
+        "tag": "T31",
+        "is_real_tree": false,
+        "object_seen": "Dense shrubbery foliage without clear trunk",
+        "ai_vision_verified": true
+      }
+    },
+    "photo_verified_count": 33
+  },
+  "c28fa325a597ae9f": {
+    "ai_verified": true,
+    "ai_model": "Gemini 3.5 Flash Multimodal + Ground Photo Referee",
+    "ai_summary_zh": "【AI 3D 樹幹圓柱斷面與地面實景照片判釋】本測區（QiHu_Merged_2026-10-28）經 TWD97 局部裸地 DTM 分離、1.3m 胸高樹幹圓柱斷面切片（No Trunk = No Tree）與行動裝置 RTK 實景照片雙視角驗證：共確認具實體樹幹之喬木 43 棵，1.3m 胸高斷面 Pratt 圓擬合平均胸徑 DBH 24.8 cm（最大胸徑 38.9 cm）、平均樹高 6.1 m、樹冠投影總面積 1,578.7 m²（已自動排除建築廊柱、街燈桿、號誌桿與圍牆結構）。",
+    "ai_summary_en": "[Gemini Vision + 3D Trunk Cylinder & Ground Photo Referee] Local bare-earth DTM separation, strict 1.3m breast-height trunk cylinder slicing ('No Trunk = No Tree'), and dual-angle RTK mobile photo verification on 'QiHu_Merged_2026-10-28' confirmed 43 standing tree(s) with mean 1.3m DBH 24.8 cm (max DBH 38.9 cm via anti-webbing Pratt circle fit), mean tree height 6.1 m, and total canopy footprint 1,578.7 m² (automatically excluding building columns, lamp posts, utility poles, and walls).",
+    "road_surface_note": "Asphalt concrete pavement in good overall condition with clear lane markings and curbs.",
+    "road_corridor_subtype": "paved_asphalt_concrete",
+    "road_corridor_label_zh": "柏油混凝土道路廊道",
+    "road_corridor_label_en": "Paved Asphalt Concrete Road Corridor",
+    "water_body_label_zh": "河川水體與無模型化渠道空洞",
+    "rejected_false_positive_tags": [
+      "T1",
+      "T10",
+      "T11",
+      "T13",
+      "T16",
+      "T17",
+      "T19",
+      "T2",
+      "T20",
+      "T23",
+      "T28",
+      "T38",
+      "T46",
+      "T48",
+      "T5",
+      "T50",
+      "T52",
+      "T55",
+      "T57",
+      "T58",
+      "T6",
+      "T62",
+      "T63",
+      "T65",
+      "T66",
+      "T69",
+      "T7",
+      "T9"
+    ],
+    "per_tree_verdicts": {
+      "T1": {
+        "tag": "T1",
+        "is_real_tree": false,
+        "object_seen": "Concrete building exterior wall and drainpipe",
+        "ai_vision_verified": true
+      },
+      "T2": {
+        "tag": "T2",
+        "is_real_tree": false,
+        "object_seen": "Concrete wall and vertical plastic pipe",
+        "ai_vision_verified": true
+      },
+      "T3": {
+        "tag": "T3",
+        "is_real_tree": true,
+        "object_seen": "Park tree trunk by river embankment",
+        "ai_vision_verified": true
+      },
+      "T4": {
+        "tag": "T4",
+        "is_real_tree": true,
+        "object_seen": "Palm tree trunk next to building wall",
+        "ai_vision_verified": true
+      },
+      "T5": {
+        "tag": "T5",
+        "is_real_tree": false,
+        "object_seen": "Metal water storage tank against wall",
+        "ai_vision_verified": true
+      },
+      "T6": {
+        "tag": "T6",
+        "is_real_tree": false,
+        "object_seen": "Black metal street sign and traffic pole",
+        "ai_vision_verified": true
+      },
+      "T7": {
+        "tag": "T7",
+        "is_real_tree": false,
+        "object_seen": "Metal handrail of outdoor concrete staircase",
+        "ai_vision_verified": true
+      },
+      "T8": {
+        "tag": "T8",
+        "is_real_tree": true,
+        "object_seen": "Mature tree trunk with rough bark in park",
+        "ai_vision_verified": true
+      },
+      "T9": {
+        "tag": "T9",
+        "is_real_tree": false,
+        "object_seen": "Metal handrail on outdoor concrete stairs",
+        "ai_vision_verified": true
+      },
+      "T10": {
+        "tag": "T10",
+        "is_real_tree": false,
+        "object_seen": "Brown wooden or metal playground structure post",
+        "ai_vision_verified": true
+      },
+      "T11": {
+        "tag": "T11",
+        "is_real_tree": false,
+        "object_seen": "Grassy ground surface and dirt slope",
+        "ai_vision_verified": true
+      },
+      "T12": {
+        "tag": "T12",
+        "is_real_tree": true,
+        "object_seen": "Park tree trunk behind green hedge",
+        "ai_vision_verified": true
+      },
+      "T13": {
+        "tag": "T13",
+        "is_real_tree": false,
+        "object_seen": "Concrete building exterior wall and vent",
+        "ai_vision_verified": true
+      },
+      "T14": {
+        "tag": "T14",
+        "is_real_tree": true,
+        "object_seen": "Thin sapling trunk next to water tank",
+        "ai_vision_verified": true
+      },
+      "T15": {
+        "tag": "T15",
+        "is_real_tree": true,
+        "object_seen": "Large tree trunk next to outdoor staircase",
+        "ai_vision_verified": true
+      },
+      "T16": {
+        "tag": "T16",
+        "is_real_tree": false,
+        "object_seen": "Concrete outdoor staircase metal handrail",
+        "ai_vision_verified": true
+      },
+      "T17": {
+        "tag": "T17",
+        "is_real_tree": false,
+        "object_seen": "Concrete building wall and metal door",
+        "ai_vision_verified": true
+      },
+      "T18": {
+        "tag": "T18",
+        "is_real_tree": true,
+        "object_seen": "Large mature tree trunk near staircase",
+        "ai_vision_verified": true
+      },
+      "T19": {
+        "tag": "T19",
+        "is_real_tree": false,
+        "object_seen": "Paved sidewalk and tiled building pillar",
+        "ai_vision_verified": true
+      },
+      "T20": {
+        "tag": "T20",
+        "is_real_tree": false,
+        "object_seen": "Concrete balustrade wall and metal railing",
+        "ai_vision_verified": true
+      },
+      "T21": {
+        "tag": "T21",
+        "is_real_tree": true,
+        "object_seen": "Large tree trunk with exposed roots",
+        "ai_vision_verified": true
+      },
+      "T22": {
+        "tag": "T22",
+        "is_real_tree": true,
+        "object_seen": "Park tree trunk near a wall",
+        "ai_vision_verified": true
+      },
+      "T23": {
+        "tag": "T23",
+        "is_real_tree": false,
+        "object_seen": "Metal post or structural column",
+        "ai_vision_verified": true
+      },
+      "T24": {
+        "tag": "T24",
+        "is_real_tree": true,
+        "object_seen": "Tree trunk near a park bridge",
+        "ai_vision_verified": true
+      },
+      "T25": {
+        "tag": "T25",
+        "is_real_tree": true,
+        "object_seen": "Tree trunk with support pole",
+        "ai_vision_verified": true
+      },
+      "T26": {
+        "tag": "T26",
+        "is_real_tree": true,
+        "object_seen": "Mature park tree trunk with rough bark",
+        "ai_vision_verified": true
+      },
+      "T27": {
+        "tag": "T27",
+        "is_real_tree": true,
+        "object_seen": "Mature tree trunk with exposed roots",
+        "ai_vision_verified": true
+      },
+      "T28": {
+        "tag": "T28",
+        "is_real_tree": false,
+        "object_seen": "Glass storefront and building facade",
+        "ai_vision_verified": true
+      },
+      "T29": {
+        "tag": "T29",
+        "is_real_tree": true,
+        "object_seen": "Park tree trunk with grass",
+        "ai_vision_verified": true
+      },
+      "T30": {
+        "tag": "T30",
+        "is_real_tree": true,
+        "object_seen": "Large banyan tree trunk and branches",
+        "ai_vision_verified": true
+      },
+      "T31": {
+        "tag": "T31",
+        "is_real_tree": true,
+        "object_seen": "Slender park tree trunk",
+        "ai_vision_verified": true
+      },
+      "T32": {
+        "tag": "T32",
+        "is_real_tree": true,
+        "object_seen": "Park tree trunk in a gravel area",
+        "ai_vision_verified": true
+      },
+      "T33": {
+        "tag": "T33",
+        "is_real_tree": true,
+        "object_seen": "Large park tree trunk with roots",
+        "ai_vision_verified": true
+      },
+      "T34": {
+        "tag": "T34",
+        "is_real_tree": true,
+        "object_seen": "Mature tree trunk with surface root flare",
+        "ai_vision_verified": true
+      },
+      "T35": {
+        "tag": "T35",
+        "is_real_tree": true,
+        "object_seen": "Straight tree trunk inside round planter",
+        "ai_vision_verified": true
+      },
+      "T36": {
+        "tag": "T36",
+        "is_real_tree": true,
+        "object_seen": "Park tree trunk next to wooden structure",
+        "ai_vision_verified": true
+      },
+      "T37": {
+        "tag": "T37",
+        "is_real_tree": true,
+        "object_seen": "Thick tree trunk in park landscape",
+        "ai_vision_verified": true
+      },
+      "T38": {
+        "tag": "T38",
+        "is_real_tree": false,
+        "object_seen": "Concrete pavilion column and seating railing",
+        "ai_vision_verified": true
+      },
+      "T39": {
+        "tag": "T39",
+        "is_real_tree": true,
+        "object_seen": "Slanted tree trunk near stream bank",
+        "ai_vision_verified": true
+      },
+      "T40": {
+        "tag": "T40",
+        "is_real_tree": true,
+        "object_seen": "Mature tree trunk on grassy lawn",
+        "ai_vision_verified": true
+      },
+      "T41": {
+        "tag": "T41",
+        "is_real_tree": true,
+        "object_seen": "Inclined tree trunk on grassy ground",
+        "ai_vision_verified": true
+      },
+      "T42": {
+        "tag": "T42",
+        "is_real_tree": true,
+        "object_seen": "Slender leaning tree trunk in park",
+        "ai_vision_verified": true
+      },
+      "T43": {
+        "tag": "T43",
+        "is_real_tree": true,
+        "object_seen": "Sturdy tree trunk near curved bench",
+        "ai_vision_verified": true
+      },
+      "T44": {
+        "tag": "T44",
+        "is_real_tree": true,
+        "object_seen": "Large park tree trunk beside stone wall",
+        "ai_vision_verified": true
+      },
+      "T45": {
+        "tag": "T45",
+        "is_real_tree": true,
+        "object_seen": "Park tree trunk with rough bark",
+        "ai_vision_verified": true
+      },
+      "T46": {
+        "tag": "T46",
+        "is_real_tree": false,
+        "object_seen": "Brown metal street lamp pole",
+        "ai_vision_verified": true
+      },
+      "T47": {
+        "tag": "T47",
+        "is_real_tree": true,
+        "object_seen": "Mature banyan tree trunk in park",
+        "ai_vision_verified": true
+      },
+      "T48": {
+        "tag": "T48",
+        "is_real_tree": false,
+        "object_seen": "Brown metal street lamp pole",
+        "ai_vision_verified": true
+      },
+      "T49": {
+        "tag": "T49",
+        "is_real_tree": true,
+        "object_seen": "Large mature park tree trunk",
+        "ai_vision_verified": true
+      },
+      "T50": {
+        "tag": "T50",
+        "is_real_tree": false,
+        "object_seen": "Brown metal street lamp pole",
+        "ai_vision_verified": true
+      },
+      "T51": {
+        "tag": "T51",
+        "is_real_tree": true,
+        "object_seen": "Park tree trunk and leafy canopy",
+        "ai_vision_verified": true
+      },
+      "T52": {
+        "tag": "T52",
+        "is_real_tree": false,
+        "object_seen": "Square brown metal street lamp post",
+        "ai_vision_verified": true
+      },
+      "T53": {
+        "tag": "T53",
+        "is_real_tree": true,
+        "object_seen": "Mature park tree trunk with textured bark",
+        "ai_vision_verified": true
+      },
+      "T54": {
+        "tag": "T54",
+        "is_real_tree": true,
+        "object_seen": "Mature broadleaf park tree trunk",
+        "ai_vision_verified": true
+      },
+      "T55": {
+        "tag": "T55",
+        "is_real_tree": false,
+        "object_seen": "Metal utility and sign post",
+        "ai_vision_verified": true
+      },
+      "T56": {
+        "tag": "T56",
+        "is_real_tree": true,
+        "object_seen": "Mature park tree trunk with textured bark",
+        "ai_vision_verified": true
+      },
+      "T57": {
+        "tag": "T57",
+        "is_real_tree": false,
+        "object_seen": "Wooden railing of a park bridge",
+        "ai_vision_verified": true
+      },
+      "T58": {
+        "tag": "T58",
+        "is_real_tree": false,
+        "object_seen": "Square brown metal street lamp post",
+        "ai_vision_verified": true
+      },
+      "T59": {
+        "tag": "T59",
+        "is_real_tree": true,
+        "object_seen": "Thin tree trunk growing near retaining wall",
+        "ai_vision_verified": true
+      },
+      "T60": {
+        "tag": "T60",
+        "is_real_tree": true,
+        "object_seen": "Large banyan tree trunk with aerial roots",
+        "ai_vision_verified": true
+      },
+      "T61": {
+        "tag": "T61",
+        "is_real_tree": true,
+        "object_seen": "Street tree trunk next to sidewalk pavement",
+        "ai_vision_verified": true
+      },
+      "T62": {
+        "tag": "T62",
+        "is_real_tree": false,
+        "object_seen": "Dark brown metal pillar of a pavilion structure",
+        "ai_vision_verified": true
+      },
+      "T63": {
+        "tag": "T63",
+        "is_real_tree": false,
+        "object_seen": "Dark brown metal support pillar of a walkway roof",
+        "ai_vision_verified": true
+      },
+      "T64": {
+        "tag": "T64",
+        "is_real_tree": true,
+        "object_seen": "Small sapling tree trunk in park garden",
+        "ai_vision_verified": true
+      },
+      "T65": {
+        "tag": "T65",
+        "is_real_tree": false,
+        "object_seen": "Dark brown metal support post of an information board",
+        "ai_vision_verified": true
+      },
+      "T66": {
+        "tag": "T66",
+        "is_real_tree": false,
+        "object_seen": "Metal utility pole next to parking sign",
+        "ai_vision_verified": true
+      },
+      "T67": {
+        "tag": "T67",
+        "is_real_tree": true,
+        "object_seen": "Park tree trunk adjacent to walking path",
+        "ai_vision_verified": true
+      },
+      "T68": {
+        "tag": "T68",
+        "is_real_tree": true,
+        "object_seen": "Mature broadleaf park tree trunk",
+        "ai_vision_verified": true
+      },
+      "T69": {
+        "tag": "T69",
+        "is_real_tree": false,
+        "object_seen": "Square wooden or metal park pole",
+        "ai_vision_verified": true
+      },
+      "T70": {
+        "tag": "T70",
+        "is_real_tree": true,
+        "object_seen": "Park tree foliage and stem",
+        "ai_vision_verified": true
+      },
+      "T71": {
+        "tag": "T71",
+        "is_real_tree": true,
+        "object_seen": "Green shrubbery and small tree stem",
+        "ai_vision_verified": true
+      }
+    },
+    "photo_verified_count": 77
+  },
+  "fc043a6bfba490d6": {
+    "ai_verified": true,
+    "ai_model": "Gemini 3.5 Flash Multimodal + Ground Photo Referee",
+    "ai_summary_zh": "【AI 3D 樹幹圓柱斷面與地面實景照片判釋】本測區（merged_qihu_merged_2026_10_28_77753）經 TWD97 局部裸地 DTM 分離、1.3m 胸高樹幹圓柱斷面切片（No Trunk = No Tree）與行動裝置 RTK 實景照片雙視角驗證：共確認具實體樹幹之喬木 43 棵，1.3m 胸高斷面 Pratt 圓擬合平均胸徑 DBH 24.9 cm（最大胸徑 38.9 cm）、平均樹高 6.1 m、樹冠投影總面積 1,579.0 m²（已自動排除建築廊柱、街燈桿、號誌桿與圍牆結構）。",
+    "ai_summary_en": "[Gemini Vision + 3D Trunk Cylinder & Ground Photo Referee] Local bare-earth DTM separation, strict 1.3m breast-height trunk cylinder slicing ('No Trunk = No Tree'), and dual-angle RTK mobile photo verification on 'merged_qihu_merged_2026_10_28_77753' confirmed 43 standing tree(s) with mean 1.3m DBH 24.9 cm (max DBH 38.9 cm via anti-webbing Pratt circle fit), mean tree height 6.1 m, and total canopy footprint 1,579.0 m² (automatically excluding building columns, lamp posts, utility poles, and walls).",
+    "road_surface_note": "Standard urban asphalt concrete pavement with standard markings.",
+    "road_corridor_subtype": "paved_asphalt_concrete",
+    "road_corridor_label_zh": "柏油混凝土路面",
+    "road_corridor_label_en": "Paved Asphalt Concrete Road",
+    "water_body_label_zh": "河川水域",
+    "rejected_false_positive_tags": [
+      "T1",
+      "T10",
+      "T11",
+      "T13",
+      "T16",
+      "T17",
+      "T19",
+      "T2",
+      "T20",
+      "T23",
+      "T28",
+      "T38",
+      "T46",
+      "T48",
+      "T5",
+      "T50",
+      "T52",
+      "T55",
+      "T57",
+      "T58",
+      "T6",
+      "T62",
+      "T63",
+      "T65",
+      "T66",
+      "T69",
+      "T7",
+      "T9"
+    ],
+    "per_tree_verdicts": {
+      "T1": {
+        "tag": "T1",
+        "is_real_tree": false,
+        "object_seen": "Concrete building exterior wall and drainpipe",
+        "ai_vision_verified": true
+      },
+      "T2": {
+        "tag": "T2",
+        "is_real_tree": false,
+        "object_seen": "Concrete wall and vertical plastic pipe",
+        "ai_vision_verified": true
+      },
+      "T3": {
+        "tag": "T3",
+        "is_real_tree": true,
+        "object_seen": "Park tree trunk by river embankment",
+        "ai_vision_verified": true
+      },
+      "T4": {
+        "tag": "T4",
+        "is_real_tree": true,
+        "object_seen": "Palm tree trunk next to building wall",
+        "ai_vision_verified": true
+      },
+      "T5": {
+        "tag": "T5",
+        "is_real_tree": false,
+        "object_seen": "Metal water storage tank against wall",
+        "ai_vision_verified": true
+      },
+      "T6": {
+        "tag": "T6",
+        "is_real_tree": false,
+        "object_seen": "Black metal street sign and traffic pole",
+        "ai_vision_verified": true
+      },
+      "T7": {
+        "tag": "T7",
+        "is_real_tree": false,
+        "object_seen": "Metal handrail of outdoor concrete staircase",
+        "ai_vision_verified": true
+      },
+      "T8": {
+        "tag": "T8",
+        "is_real_tree": true,
+        "object_seen": "Mature tree trunk with rough bark in park",
+        "ai_vision_verified": true
+      },
+      "T9": {
+        "tag": "T9",
+        "is_real_tree": false,
+        "object_seen": "Metal handrail on outdoor concrete stairs",
+        "ai_vision_verified": true
+      },
+      "T10": {
+        "tag": "T10",
+        "is_real_tree": false,
+        "object_seen": "Brown wooden or metal playground structure post",
+        "ai_vision_verified": true
+      },
+      "T11": {
+        "tag": "T11",
+        "is_real_tree": false,
+        "object_seen": "Grassy ground surface and dirt slope",
+        "ai_vision_verified": true
+      },
+      "T12": {
+        "tag": "T12",
+        "is_real_tree": true,
+        "object_seen": "Park tree trunk behind green hedge",
+        "ai_vision_verified": true
+      },
+      "T13": {
+        "tag": "T13",
+        "is_real_tree": false,
+        "object_seen": "Concrete building exterior wall and vent",
+        "ai_vision_verified": true
+      },
+      "T14": {
+        "tag": "T14",
+        "is_real_tree": true,
+        "object_seen": "Thin sapling trunk next to water tank",
+        "ai_vision_verified": true
+      },
+      "T15": {
+        "tag": "T15",
+        "is_real_tree": true,
+        "object_seen": "Large tree trunk next to outdoor staircase",
+        "ai_vision_verified": true
+      },
+      "T16": {
+        "tag": "T16",
+        "is_real_tree": false,
+        "object_seen": "Concrete outdoor staircase metal handrail",
+        "ai_vision_verified": true
+      },
+      "T17": {
+        "tag": "T17",
+        "is_real_tree": false,
+        "object_seen": "Concrete building wall and metal door",
+        "ai_vision_verified": true
+      },
+      "T18": {
+        "tag": "T18",
+        "is_real_tree": true,
+        "object_seen": "Large mature tree trunk near staircase",
+        "ai_vision_verified": true
+      },
+      "T19": {
+        "tag": "T19",
+        "is_real_tree": false,
+        "object_seen": "Paved sidewalk and tiled building pillar",
+        "ai_vision_verified": true
+      },
+      "T20": {
+        "tag": "T20",
+        "is_real_tree": false,
+        "object_seen": "Concrete balustrade wall and metal railing",
+        "ai_vision_verified": true
+      },
+      "T21": {
+        "tag": "T21",
+        "is_real_tree": true,
+        "object_seen": "Large tree trunk with exposed roots",
+        "ai_vision_verified": true
+      },
+      "T22": {
+        "tag": "T22",
+        "is_real_tree": true,
+        "object_seen": "Park tree trunk near a wall",
+        "ai_vision_verified": true
+      },
+      "T23": {
+        "tag": "T23",
+        "is_real_tree": false,
+        "object_seen": "Metal post or structural column",
+        "ai_vision_verified": true
+      },
+      "T24": {
+        "tag": "T24",
+        "is_real_tree": true,
+        "object_seen": "Tree trunk near a park bridge",
+        "ai_vision_verified": true
+      },
+      "T25": {
+        "tag": "T25",
+        "is_real_tree": true,
+        "object_seen": "Tree trunk with support pole",
+        "ai_vision_verified": true
+      },
+      "T26": {
+        "tag": "T26",
+        "is_real_tree": true,
+        "object_seen": "Mature park tree trunk with rough bark",
+        "ai_vision_verified": true
+      },
+      "T27": {
+        "tag": "T27",
+        "is_real_tree": true,
+        "object_seen": "Mature tree trunk with exposed roots",
+        "ai_vision_verified": true
+      },
+      "T28": {
+        "tag": "T28",
+        "is_real_tree": false,
+        "object_seen": "Glass storefront and building facade",
+        "ai_vision_verified": true
+      },
+      "T29": {
+        "tag": "T29",
+        "is_real_tree": true,
+        "object_seen": "Park tree trunk with grass",
+        "ai_vision_verified": true
+      },
+      "T30": {
+        "tag": "T30",
+        "is_real_tree": true,
+        "object_seen": "Large banyan tree trunk and branches",
+        "ai_vision_verified": true
+      },
+      "T31": {
+        "tag": "T31",
+        "is_real_tree": true,
+        "object_seen": "Slender park tree trunk",
+        "ai_vision_verified": true
+      },
+      "T32": {
+        "tag": "T32",
+        "is_real_tree": true,
+        "object_seen": "Park tree trunk in a gravel area",
+        "ai_vision_verified": true
+      },
+      "T33": {
+        "tag": "T33",
+        "is_real_tree": true,
+        "object_seen": "Large park tree trunk with roots",
+        "ai_vision_verified": true
+      },
+      "T34": {
+        "tag": "T34",
+        "is_real_tree": true,
+        "object_seen": "Mature tree trunk with surface root flare",
+        "ai_vision_verified": true
+      },
+      "T35": {
+        "tag": "T35",
+        "is_real_tree": true,
+        "object_seen": "Straight tree trunk inside round planter",
+        "ai_vision_verified": true
+      },
+      "T36": {
+        "tag": "T36",
+        "is_real_tree": true,
+        "object_seen": "Park tree trunk next to wooden structure",
+        "ai_vision_verified": true
+      },
+      "T37": {
+        "tag": "T37",
+        "is_real_tree": true,
+        "object_seen": "Thick tree trunk in park landscape",
+        "ai_vision_verified": true
+      },
+      "T38": {
+        "tag": "T38",
+        "is_real_tree": false,
+        "object_seen": "Concrete pavilion column and seating railing",
+        "ai_vision_verified": true
+      },
+      "T39": {
+        "tag": "T39",
+        "is_real_tree": true,
+        "object_seen": "Slanted tree trunk near stream bank",
+        "ai_vision_verified": true
+      },
+      "T40": {
+        "tag": "T40",
+        "is_real_tree": true,
+        "object_seen": "Mature tree trunk on grassy lawn",
+        "ai_vision_verified": true
+      },
+      "T41": {
+        "tag": "T41",
+        "is_real_tree": true,
+        "object_seen": "Inclined tree trunk on grassy ground",
+        "ai_vision_verified": true
+      },
+      "T42": {
+        "tag": "T42",
+        "is_real_tree": true,
+        "object_seen": "Slender leaning tree trunk in park",
+        "ai_vision_verified": true
+      },
+      "T43": {
+        "tag": "T43",
+        "is_real_tree": true,
+        "object_seen": "Sturdy tree trunk near curved bench",
+        "ai_vision_verified": true
+      },
+      "T44": {
+        "tag": "T44",
+        "is_real_tree": true,
+        "object_seen": "Large park tree trunk beside stone wall",
+        "ai_vision_verified": true
+      },
+      "T45": {
+        "tag": "T45",
+        "is_real_tree": true,
+        "object_seen": "Park tree trunk with rough bark",
+        "ai_vision_verified": true
+      },
+      "T46": {
+        "tag": "T46",
+        "is_real_tree": false,
+        "object_seen": "Brown metal street lamp pole",
+        "ai_vision_verified": true
+      },
+      "T47": {
+        "tag": "T47",
+        "is_real_tree": true,
+        "object_seen": "Mature banyan tree trunk in park",
+        "ai_vision_verified": true
+      },
+      "T48": {
+        "tag": "T48",
+        "is_real_tree": false,
+        "object_seen": "Brown metal street lamp pole",
+        "ai_vision_verified": true
+      },
+      "T49": {
+        "tag": "T49",
+        "is_real_tree": true,
+        "object_seen": "Large mature park tree trunk",
+        "ai_vision_verified": true
+      },
+      "T50": {
+        "tag": "T50",
+        "is_real_tree": false,
+        "object_seen": "Brown metal street lamp pole",
+        "ai_vision_verified": true
+      },
+      "T51": {
+        "tag": "T51",
+        "is_real_tree": true,
+        "object_seen": "Park tree trunk and leafy canopy",
+        "ai_vision_verified": true
+      },
+      "T52": {
+        "tag": "T52",
+        "is_real_tree": false,
+        "object_seen": "Square brown metal street lamp post",
+        "ai_vision_verified": true
+      },
+      "T53": {
+        "tag": "T53",
+        "is_real_tree": true,
+        "object_seen": "Mature park tree trunk with textured bark",
+        "ai_vision_verified": true
+      },
+      "T54": {
+        "tag": "T54",
+        "is_real_tree": true,
+        "object_seen": "Mature broadleaf park tree trunk",
+        "ai_vision_verified": true
+      },
+      "T55": {
+        "tag": "T55",
+        "is_real_tree": false,
+        "object_seen": "Metal utility and sign post",
+        "ai_vision_verified": true
+      },
+      "T56": {
+        "tag": "T56",
+        "is_real_tree": true,
+        "object_seen": "Mature park tree trunk with textured bark",
+        "ai_vision_verified": true
+      },
+      "T57": {
+        "tag": "T57",
+        "is_real_tree": false,
+        "object_seen": "Wooden railing of a park bridge",
+        "ai_vision_verified": true
+      },
+      "T58": {
+        "tag": "T58",
+        "is_real_tree": false,
+        "object_seen": "Square brown metal street lamp post",
+        "ai_vision_verified": true
+      },
+      "T59": {
+        "tag": "T59",
+        "is_real_tree": true,
+        "object_seen": "Thin tree trunk growing near retaining wall",
+        "ai_vision_verified": true
+      },
+      "T60": {
+        "tag": "T60",
+        "is_real_tree": true,
+        "object_seen": "Large banyan tree trunk with aerial roots",
+        "ai_vision_verified": true
+      },
+      "T61": {
+        "tag": "T61",
+        "is_real_tree": true,
+        "object_seen": "Street tree trunk next to sidewalk pavement",
+        "ai_vision_verified": true
+      },
+      "T62": {
+        "tag": "T62",
+        "is_real_tree": false,
+        "object_seen": "Dark brown metal pillar of a pavilion structure",
+        "ai_vision_verified": true
+      },
+      "T63": {
+        "tag": "T63",
+        "is_real_tree": false,
+        "object_seen": "Dark brown metal support pillar of a walkway roof",
+        "ai_vision_verified": true
+      },
+      "T64": {
+        "tag": "T64",
+        "is_real_tree": true,
+        "object_seen": "Small sapling tree trunk in park garden",
+        "ai_vision_verified": true
+      },
+      "T65": {
+        "tag": "T65",
+        "is_real_tree": false,
+        "object_seen": "Dark brown metal support post of an information board",
+        "ai_vision_verified": true
+      },
+      "T66": {
+        "tag": "T66",
+        "is_real_tree": false,
+        "object_seen": "Metal utility pole next to parking sign",
+        "ai_vision_verified": true
+      },
+      "T67": {
+        "tag": "T67",
+        "is_real_tree": true,
+        "object_seen": "Park tree trunk adjacent to walking path",
+        "ai_vision_verified": true
+      },
+      "T68": {
+        "tag": "T68",
+        "is_real_tree": true,
+        "object_seen": "Mature broadleaf park tree trunk",
+        "ai_vision_verified": true
+      },
+      "T69": {
+        "tag": "T69",
+        "is_real_tree": false,
+        "object_seen": "Square wooden or metal park pole",
+        "ai_vision_verified": true
+      },
+      "T70": {
+        "tag": "T70",
+        "is_real_tree": true,
+        "object_seen": "Park tree foliage and stem",
+        "ai_vision_verified": true
+      },
+      "T71": {
+        "tag": "T71",
+        "is_real_tree": true,
+        "object_seen": "Green shrubbery and small tree stem",
+        "ai_vision_verified": true
+      }
+    },
+    "photo_verified_count": 77
+  },
+  "c71b46f74e3c3151": {
+    "ai_verified": true,
+    "ai_model": "Gemini 3.5 Flash Multimodal + Ground Photo Referee",
+    "ai_summary_zh": "【AI 3D 樹幹圓柱斷面與地面實景照片判釋】本測區（QiHu — Unified Merged Scan (4 Scans)）經 TWD97 局部裸地 DTM 分離、1.3m 胸高樹幹圓柱斷面切片（No Trunk = No Tree）與行動裝置 RTK 實景照片雙視角驗證：共確認具實體樹幹之喬木 16 棵，1.3m 胸高斷面 Pratt 圓擬合平均胸徑 DBH 23.9 cm（最大胸徑 34.4 cm）、平均樹高 5.9 m、樹冠投影總面積 596.8 m²（已自動排除建築廊柱、街燈桿、號誌桿與圍牆結構）。",
+    "ai_summary_en": "[Gemini Vision + 3D Trunk Cylinder & Ground Photo Referee] Local bare-earth DTM separation, strict 1.3m breast-height trunk cylinder slicing ('No Trunk = No Tree'), and dual-angle RTK mobile photo verification on 'QiHu — Unified Merged Scan (4 Scans)' confirmed 16 standing tree(s) with mean 1.3m DBH 23.9 cm (max DBH 34.4 cm via anti-webbing Pratt circle fit), mean tree height 5.9 m, and total canopy footprint 596.8 m² (automatically excluding building columns, lamp posts, utility poles, and walls).",
+    "road_surface_note": "道路表面平整，鋪設瀝青混凝土，並帶有明確標線。",
+    "road_corridor_subtype": "paved_asphalt_concrete",
+    "road_corridor_label_zh": "柏油混凝土鋪面道路",
+    "road_corridor_label_en": "Paved Asphalt Concrete Road",
+    "water_body_label_zh": "河川渠道水體",
+    "rejected_false_positive_tags": [
+      "T10",
+      "T12",
+      "T13",
+      "T18",
+      "T2",
+      "T20",
+      "T23",
+      "T24",
+      "T25",
+      "T5",
+      "T6"
+    ],
+    "per_tree_verdicts": {
+      "T1": {
+        "tag": "T1",
+        "is_real_tree": true,
+        "object_seen": "Rough bark tree trunk in park",
+        "ai_vision_verified": true
+      },
+      "T2": {
+        "tag": "T2",
+        "is_real_tree": false,
+        "object_seen": "Square metal pillar of pavilion",
+        "ai_vision_verified": true
+      },
+      "T3": {
+        "tag": "T3",
+        "is_real_tree": true,
+        "object_seen": "Cylindrical park tree trunk",
+        "ai_vision_verified": true
+      },
+      "T4": {
+        "tag": "T4",
+        "is_real_tree": true,
+        "object_seen": "Straight tree trunk beside stream",
+        "ai_vision_verified": true
+      },
+      "T5": {
+        "tag": "T5",
+        "is_real_tree": false,
+        "object_seen": "Tiled building pillar on sidewalk",
+        "ai_vision_verified": true
+      },
+      "T6": {
+        "tag": "T6",
+        "is_real_tree": false,
+        "object_seen": "Metal handrail and concrete retaining wall",
+        "ai_vision_verified": true
+      },
+      "T7": {
+        "tag": "T7",
+        "is_real_tree": true,
+        "object_seen": "Thick tree trunk with yellow ribbon",
+        "ai_vision_verified": true
+      },
+      "T8": {
+        "tag": "T8",
+        "is_real_tree": true,
+        "object_seen": "Broadleaf tree trunk in public park",
+        "ai_vision_verified": true
+      },
+      "T9": {
+        "tag": "T9",
+        "is_real_tree": true,
+        "object_seen": "Old tree trunk near wooden bridge",
+        "ai_vision_verified": true
+      },
+      "T10": {
+        "tag": "T10",
+        "is_real_tree": false,
+        "object_seen": "Dark metal park light pole",
+        "ai_vision_verified": true
+      },
+      "T11": {
+        "tag": "T11",
+        "is_real_tree": true,
+        "object_seen": "Park tree trunk with rough bark",
+        "ai_vision_verified": true
+      },
+      "T12": {
+        "tag": "T12",
+        "is_real_tree": false,
+        "object_seen": "Building glass window and wall corner",
+        "ai_vision_verified": true
+      },
+      "T13": {
+        "tag": "T13",
+        "is_real_tree": false,
+        "object_seen": "Thin metal park signpost",
+        "ai_vision_verified": true
+      },
+      "T14": {
+        "tag": "T14",
+        "is_real_tree": true,
+        "object_seen": "Park tree trunk in circular planter",
+        "ai_vision_verified": true
+      },
+      "T15": {
+        "tag": "T15",
+        "is_real_tree": true,
+        "object_seen": "Mature park tree trunk behind post",
+        "ai_vision_verified": true
+      },
+      "T16": {
+        "tag": "T16",
+        "is_real_tree": true,
+        "object_seen": "Park tree trunk with green foliage",
+        "ai_vision_verified": true
+      },
+      "T17": {
+        "tag": "T17",
+        "is_real_tree": true,
+        "object_seen": "Park tree trunk with split branches",
+        "ai_vision_verified": true
+      },
+      "T18": {
+        "tag": "T18",
+        "is_real_tree": false,
+        "object_seen": "Metal pavilion support post structure",
+        "ai_vision_verified": true
+      },
+      "T19": {
+        "tag": "T19",
+        "is_real_tree": true,
+        "object_seen": "Park tree trunk in landscaped bed",
+        "ai_vision_verified": true
+      },
+      "T20": {
+        "tag": "T20",
+        "is_real_tree": false,
+        "object_seen": "Brown metal park fence pillar",
+        "ai_vision_verified": true
+      },
+      "T21": {
+        "tag": "T21",
+        "is_real_tree": true,
+        "object_seen": "Large park tree trunk",
+        "ai_vision_verified": true
+      },
+      "T22": {
+        "tag": "T22",
+        "is_real_tree": true,
+        "object_seen": "Large park tree trunk",
+        "ai_vision_verified": true
+      },
+      "T23": {
+        "tag": "T23",
+        "is_real_tree": false,
+        "object_seen": "Brown wooden park bridge railing post",
+        "ai_vision_verified": true
+      },
+      "T24": {
+        "tag": "T24",
+        "is_real_tree": false,
+        "object_seen": "Brown metal park fence pillar",
+        "ai_vision_verified": true
+      },
+      "T25": {
+        "tag": "T25",
+        "is_real_tree": false,
+        "object_seen": "Brown metal park fence pillar",
+        "ai_vision_verified": true
+      },
+      "T26": {
+        "tag": "T26",
+        "is_real_tree": true,
+        "object_seen": "Large park tree trunk with bark",
+        "ai_vision_verified": true
+      },
+      "T27": {
+        "tag": "T27",
+        "is_real_tree": true,
+        "object_seen": "Large park tree trunk",
+        "ai_vision_verified": true
+      }
+    },
+    "photo_verified_count": 34
+  },
+  "810e724d3d3c9375": {
+    "ai_verified": true,
+    "ai_model": "Gemini 3.5 Flash Multimodal + Ground Photo Referee",
+    "ai_summary_zh": "【AI 3D 樹幹圓柱斷面與地面實景照片判釋】本測區（NTU_Dorm_260915）經 TWD97 局部裸地 DTM 分離、1.3m 胸高樹幹圓柱斷面切片（No Trunk = No Tree）與行動裝置 RTK 實景照片雙視角驗證：共確認具實體樹幹之喬木 11 棵，1.3m 胸高斷面 Pratt 圓擬合平均胸徑 DBH 30.2 cm（最大胸徑 60.9 cm）、平均樹高 7.2 m、樹冠投影總面積 2,408.5 m²（已自動排除建築廊柱、街燈桿、號誌桿與圍牆結構）。",
+    "ai_summary_en": "[Gemini Vision + 3D Trunk Cylinder & Ground Photo Referee] Local bare-earth DTM separation, strict 1.3m breast-height trunk cylinder slicing ('No Trunk = No Tree'), and dual-angle RTK mobile photo verification on 'NTU_Dorm_260915' confirmed 11 standing tree(s) with mean 1.3m DBH 30.2 cm (max DBH 60.9 cm via anti-webbing Pratt circle fit), mean tree height 7.2 m, and total canopy footprint 2,408.5 m² (automatically excluding building columns, lamp posts, utility poles, and walls).",
+    "road_surface_note": "Paved asphalt concrete road and walkway surfaces in good urban condition.",
+    "road_corridor_subtype": "paved_asphalt_concrete",
+    "road_corridor_label_zh": "鋪面柏油道路與行人走廊",
+    "road_corridor_label_en": "Paved Asphalt Concrete Roads and Walkways",
+    "water_body_label_zh": "無水域",
+    "rejected_false_positive_tags": [
+      "T1",
+      "T11",
+      "T12",
+      "T13",
+      "T14",
+      "T15",
+      "T16",
+      "T17",
+      "T18",
+      "T19",
+      "T2",
+      "T23",
+      "T25",
+      "T26",
+      "T29",
+      "T3",
+      "T33",
+      "T34",
+      "T4",
+      "T5",
+      "T6",
+      "T8",
+      "T9"
+    ],
+    "per_tree_verdicts": {
+      "T1": {
+        "tag": "T1",
+        "is_real_tree": false,
+        "object_seen": "Brick building wall corner facade",
+        "ai_vision_verified": true
+      },
+      "T2": {
+        "tag": "T2",
+        "is_real_tree": false,
+        "object_seen": "Blurred background building wall",
+        "ai_vision_verified": true
+      },
+      "T3": {
+        "tag": "T3",
+        "is_real_tree": false,
+        "object_seen": "Blurred background building and road",
+        "ai_vision_verified": true
+      },
+      "T4": {
+        "tag": "T4",
+        "is_real_tree": false,
+        "object_seen": "Blurred background building structure",
+        "ai_vision_verified": true
+      },
+      "T5": {
+        "tag": "T5",
+        "is_real_tree": false,
+        "object_seen": "Low green hedge and foliage",
+        "ai_vision_verified": true
+      },
+      "T6": {
+        "tag": "T6",
+        "is_real_tree": false,
+        "object_seen": "Vertical street pole along road",
+        "ai_vision_verified": true
+      },
+      "T7": {
+        "tag": "T7",
+        "is_real_tree": true,
+        "object_seen": "Street tree trunk near brick wall",
+        "ai_vision_verified": true
+      },
+      "T8": {
+        "tag": "T8",
+        "is_real_tree": false,
+        "object_seen": "Blurred background building and street",
+        "ai_vision_verified": true
+      },
+      "T9": {
+        "tag": "T9",
+        "is_real_tree": false,
+        "object_seen": "Tiled building exterior wall and base",
+        "ai_vision_verified": true
+      },
+      "T10": {
+        "tag": "T10",
+        "is_real_tree": true,
+        "object_seen": "Mature street tree trunk with vine",
+        "ai_vision_verified": true
+      },
+      "T11": {
+        "tag": "T11",
+        "is_real_tree": false,
+        "object_seen": "Green corrugated sheet metal construction fence",
+        "ai_vision_verified": true
+      },
+      "T12": {
+        "tag": "T12",
+        "is_real_tree": false,
+        "object_seen": "Tiled building exterior wall and entrance",
+        "ai_vision_verified": true
+      },
+      "T13": {
+        "tag": "T13",
+        "is_real_tree": false,
+        "object_seen": "Tiled building wall with window grille",
+        "ai_vision_verified": true
+      },
+      "T14": {
+        "tag": "T14",
+        "is_real_tree": false,
+        "object_seen": "Concrete roadway and parked scooters",
+        "ai_vision_verified": true
+      },
+      "T15": {
+        "tag": "T15",
+        "is_real_tree": false,
+        "object_seen": "Tiled building exterior architectural column",
+        "ai_vision_verified": true
+      },
+      "T16": {
+        "tag": "T16",
+        "is_real_tree": false,
+        "object_seen": "White painted building exterior wall",
+        "ai_vision_verified": true
+      },
+      "T17": {
+        "tag": "T17",
+        "is_real_tree": false,
+        "object_seen": "Road intersection with parked scooters",
+        "ai_vision_verified": true
+      },
+      "T18": {
+        "tag": "T18",
+        "is_real_tree": false,
+        "object_seen": "Street curb with parked scooters",
+        "ai_vision_verified": true
+      },
+      "T19": {
+        "tag": "T19",
+        "is_real_tree": false,
+        "object_seen": "Building exterior wall and alleyway",
+        "ai_vision_verified": true
+      },
+      "T20": {
+        "tag": "T20",
+        "is_real_tree": true,
+        "object_seen": "Dense green park tree canopy and branches",
+        "ai_vision_verified": true
+      },
+      "T21": {
+        "tag": "T21",
+        "is_real_tree": true,
+        "object_seen": "Mature tree trunk with security cameras",
+        "ai_vision_verified": true
+      },
+      "T22": {
+        "tag": "T22",
+        "is_real_tree": true,
+        "object_seen": "Large street tree trunk on sidewalk",
+        "ai_vision_verified": true
+      },
+      "T23": {
+        "tag": "T23",
+        "is_real_tree": false,
+        "object_seen": "Narrow alley wall pipe and meter box",
+        "ai_vision_verified": true
+      },
+      "T24": {
+        "tag": "T24",
+        "is_real_tree": true,
+        "object_seen": "Green street tree canopy and trunk",
+        "ai_vision_verified": true
+      },
+      "T25": {
+        "tag": "T25",
+        "is_real_tree": false,
+        "object_seen": "Concrete building corner and sidewalk edge",
+        "ai_vision_verified": true
+      },
+      "T26": {
+        "tag": "T26",
+        "is_real_tree": false,
+        "object_seen": "Corrugated metal sheet wall structure",
+        "ai_vision_verified": true
+      },
+      "T27": {
+        "tag": "T27",
+        "is_real_tree": true,
+        "object_seen": "Green foliage and tree trunk behind bushes",
+        "ai_vision_verified": true
+      },
+      "T28": {
+        "tag": "T28",
+        "is_real_tree": true,
+        "object_seen": "Small sapling tree growing behind fence",
+        "ai_vision_verified": true
+      },
+      "T29": {
+        "tag": "T29",
+        "is_real_tree": false,
+        "object_seen": "Dark stone building pillar and doorway",
+        "ai_vision_verified": true
+      },
+      "T30": {
+        "tag": "T30",
+        "is_real_tree": true,
+        "object_seen": "Medium woodland tree trunk behind railing",
+        "ai_vision_verified": true
+      },
+      "T31": {
+        "tag": "T31",
+        "is_real_tree": true,
+        "object_seen": "Large roadside banyan tree trunk",
+        "ai_vision_verified": true
+      },
+      "T32": {
+        "tag": "T32",
+        "is_real_tree": true,
+        "object_seen": "Bushy tree foliage resting on concrete wall",
+        "ai_vision_verified": true
+      },
+      "T33": {
+        "tag": "T33",
+        "is_real_tree": false,
+        "object_seen": "Granite column of store storefront entrance",
+        "ai_vision_verified": true
+      },
+      "T34": {
+        "tag": "T34",
+        "is_real_tree": false,
+        "object_seen": "Brick facade and doorway entrance pillar",
+        "ai_vision_verified": true
+      }
+    },
+    "photo_verified_count": 38
+  },
+  "a7227ab0a5115f00": {
+    "ai_verified": true,
+    "ai_model": "Gemini 3.5 Flash Multimodal + Ground Photo Referee",
+    "ai_summary_zh": "【AI 3D 樹幹圓柱斷面與地面實景照片判釋】本測區（LishanFinal）經 TWD97 局部裸地 DTM 分離、1.3m 胸高樹幹圓柱斷面切片（No Trunk = No Tree）與行動裝置 RTK 實景照片雙視角驗證：共確認具實體樹幹之喬木 21 棵，1.3m 胸高斷面 Pratt 圓擬合平均胸徑 DBH 31.5 cm（最大胸徑 67.4 cm）、平均樹高 7.3 m、樹冠投影總面積 3,014.5 m²（已自動排除建築廊柱、街燈桿、號誌桿與圍牆結構）。",
+    "ai_summary_en": "[Gemini Vision + 3D Trunk Cylinder & Ground Photo Referee] Local bare-earth DTM separation, strict 1.3m breast-height trunk cylinder slicing ('No Trunk = No Tree'), and dual-angle RTK mobile photo verification on 'LishanFinal' confirmed 21 standing tree(s) with mean 1.3m DBH 31.5 cm (max DBH 67.4 cm via anti-webbing Pratt circle fit), mean tree height 7.3 m, and total canopy footprint 3,014.5 m² (automatically excluding building columns, lamp posts, utility poles, and walls).",
+    "road_surface_note": "Paved asphalt/concrete campus pathways and pedestrian walkway corridors.",
+    "road_corridor_subtype": "paved_asphalt_concrete",
+    "road_corridor_label_zh": "校園鋪面通道與人行道",
+    "road_corridor_label_en": "Campus Paved Road and Walkway",
+    "water_body_label_zh": "無水域",
+    "rejected_false_positive_tags": [
+      "T1",
+      "T13",
+      "T14",
+      "T15",
+      "T2",
+      "T24",
+      "T29",
+      "T5"
+    ],
+    "per_tree_verdicts": {
+      "T1": {
+        "tag": "T1",
+        "is_real_tree": false,
+        "object_seen": "Brick wall with ROC flag mural",
+        "ai_vision_verified": true
+      },
+      "T2": {
+        "tag": "T2",
+        "is_real_tree": false,
+        "object_seen": "Utility or street light pole on sidewalk",
+        "ai_vision_verified": true
+      },
+      "T3": {
+        "tag": "T3",
+        "is_real_tree": true,
+        "object_seen": "Large banyan tree trunk with aerial roots",
+        "ai_vision_verified": true
+      },
+      "T4": {
+        "tag": "T4",
+        "is_real_tree": true,
+        "object_seen": "Large banyan tree trunk with aerial roots",
+        "ai_vision_verified": true
+      },
+      "T5": {
+        "tag": "T5",
+        "is_real_tree": false,
+        "object_seen": "Outdoor fitness equipment and metal railing",
+        "ai_vision_verified": true
+      },
+      "T6": {
+        "tag": "T6",
+        "is_real_tree": true,
+        "object_seen": "Park tree trunk behind fence",
+        "ai_vision_verified": true
+      },
+      "T7": {
+        "tag": "T7",
+        "is_real_tree": true,
+        "object_seen": "Mature tree trunk behind metal fence",
+        "ai_vision_verified": true
+      },
+      "T8": {
+        "tag": "T8",
+        "is_real_tree": true,
+        "object_seen": "Park tree trunk behind low wall",
+        "ai_vision_verified": true
+      },
+      "T9": {
+        "tag": "T9",
+        "is_real_tree": true,
+        "object_seen": "Tree trunk near basketball court fence",
+        "ai_vision_verified": true
+      },
+      "T10": {
+        "tag": "T10",
+        "is_real_tree": true,
+        "object_seen": "Tree trunk with epiphytes near building",
+        "ai_vision_verified": true
+      },
+      "T11": {
+        "tag": "T11",
+        "is_real_tree": true,
+        "object_seen": "Mature street tree trunk with brown bark",
+        "ai_vision_verified": true
+      },
+      "T12": {
+        "tag": "T12",
+        "is_real_tree": true,
+        "object_seen": "Sidewalk tree trunk near a metal fence",
+        "ai_vision_verified": true
+      },
+      "T13": {
+        "tag": "T13",
+        "is_real_tree": false,
+        "object_seen": "White utility truck bed and sides",
+        "ai_vision_verified": true
+      },
+      "T14": {
+        "tag": "T14",
+        "is_real_tree": false,
+        "object_seen": "Basketball court fence and net structure",
+        "ai_vision_verified": true
+      },
+      "T15": {
+        "tag": "T15",
+        "is_real_tree": false,
+        "object_seen": "Concrete building arcade support column",
+        "ai_vision_verified": true
+      },
+      "T16": {
+        "tag": "T16",
+        "is_real_tree": true,
+        "object_seen": "Distant tree canopy with green leaves",
+        "ai_vision_verified": true
+      },
+      "T17": {
+        "tag": "T17",
+        "is_real_tree": true,
+        "object_seen": "Dense tree foliage and canopy",
+        "ai_vision_verified": true
+      },
+      "T18": {
+        "tag": "T18",
+        "is_real_tree": true,
+        "object_seen": "Slanted tree trunk behind metal fence",
+        "ai_vision_verified": true
+      },
+      "T19": {
+        "tag": "T19",
+        "is_real_tree": true,
+        "object_seen": "Urban tree trunk behind stone structure",
+        "ai_vision_verified": true
+      },
+      "T20": {
+        "tag": "T20",
+        "is_real_tree": true,
+        "object_seen": "Park tree trunk behind parking sign",
+        "ai_vision_verified": true
+      },
+      "T21": {
+        "tag": "T21",
+        "is_real_tree": true,
+        "object_seen": "Street tree trunk near fence and planter",
+        "ai_vision_verified": true
+      },
+      "T22": {
+        "tag": "T22",
+        "is_real_tree": true,
+        "object_seen": "Green leafy tree foliage and branches",
+        "ai_vision_verified": true
+      },
+      "T23": {
+        "tag": "T23",
+        "is_real_tree": true,
+        "object_seen": "Street tree trunk behind metal fence",
+        "ai_vision_verified": true
+      },
+      "T24": {
+        "tag": "T24",
+        "is_real_tree": false,
+        "object_seen": "Vertical metal utility pole",
+        "ai_vision_verified": true
+      },
+      "T25": {
+        "tag": "T25",
+        "is_real_tree": true,
+        "object_seen": "Street tree trunk behind low wall",
+        "ai_vision_verified": true
+      },
+      "T26": {
+        "tag": "T26",
+        "is_real_tree": true,
+        "object_seen": "Large urban shade tree trunk and crown",
+        "ai_vision_verified": true
+      },
+      "T27": {
+        "tag": "T27",
+        "is_real_tree": true,
+        "object_seen": "Street tree canopy and foliage",
+        "ai_vision_verified": true
+      },
+      "T28": {
+        "tag": "T28",
+        "is_real_tree": true,
+        "object_seen": "Green broadleaf tree canopy and branches",
+        "ai_vision_verified": true
+      },
+      "T29": {
+        "tag": "T29",
+        "is_real_tree": false,
+        "object_seen": "Metal rack on vehicle roof",
+        "ai_vision_verified": true
+      }
+    },
+    "photo_verified_count": 34
   }
 }

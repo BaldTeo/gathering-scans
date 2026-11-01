@@ -18,8 +18,8 @@
   <meta name="twitter:image" content="https://scans.gatheren.cloud/assets/gathering_cloud_logo.png" />
   <!-- GS_SHARE_OG_END -->
   <link rel="icon" type="image/png" href="/assets/gathering_cloud_logo.png" />
-  <link rel="stylesheet" href="/app.css?v=20261101_v280" />
-  <link rel="stylesheet" href="/survey-bim.css?v=20261101_v280" />
+  <link rel="stylesheet" href="/app.css?v=20261101_v281" />
+  <link rel="stylesheet" href="/survey-bim.css?v=20261101_v281" />
   <script src="https://accounts.google.com/gsi/client" async defer></script>
 
 </head>
@@ -929,16 +929,6 @@
           <span class="bim-dock-label" data-i18n-zh="土方" data-i18n-en="Volume">土方</span>
         </button>
 
-        <!-- 7. Elevation Contours & Survey Report (.DXF + A3 PDF) -->
-        <button type="button" class="bim-dock-btn autodesk-measure-btn" id="btnDockContours" data-tool="contours" data-dock="contours" title="等高線與測量成果圖：Civil3D.dxf 與 A3 PDF" data-i18n-title-zh="等高線與測量成果圖：Civil3D.dxf 與 A3 PDF" data-i18n-title-en="Survey Report: Contours, Civil3D.dxf &amp; A3 PDF" aria-label="Contours and Survey Report">
-          <div class="bim-dock-icon">
-            <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.8">
-              <ellipse cx="12" cy="12" rx="9" ry="5"/><ellipse cx="12" cy="12" rx="5" ry="2.5"/>
-            </svg>
-          </div>
-          <span class="bim-dock-label" data-i18n-zh="等高線" data-i18n-en="Contours">等高線</span>
-        </button>
-
         <!-- 8. Cross-Section Profile -->
         <button type="button" class="bim-dock-btn autodesk-measure-btn" id="btnMeasureProfile" data-tool="profile" data-dock="profile" title="縱橫斷面高程分析" data-i18n-title-zh="縱橫斷面高程分析" data-i18n-title-en="Cross-Section Elevation Profile" aria-label="Cross-Section Profile">
           <div class="bim-dock-icon">
@@ -986,30 +976,63 @@
           <span class="bim-dock-label" data-i18n-zh="樹木" data-i18n-en="Trees">樹木</span>
         </button>
 
-        <!-- 10b-2. Centerline Stationing (0K+000) & Average-End-Area (AEA) Cut/Fill Volume -->
-        <button type="button" class="bim-dock-btn autodesk-measure-btn" id="btnDockStationing" data-tool="stationing" data-dock="stationing" title="道路中心線樁號斷面 (0K+000) 與平均端面積法 (AEA) 土方計算" data-i18n-title-zh="道路中心線樁號斷面 (0K+000) 與平均端面積法 (AEA) 土方計算" data-i18n-title-en="Centerline Stationing (0K+000) &amp; Average-End-Area (AEA) Volume Takeoff" aria-label="Centerline Stationing">
-          <div class="bim-dock-icon">
-            <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.8">
-              <path d="M4 19L8 5"/>
-              <path d="M16 5l4 14"/>
-              <line x1="12" y1="6" x2="12" y2="8"/>
-              <line x1="12" y1="11" x2="12" y2="13"/>
-              <line x1="12" y1="16" x2="12" y2="18"/>
-            </svg>
+        <!-- 10c. Unified Survey (測量) Drop-Up Container: Stakeout, Station, Check, Contours -->
+        <div class="bim-dock-dropup-wrap" id="bimDockSurveyWrap">
+          <button type="button" class="bim-dock-btn autodesk-measure-btn" id="btnDockSurveyGroup" title="工程測量：RTK 放樣、道路中心線樁號、控制點檢核與等高線成果圖 (懸停或點擊展開)" data-i18n-title-zh="工程測量：RTK 放樣、道路中心線樁號、控制點檢核與等高線成果圖 (懸停或點擊展開)" data-i18n-title-en="Engineering Survey: RTK Stakeout, Centerline Stationing, GCP Check &amp; Contours (Hover or tap)" aria-label="Engineering Survey Tools" aria-haspopup="true" aria-expanded="false">
+            <div class="bim-dock-icon" style="position:relative;">
+              <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.8">
+                <circle cx="12" cy="10" r="6"/>
+                <circle cx="12" cy="10" r="2"/>
+                <line x1="12" y1="16" x2="12" y2="22"/>
+                <line x1="8" y1="22" x2="16" y2="22"/>
+              </svg>
+              <span class="bim-dock-dropup-caret">▴</span>
+            </div>
+            <span class="bim-dock-label" data-i18n-zh="測量" data-i18n-en="Survey">測量</span>
+          </button>
+          <div class="bim-dock-dropup-menu" id="bimDockSurveyMenu" role="menu" aria-label="Survey Tools">
+            <button type="button" class="bim-dock-btn autodesk-measure-btn bim-dock-dropup-item" id="btnDockStakeout" data-tool="stakeout" data-dock="stakeout" title="RTK 施工放樣點位匯出 (E, N, Z 嚴格順序 CSV / TXT / DXF / A4 簽認單)" data-i18n-title-zh="RTK 施工放樣點位匯出 (E, N, Z 嚴格順序 CSV / TXT / DXF / A4 簽認單)" data-i18n-title-en="RTK Stakeout Coordinate Exporter (Strict E, N, Z CSV / Leica TXT / DXF / A4 Sheet)" aria-label="RTK Stakeout">
+              <div class="bim-dock-icon">
+                <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.8">
+                  <circle cx="12" cy="10" r="6"/>
+                  <circle cx="12" cy="10" r="2"/>
+                  <line x1="12" y1="16" x2="12" y2="22"/>
+                  <line x1="8" y1="22" x2="16" y2="22"/>
+                </svg>
+              </div>
+              <span class="bim-dock-label" data-i18n-zh="放樣" data-i18n-en="Stakeout">放樣</span>
+            </button>
+            <button type="button" class="bim-dock-btn autodesk-measure-btn bim-dock-dropup-item" id="btnDockStationing" data-tool="stationing" data-dock="stationing" title="道路中心線樁號斷面 (0K+000) 與平均端面積法 (AEA) 土方計算" data-i18n-title-zh="道路中心線樁號斷面 (0K+000) 與平均端面積法 (AEA) 土方計算" data-i18n-title-en="Centerline Stationing (0K+000) &amp; Average-End-Area (AEA) Volume Takeoff" aria-label="Centerline Stationing">
+              <div class="bim-dock-icon">
+                <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.8">
+                  <path d="M4 19L8 5"/>
+                  <path d="M16 5l4 14"/>
+                  <line x1="12" y1="6" x2="12" y2="8"/>
+                  <line x1="12" y1="11" x2="12" y2="13"/>
+                  <line x1="12" y1="16" x2="12" y2="18"/>
+                </svg>
+              </div>
+              <span class="bim-dock-label" data-i18n-zh="樁號" data-i18n-en="Station">樁號</span>
+            </button>
+            <button type="button" class="bim-dock-btn autodesk-measure-btn bim-dock-dropup-item" id="btnDockGcpQa" data-tool="gcp_qa" data-dock="gcp_qa" title="控制點精度檢核報告 (RMSE_Z 與台灣測量精度分級)" data-i18n-title-zh="控制點精度檢核報告 (RMSE_Z 與台灣測量精度分級)" data-i18n-title-en="Automated GCP / Check-Point Accuracy QA Report (RMSE_Z)" aria-label="GCP Accuracy QA">
+              <div class="bim-dock-icon">
+                <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.8">
+                  <circle cx="12" cy="12" r="9"/>
+                  <path d="M9 12l2 2 4-4"/>
+                </svg>
+              </div>
+              <span class="bim-dock-label" data-i18n-zh="檢核" data-i18n-en="Check">檢核</span>
+            </button>
+            <button type="button" class="bim-dock-btn autodesk-measure-btn bim-dock-dropup-item" id="btnDockContours" data-tool="contours" data-dock="contours" title="等高線與測量成果圖：Civil3D.dxf 與 A3 PDF" data-i18n-title-zh="等高線與測量成果圖：Civil3D.dxf 與 A3 PDF" data-i18n-title-en="Survey Report: Contours, Civil3D.dxf &amp; A3 PDF" aria-label="Contours and Survey Report">
+              <div class="bim-dock-icon">
+                <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.8">
+                  <ellipse cx="12" cy="12" rx="9" ry="5"/><ellipse cx="12" cy="12" rx="5" ry="2.5"/>
+                </svg>
+              </div>
+              <span class="bim-dock-label" data-i18n-zh="等高線" data-i18n-en="Contours">等高線</span>
+            </button>
           </div>
-          <span class="bim-dock-label" data-i18n-zh="樁號" data-i18n-en="Station">樁號</span>
-        </button>
-
-        <!-- 10c. Automated GCP / Check-Point Accuracy QA Report -->
-        <button type="button" class="bim-dock-btn autodesk-measure-btn" id="btnDockGcpQa" data-tool="gcp_qa" data-dock="gcp_qa" title="控制點精度檢核報告 (RMSE_Z 與台灣測量精度分級)" data-i18n-title-zh="控制點精度檢核報告 (RMSE_Z 與台灣測量精度分級)" data-i18n-title-en="Automated GCP / Check-Point Accuracy QA Report (RMSE_Z)" aria-label="GCP Accuracy QA">
-          <div class="bim-dock-icon">
-            <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.8">
-              <circle cx="12" cy="12" r="9"/>
-              <path d="M9 12l2 2 4-4"/>
-            </svg>
-          </div>
-          <span class="bim-dock-label" data-i18n-zh="檢核" data-i18n-en="Check">檢核</span>
-        </button>
+        </div>
 
         <!-- 10d. Unified QA (品管) Drop-Up Container: Surface Flatness & Surface Drainage -->
         <div class="bim-dock-dropup-wrap" id="bimDockQaWrap">
@@ -1055,19 +1078,6 @@
             </svg>
           </div>
           <span class="bim-dock-label" data-i18n-zh="管溝" data-i18n-en="Trench">管溝</span>
-        </button>
-
-        <!-- 10d-4. RTK Stakeout Export (Strict E, N, Z Order) -->
-        <button type="button" class="bim-dock-btn autodesk-measure-btn" id="btnDockStakeout" data-tool="stakeout" data-dock="stakeout" title="RTK 施工放樣點位匯出 (E, N, Z 嚴格順序 CSV / TXT / DXF / A4 簽認單)" data-i18n-title-zh="RTK 施工放樣點位匯出 (E, N, Z 嚴格順序 CSV / TXT / DXF / A4 簽認單)" data-i18n-title-en="RTK Stakeout Coordinate Exporter (Strict E, N, Z CSV / Leica TXT / DXF / A4 Sheet)" aria-label="RTK Stakeout">
-          <div class="bim-dock-icon">
-            <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.8">
-              <circle cx="12" cy="10" r="6"/>
-              <circle cx="12" cy="10" r="2"/>
-              <line x1="12" y1="16" x2="12" y2="22"/>
-              <line x1="8" y1="22" x2="16" y2="22"/>
-            </svg>
-          </div>
-          <span class="bim-dock-label" data-i18n-zh="放樣" data-i18n-en="Stakeout">放樣</span>
         </button>
 
         <!-- 10e. Persistent Measurement Bookmarks / Saved Survey Views -->
@@ -2487,24 +2497,24 @@
   <!-- Three.js + 3D Tileset / KTX2 / Meshopt Libraries -->
   <script src="/lib/three.min.js"></script>
   <script src="/lib/OrbitControls.js?v=20261029_v48"></script>
-  <script src="/lib/GLTFLoader.js?v=20261101_v280"></script>
+  <script src="/lib/GLTFLoader.js?v=20261101_v281"></script>
   <script src="/lib/KTX2Loader.js"></script>
   <script src="/lib/meshopt_decoder.js"></script>
-  <script src="/lib/3d-tiles-renderer.bundle.js?v=20261101_v280"></script>
+  <script src="/lib/3d-tiles-renderer.bundle.js?v=20261101_v281"></script>
 
   <!-- Main GatheringScans Bilingual Translation & Modular Application Logic (< 5,000 lines per module) -->
-  <script src="/i18n.js?v=20261101_v280"></script>
-  <script src="/src/01-core-state.js?v=20261101_v280"></script>
-  <script src="/src/02-map-and-timeline.js?v=20261101_v280"></script>
-  <script src="/src/03-studio-core.js?v=20261101_v280"></script>
-  <script src="/src/04-studio-lasso-and-edits.js?v=20261101_v280"></script>
-  <script src="/src/05-studio-civil-inspectors.js?v=20261101_v280"></script>
-  <script src="/src/06-studio-align-and-optimizer.js?v=20261101_v280"></script>
-  <script src="/src/07-compare-and-queue.js?v=20261101_v280"></script>
-  <script src="/src/08-advanced-surveying-and-qa.js?v=20261101_v280"></script>
-  <script src="/src/09-construction-survey-and-bim.js?v=20261101_v280"></script>
-  <script src="/src/10-construction-qa-and-stakeout.js?v=20261101_v280"></script>
-  <script src="/src/12-public-utilities-gis.js?v=20261101_v280"></script>
-  <script src="/app.js?v=20261101_v280"></script>
+  <script src="/i18n.js?v=20261101_v281"></script>
+  <script src="/src/01-core-state.js?v=20261101_v281"></script>
+  <script src="/src/02-map-and-timeline.js?v=20261101_v281"></script>
+  <script src="/src/03-studio-core.js?v=20261101_v281"></script>
+  <script src="/src/04-studio-lasso-and-edits.js?v=20261101_v281"></script>
+  <script src="/src/05-studio-civil-inspectors.js?v=20261101_v281"></script>
+  <script src="/src/06-studio-align-and-optimizer.js?v=20261101_v281"></script>
+  <script src="/src/07-compare-and-queue.js?v=20261101_v281"></script>
+  <script src="/src/08-advanced-surveying-and-qa.js?v=20261101_v281"></script>
+  <script src="/src/09-construction-survey-and-bim.js?v=20261101_v281"></script>
+  <script src="/src/10-construction-qa-and-stakeout.js?v=20261101_v281"></script>
+  <script src="/src/12-public-utilities-gis.js?v=20261101_v281"></script>
+  <script src="/app.js?v=20261101_v281"></script>
 </body>
 </html>

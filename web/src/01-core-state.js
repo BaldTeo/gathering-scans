@@ -1394,9 +1394,15 @@
       "btnMeasureContours",
       "btnMeasureProfile",
       "btnDockCategorize",
+      "bimDockSurveyWrap",
+      "btnDockSurveyGroup",
+      "btnDockStakeout",
+      "btnDockStationing",
       "btnDockGcpQa",
       "btnDockContours",
       "btnDockSection",
+      "btnDockTrench",
+      "btnDockUtilities",
     ].forEach((id) => setDisp(id, showAdvancedSurvey, "inline-flex"));
 
     // 7. Comments & Deliverables honor allowComments / allowDownload
@@ -1486,11 +1492,18 @@
       if (attempt > 0) {
         await new Promise((r) => setTimeout(r, 2500));
       }
-      const res = await fetch(fullUrl, {
-        method: "POST",
-        headers: apiHeaders(),
-        body: JSON.stringify(body),
-      });
+      let res;
+      try {
+        res = await fetch(fullUrl, {
+          method: "POST",
+          headers: apiHeaders(),
+          body: JSON.stringify(body),
+        });
+      } catch (fetchErr) {
+        lastErr = fetchErr;
+        if (attempt + 1 < maxAttempts) continue;
+        break;
+      }
       const rawTxt = await res.text();
       let data = {};
       if (rawTxt && rawTxt.trim()) {
@@ -1499,19 +1512,19 @@
         } catch (_) {
           lastErr = new Error(`HTTP ${res.status}`);
           if (attempt + 1 < maxAttempts) continue;
-          throw lastErr;
+          break;
         }
       } else if (res.ok) {
         lastErr = new Error("Empty server response");
         if (attempt + 1 < maxAttempts) continue;
-        throw lastErr;
+        break;
       }
       if (!res.ok) {
         lastErr = new Error(data.error || `HTTP ${res.status}`);
         if ((res.status === 503 || res.status === 502 || res.status === 504) && attempt + 1 < maxAttempts) {
           continue;
         }
-        throw lastErr;
+        break;
       }
       if (url.startsWith("/api/survey/") && !body?.only_update_filters) {
         SHARE_TELEMETRY.recordMeasurement(url.replace("/api/survey/", "survey_"));
