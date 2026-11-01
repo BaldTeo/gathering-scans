@@ -3622,15 +3622,58 @@ class GatheringScansTestSuite(unittest.TestCase):
             "cellFineMask",
             "hasAnyLoadedScene",
             "hasFullCoverageScene",
+            "markGeomsSeen",
+            "fromTileTree",
+            "huberScale",
+            "maxPolyAbsN",
             "cellFrontN",
             "QA_STATE.flatnessCache.scanId !== curScanId",
         ):
             self.assertIn(required_token, js10, f"Missing {required_token} in 10-construction-qa-and-stakeout.js")
+        self.assertIn("markSceneGeomsSeen", js08)
         self.assertNotIn("binLocalPoint(vB.x, vB.y, vC.z", js10)
+
+    def test_77_measurement_group_vertices_snapping_and_editing_overhaul(self):
+        """
+        Verify:
+        1. Deferred Hold-Drag (>=5px) via studioThree._pendingVertexDrag so single-click (<5px) snaps & places new measurement points (measurement chaining), while Hold-Drag (>=5px) or Double-Click edits any editable vertex (including in-progress measurePoints).
+        2. Exact 3D surface picking (5cm Math.round(p * 20) / 20 rounding removed).
+        3. Sibling-aware snapping exclusion during drawing & editing, with closing priority for V1 (measurePoints[0]) when >= 3 points exist.
+        4. Laser tool isolated from magnetic vertex snapping, and only primary Laser points (originPt, pA, pB) exposed as snap targets.
+        5. Vertex deletion (Shift+Click / Right-Click via deleteStudioEditableVertex) and polygon edge midpoint insertion (findNearestPolygonEdgeMidpointAtScreenXY / insertPolygonEdgeVertex).
+        """
+        with open(os.path.join(BASE_DIR, "web", "src", "03-studio-core.js"), "r", encoding="utf-8") as f:
+            js03 = f.read()
+        with open(os.path.join(BASE_DIR, "web", "src", "04-studio-lasso-and-edits.js"), "r", encoding="utf-8") as f:
+            js04 = f.read()
+
+        # 1. Deferred hold-drag vs single-click pass-through
+        self.assertIn("studioThree._pendingVertexDrag =", js03)
+        self.assertIn("Math.hypot(e.clientX - pend.startClientX, e.clientY - pend.startClientY) >= 5", js03)
+        self.assertNotIn("STATE.movingVertex.dragMode = false;", js03)
+
+        # 2. 5cm grid rounding removed
+        self.assertNotIn("Math.round(p.x * 20) / 20", js03)
+
+        # 3. Laser snap isolation & primary Laser endpoints only
+        self.assertIn('const allowVertexSnap = STATE.snapEnabled && !(STATE.activeTool === "laser" && !STATE.movingVertex);', js03)
+        self.assertNotIn('pointKey: "orthoPA"', js03)
+        self.assertNotIn('pointKey: "orthoPB"', js03)
+
+        # 4. Sibling exclusion & V1 closing priority + editable in-progress measurePoints
+        self.assertIn("function getAllSnappableToolVertices(excludeMovingVertex = null, onlyEditable = false)", js03)
+        self.assertIn('c.source === "measurePoints" && c.pointIndex === 0 && dPx <= maxPx', js03)
+
+        # 5. Vertex deletion & polygon edge midpoint insertion + safe double-click rollback
+        self.assertIn("function deleteStudioEditableVertex(", js04)
+        self.assertIn("function findNearestPolygonEdgeMidpointAtScreenXY(", js04)
+        self.assertIn("function insertPolygonEdgeVertex(", js04)
+        self.assertIn("function restoreDoubleClickPreState(", js04)
 
 
 if __name__ == "__main__":
     unittest.main()
+
 
 
 

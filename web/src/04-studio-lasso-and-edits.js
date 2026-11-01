@@ -2481,7 +2481,175 @@
   }
   window.renderClosedAreaPolygon = renderClosedAreaPolygon;
 
+  function updatePolygonEdgeMidpointIndicator(worldPt) {
+    if (!studioThree || !studioThree.overlayGroup) return;
+    let ring = studioThree._edgeMidpointRing;
+    if (!worldPt) {
+      if (ring) ring.visible = false;
+      return;
+    }
+    if (!ring) {
+      ring = new THREE.Mesh(
+        new THREE.RingGeometry(0.65, 1.15, 24),
+        new THREE.MeshBasicMaterial({ color: 0x38bdf8, side: THREE.DoubleSide, depthTest: false, depthWrite: false, transparent: true, opacity: 0.92 })
+      );
+      ring.userData.isZoomInvariantRing = true;
+      ring.userData.isEdgeMidpointIndicator = true;
+      ring.userData.pixelRadius = 8.5;
+      ring.renderOrder = 1004;
+      studioThree._edgeMidpointRing = ring;
+    }
+    if (!ring.parent) studioThree.overlayGroup.add(ring);
+    ring.visible = true;
+    ring.position.copy(worldPt);
+    if (studioThree.camera) ring.quaternion.copy(studioThree.camera.quaternion);
+    updateZoomInvariantElements();
+  }
+  window.updatePolygonEdgeMidpointIndicator = updatePolygonEdgeMidpointIndicator;
+
+  function findNearestPolygonEdgeMidpointAtScreenXY(clientX, clientY, maxPx = 16) {
+    if (!studioThree || !studioThree.camera || !studioThree.renderer?.domElement) return null;
+    const rect = studioThree.renderer.domElement.getBoundingClientRect();
+    const w = Math.max(1, rect.width), h = Math.max(1, rect.height);
+    const localX = clientX - rect.left, localY = clientY - rect.top, cam = studioThree.camera;
+    let best = null, bestDistPx = maxPx;
+
+    const evalPolyEdges = (pts, meta) => {
+      if (!Array.isArray(pts) || pts.length < 2) return;
+      const count = meta.closed ? pts.length : pts.length - 1;
+      for (let i = 0; i < count; i++) {
+        const a = pts[i], b = pts[(i + 1) % pts.length];
+        if (!a || !b) continue;
+        const pa = a.clone().project(cam), pb = b.clone().project(cam);
+        if (pa.z < -1.0 || pa.z > 1.0 || pb.z < -1.0 || pb.z > 1.0) continue;
+        const ax = (pa.x * 0.5 + 0.5) * w, ay = (-pa.y * 0.5 + 0.5) * h;
+        const bx = (pb.x * 0.5 + 0.5) * w, by = (-pb.y * 0.5 + 0.5) * h;
+        const abx = bx - ax, aby = by - ay, len2 = abx * abx + aby * aby;
+        if (len2 < 36 * 36) continue;
+        const t = Math.max(0.18, Math.min(0.82, ((localX - ax) * abx + (localY - ay) * aby) / len2));
+        const dPx = Math.hypot(localX - (ax + t * abx), localY - (ay + t * aby));
+        if (dPx <= bestDistPx) {
+          bestDistPx = dPx;
+          best = Object.assign({ point: new THREE.Vector3().lerpVectors(a, b, t), insertIndex: i + 1, screenDistPx: dPx }, meta);
+        }
+      }
+    };
+
+    (STATE.completedMeasurements || []).forEach((m) => {
+      if (m && m.type === "area" && Array.isArray(m.points) && m.points.length >= 3) {
+        evalPolyEdges(m.points, { source: "completed", measId: m.id, measType: "area", closed: true });
+      }
+    });
+    if (Array.isArray(STATE.cutFillPolygonPoints) && STATE.cutFillPolygonPoints.length >= 3 && STATE.measurePoints.length === 0) {
+      evalPolyEdges(STATE.cutFillPolygonPoints, { source: "cutFillPolygonPoints", measId: "__cut_fill__", measType: "volume", closed: true });
+    }
+    if (Array.isArray(STATE.measurePoints) && STATE.measurePoints.length >= 2 && (STATE.activeTool === "area" || STATE.activeTool === "volume")) {
+      evalPolyEdges(STATE.measurePoints, { source: "measurePoints", measId: "__in_progress__", measType: STATE.activeTool, closed: false });
+    }
+    return best;
+  }
+  window.findNearestPolygonEdgeMidpointAtScreenXY = findNearestPolygonEdgeMidpointAtScreenXY;
+
+  function insertPolygonEdgeVertex(edgeDesc) {
+    if (!edgeDesc || !edgeDesc.point) return null;
+    updatePolygonEdgeMidpointIndicator(null);
+    const newPt = edgeDesc.point.clone(), idx = edgeDesc.insertIndex;
+    if (edgeDesc.source === "completed") {
+      const m = (STATE.completedMeasurements || []).find((item) => item && item.id === edgeDesc.measId);
+      if (!m || !Array.isArray(m.points)) return null;
+      m.points.splice(idx, 0, newPt);
+      if (typeof rebuildAllCompletedMeasurements3D === "function") rebuildAllCompletedMeasurements3D();
+      return { point: newPt, source: "completed", measId: m.id, measType: "area", pointIndex: idx, label: `Area V${idx + 1}`, editable: true };
+    }
+    if (edgeDesc.source === "cutFillPolygonPoints" && Array.isArray(STATE.cutFillPolygonPoints)) {
+      STATE.cutFillPolygonPoints.splice(idx, 0, newPt);
+      if (Array.isArray(STATE.maskBoundaryPoints)) STATE.maskBoundaryPoints.splice(idx, 0, newPt.clone());
+      if (typeof rebuildAllCompletedMeasurements3D === "function") rebuildAllCompletedMeasurements3D();
+      return { point: newPt, source: "cutFillPolygonPoints", measId: "__cut_fill__", measType: "volume", pointIndex: idx, label: `Volume V${idx + 1}`, editable: true };
+    }
+    if (edgeDesc.source === "measurePoints" && Array.isArray(STATE.measurePoints)) {
+      STATE.measurePoints.splice(idx, 0, newPt);
+      if (typeof rebuildAllCompletedMeasurements3D === "function") rebuildAllCompletedMeasurements3D();
+      return { point: newPt, source: "measurePoints", measId: "__in_progress__", measType: STATE.activeTool || "area", pointIndex: idx, label: `Point #${idx + 1}`, editable: true };
+    }
+    return null;
+  }
+  window.insertPolygonEdgeVertex = insertPolygonEdgeVertex;
+
+  function deleteStudioEditableVertex(vDesc) {
+    if (!vDesc) return false;
+    if (STATE.movingVertex) cancelStudioVertexMove(false);
+    const rebuild = () => { if (typeof rebuildAllCompletedMeasurements3D === "function") rebuildAllCompletedMeasurements3D(); };
+    if (vDesc.source === "measurePoints" && Array.isArray(STATE.measurePoints)) {
+      if (Number.isFinite(vDesc.pointIndex) && vDesc.pointIndex >= 0 && vDesc.pointIndex < STATE.measurePoints.length) {
+        STATE.measurePoints.splice(vDesc.pointIndex, 1);
+        if (STATE.measurePoints.length === 0) clearTempDistanceVisuals();
+        rebuild();
+        if (typeof syncStudioMobileToolHud === "function") syncStudioMobileToolHud();
+        showToast(tr(`已刪除繪製中頂點 (${vDesc.label})`, `Deleted in-progress vertex (${vDesc.label})`));
+        return true;
+      }
+      return false;
+    }
+    if (vDesc.source === "completed" && Array.isArray(STATE.completedMeasurements)) {
+      const mIdx = STATE.completedMeasurements.findIndex((item) => item && item.id === vDesc.measId);
+      if (mIdx < 0) return false;
+      const m = STATE.completedMeasurements[mIdx];
+      if (m.type === "area" && Array.isArray(m.points) && m.points.length > 3 && Number.isFinite(vDesc.pointIndex)) {
+        m.points.splice(vDesc.pointIndex, 1);
+        rebuild();
+        showToast(tr(`已刪除多邊形頂點 (${vDesc.label})`, `Deleted polygon vertex (${vDesc.label})`));
+        return true;
+      }
+      STATE.completedMeasurements.splice(mIdx, 1);
+      rebuild();
+      showToast(tr(`已刪除量測項目 (${vDesc.label})`, `Deleted measurement (${vDesc.label})`));
+      return true;
+    }
+    if (vDesc.source === "cutFillPolygonPoints" && Array.isArray(STATE.cutFillPolygonPoints)) {
+      if (STATE.cutFillPolygonPoints.length > 3 && Number.isFinite(vDesc.pointIndex)) {
+        STATE.cutFillPolygonPoints.splice(vDesc.pointIndex, 1);
+        if (Array.isArray(STATE.maskBoundaryPoints)) STATE.maskBoundaryPoints.splice(vDesc.pointIndex, 1);
+        rebuild();
+        if (typeof openCutFillVolumeInspector === "function") openCutFillVolumeInspector(STATE.cutFillPolygonPoints);
+        showToast(tr(`已刪除土方多邊形頂點 (${vDesc.label})`, `Deleted volume polygon vertex (${vDesc.label})`));
+        return true;
+      }
+      STATE.cutFillPolygonPoints = [];
+      rebuild();
+      showToast(tr("已清除土方多邊形", "Cleared volume polygon"));
+      return true;
+    }
+    if (vDesc.source === "profileEndpoints") {
+      STATE.profileEndpoints = [];
+      rebuild();
+      showToast(tr("已清除剖面線端點", "Cleared profile endpoints"));
+      return true;
+    }
+    if (vDesc.source === "sectionBoxEndpoints") {
+      STATE.sectionBoxEndpoints = [];
+      rebuild();
+      showToast(tr("已清除剖面盒端點", "Cleared section box endpoints"));
+      return true;
+    }
+    return false;
+  }
+  window.deleteStudioEditableVertex = deleteStudioEditableVertex;
+
+  function deleteStudioEditableVertexAtScreenXY(clientX, clientY) {
+    const nearV = typeof findNearestEditableVertexAtScreenXY === "function" ? findNearestEditableVertexAtScreenXY(clientX, clientY, window.innerWidth <= 768 ? 30 : 22) : null;
+    return nearV ? deleteStudioEditableVertex(nearV) : false;
+  }
+  window.deleteStudioEditableVertexAtScreenXY = deleteStudioEditableVertexAtScreenXY;
+
   let _lastCanvasVertexClick = null;
+
+  function restoreDoubleClickPreState(rec) {
+    if (!rec) return;
+    if (Array.isArray(rec.preMeasurePts)) STATE.measurePoints = rec.preMeasurePts.map((p) => p.clone());
+    if (Array.isArray(rec.preCompletedSlice)) STATE.completedMeasurements = rec.preCompletedSlice.slice();
+    if (typeof rebuildAllCompletedMeasurements3D === "function") rebuildAllCompletedMeasurements3D();
+  }
 
   document.getElementById("studioCanvasContainer")?.addEventListener("dblclick", (e) => {
     if (STATE.activeView !== "studio" || STATE.fpMode?.active) return;
@@ -2495,18 +2663,7 @@
       performance.now() - _lastCanvasVertexClick.ts <= 500 &&
       _lastCanvasVertexClick.vDesc
     ) {
-      if (Array.isArray(STATE.measurePoints) && STATE.measurePoints.length > _lastCanvasVertexClick.preMeasureLen) {
-        STATE.measurePoints.length = _lastCanvasVertexClick.preMeasureLen;
-      }
-      if (
-        Array.isArray(STATE.completedMeasurements) &&
-        STATE.completedMeasurements.length > _lastCanvasVertexClick.preCompletedLen
-      ) {
-        STATE.completedMeasurements.length = _lastCanvasVertexClick.preCompletedLen;
-      }
-      if (typeof rebuildAllCompletedMeasurements3D === "function") {
-        rebuildAllCompletedMeasurements3D();
-      }
+      restoreDoubleClickPreState(_lastCanvasVertexClick);
       const targetV = _lastCanvasVertexClick.vDesc;
       _lastCanvasVertexClick = null;
       startStudioVertexMove(targetV);
@@ -2515,7 +2672,15 @@
     const nearV = findNearestEditableVertexAtScreenXY(e.clientX, e.clientY, window.innerWidth <= 768 ? 34 : 28);
     if (nearV) {
       startStudioVertexMove(nearV);
-    } else if (STATE.activeTool === "orbit" && studioThree?.controls) {
+      return;
+    }
+    const edgeMid = findNearestPolygonEdgeMidpointAtScreenXY(e.clientX, e.clientY, window.innerWidth <= 768 ? 24 : 18);
+    if (edgeMid) {
+      const insV = insertPolygonEdgeVertex(edgeMid);
+      if (insV) startStudioVertexMove(insV);
+      return;
+    }
+    if (STATE.activeTool === "orbit" && studioThree?.controls) {
       const hit = pickStudio3DHit(e.clientX, e.clientY);
       if (hit && hit.rawPoint) {
         studioThree.controls.target.copy(hit.rawPoint);
@@ -2529,7 +2694,7 @@
 
     // 1. If currently moving an existing vertex, single click commits the new vertex position
     if (STATE.movingVertex && typeof commitStudioVertexMove === "function") {
-      if (nowMs - (STATE.movingVertex.startedAt || 0) < 260) {
+      if (nowMs - (STATE.movingVertex.startedAt || 0) < 360) {
         return;
       }
       const moveHit = pickStudio3DHit(e.clientX, e.clientY);
@@ -2546,18 +2711,7 @@
         Math.hypot(e.clientX - _lastCanvasVertexClick.clientX, e.clientY - _lastCanvasVertexClick.clientY) <= 22 &&
         _lastCanvasVertexClick.vDesc
       ) {
-        if (Array.isArray(STATE.measurePoints) && STATE.measurePoints.length > _lastCanvasVertexClick.preMeasureLen) {
-          STATE.measurePoints.length = _lastCanvasVertexClick.preMeasureLen;
-        }
-        if (
-          Array.isArray(STATE.completedMeasurements) &&
-          STATE.completedMeasurements.length > _lastCanvasVertexClick.preCompletedLen
-        ) {
-          STATE.completedMeasurements.length = _lastCanvasVertexClick.preCompletedLen;
-        }
-        if (typeof rebuildAllCompletedMeasurements3D === "function") {
-          rebuildAllCompletedMeasurements3D();
-        }
+        restoreDoubleClickPreState(_lastCanvasVertexClick);
         const targetV = _lastCanvasVertexClick.vDesc;
         _lastCanvasVertexClick = null;
         startStudioVertexMove(targetV);
@@ -2573,8 +2727,8 @@
           ts: nowMs,
           clientX: e.clientX,
           clientY: e.clientY,
-          preMeasureLen: Array.isArray(STATE.measurePoints) ? STATE.measurePoints.length : 0,
-          preCompletedLen: Array.isArray(STATE.completedMeasurements) ? STATE.completedMeasurements.length : 0,
+          preMeasurePts: Array.isArray(STATE.measurePoints) ? STATE.measurePoints.map((p) => p.clone()) : [],
+          preCompletedSlice: Array.isArray(STATE.completedMeasurements) ? STATE.completedMeasurements.slice() : [],
           vDesc: nearEditable,
         };
       } else {
@@ -2592,6 +2746,79 @@
         selectCalibratedCameraFrom3D(clickedCam);
         return;
       }
+    }
+
+    if (STATE.activeTool === "categorize" && STATE.categorizeEditMode === "remove_click") {
+      const res = STATE.lastCategorizeResult;
+      if (!res || !Array.isArray(res.trees)) return;
+      let bestId = null;
+      const domEl = studioThree?.renderer?.domElement;
+      if (domEl && studioThree?.camera && studioThree?.raycaster && studioThree?.categoryGroup) {
+        const rect = domEl.getBoundingClientRect();
+        const ndc = new THREE.Vector2(
+          ((e.clientX - rect.left) / Math.max(1, rect.width)) * 2 - 1,
+          -((e.clientY - rect.top) / Math.max(1, rect.height)) * 2 + 1
+        );
+        studioThree.raycaster.setFromCamera(ndc, studioThree.camera);
+        const catHits = studioThree.raycaster.intersectObjects(studioThree.categoryGroup.children, true);
+        for (const ch of catHits) {
+          const cid = ch.object?.userData?.catItemId;
+          if (cid) {
+            bestId = cid;
+            break;
+          }
+        }
+        if (!bestId) {
+          const originTwd = localToTwd97({ x: 0, y: 0, z: 0 });
+          const w = Math.max(1, rect.width);
+          const h = Math.max(1, rect.height);
+          const cx = e.clientX - rect.left;
+          const cy = e.clientY - rect.top;
+          let bestPx = window.innerWidth <= 768 ? 44 : 34;
+          res.trees.forEach((t) => {
+            const vb = twd97PointToStudioVec3(t.trunk_base_twd97 || t.trunk_twd97, t.trunk_base_local || t.trunk_local, originTwd);
+            const vt = Array.isArray(t.trunk_top_twd97)
+              ? twd97PointToStudioVec3(t.trunk_top_twd97, t.trunk_top_local, originTwd)
+              : new THREE.Vector3(vb.x, vb.y + Math.max(1.8, Number(t.height_m || 5) * 0.55), vb.z);
+            const pb = vb.clone().project(studioThree.camera);
+            const ptTop = vt.clone().project(studioThree.camera);
+            if (pb.z <= 1.0 && ptTop.z <= 1.0) {
+              const x1 = (pb.x * 0.5 + 0.5) * w, y1 = (-pb.y * 0.5 + 0.5) * h;
+              const x2 = (ptTop.x * 0.5 + 0.5) * w, y2 = (-ptTop.y * 0.5 + 0.5) * h;
+              const dx = x2 - x1, dy = y2 - y1;
+              const l2 = dx * dx + dy * dy;
+              const u = l2 > 1e-3 ? Math.max(0, Math.min(1, ((cx - x1) * dx + (cy - y1) * dy) / l2)) : 0;
+              const dPx = Math.hypot(cx - (x1 + u * dx), cy - (y1 + u * dy));
+              if (dPx < bestPx) {
+                bestPx = dPx;
+                bestId = t.id;
+              }
+            }
+          });
+        }
+      }
+      if (!bestId) {
+        const hitFallback = pickStudio3DHit(e.clientX, e.clientY);
+        if (hitFallback && hitFallback.point) {
+          const ptF = hitFallback.point;
+          const originTwd = localToTwd97({ x: 0, y: 0, z: 0 });
+          let bestDist = 4.2;
+          res.trees.forEach((t) => {
+            const v = twd97PointToStudioVec3(t.trunk_twd97, t.trunk_local, originTwd);
+            const d = Math.hypot(v.x - ptF.x, v.z - ptF.z);
+            if (d < bestDist) {
+              bestDist = d;
+              bestId = t.id;
+            }
+          });
+        }
+      }
+      if (bestId) {
+        submitCategorizeManualEdit("manual_remove", "trees", bestId);
+      } else {
+        showToast(tr("未點中喬木，請點擊 3D 樹幹/樹冠或表格刪除按鈕", "Tap a 3D tree or row delete button"), "warn");
+      }
+      return;
     }
 
     const hit = pickStudio3DHit(e.clientX, e.clientY);
@@ -2629,51 +2856,16 @@
       return clickPt.distanceTo(startPt) < snapRadius;
     };
 
-    if (tool === "categorize" && STATE.categorizeEditMode) {
-      const mode = STATE.categorizeEditMode;
-      const originTwd = localToTwd97({ x: 0, y: 0, z: 0 });
-      if (mode === "add_tree") {
-        submitCategorizeManualEdit("manual_add", "trees", null, {
-          trunk_local: [Number(pt.x.toFixed(3)), Number(pt.y.toFixed(3)), Number(pt.z.toFixed(3))],
-          trunk_twd97: [Number(twd.e.toFixed(3)), Number(twd.n.toFixed(3)), Number(twd.h.toFixed(3))],
-          auto_measure: true,
-          dbh_cm: 28.0,
-          height_m: 6.5,
-          crown_diameter_m: 4.2,
-        });
-        return;
-      }
-      if (mode === "remove_click") {
-        const res = STATE.lastCategorizeResult;
-        if (!res) return;
-        let bestId = null;
-        let bestDist = 4.2;
-        (res.trees || []).forEach((t) => {
-          const v = twd97PointToStudioVec3(t.trunk_twd97, t.trunk_local, originTwd);
-          let d = Math.hypot(v.x - pt.x, v.z - pt.z);
-          if (Array.isArray(t.trunk_base_twd97) && Array.isArray(t.trunk_top_twd97)) {
-            const vb = twd97PointToStudioVec3(t.trunk_base_twd97, t.trunk_base_local, originTwd);
-            const vt = twd97PointToStudioVec3(t.trunk_top_twd97, t.trunk_top_local, originTwd);
-            const abx = vt.x - vb.x, aby = vt.y - vb.y, abz = vt.z - vb.z;
-            const len2 = abx * abx + aby * aby + abz * abz;
-            if (len2 > 1e-4) {
-              const tProj = Math.max(0, Math.min(1, ((pt.x - vb.x) * abx + (pt.y - vb.y) * aby + (pt.z - vb.z) * abz) / len2));
-              const d3 = Math.hypot(pt.x - (vb.x + tProj * abx), pt.z - (vb.z + tProj * abz));
-              if (d3 < d) d = d3;
-            }
-          }
-          if (d < bestDist) {
-            bestDist = d;
-            bestId = t.id;
-          }
-        });
-        if (bestId) {
-          submitCategorizeManualEdit("manual_remove", "trees", bestId);
-        } else {
-          showToast(tr("附近 4.2m 內未找到可刪除的喬木，或請直接點擊清冊中的 🗑️ 按鈕", "No tree found within 4.2m — or click 🗑️ in the tree schedule"), "warn");
-        }
-        return;
-      }
+    if (tool === "categorize" && STATE.categorizeEditMode === "add_tree") {
+      submitCategorizeManualEdit("manual_add", "trees", null, {
+        trunk_local: [Number(pt.x.toFixed(3)), Number(pt.y.toFixed(3)), Number(pt.z.toFixed(3))],
+        trunk_twd97: [Number(twd.e.toFixed(3)), Number(twd.n.toFixed(3)), Number(twd.h.toFixed(3))],
+        auto_measure: true,
+        dbh_cm: 28.0,
+        height_m: 6.5,
+        crown_diameter_m: 4.2,
+      });
+      return;
     }
 
     if (STATE.movingCommentId) {

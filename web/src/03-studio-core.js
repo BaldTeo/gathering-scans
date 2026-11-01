@@ -678,10 +678,19 @@
       controls.update();
     };
 
-    // Suppress right-click context menu on canvas while First-Person Mode is active (or immediately after right-drag release)
+    // Suppress right-click context menu on canvas while First-Person Mode is active, or right-click to delete an editable vertex
     let _lastFpRightDragTs = 0;
     renderer.domElement.addEventListener("contextmenu", (e) => {
       if ((STATE.activeView === "studio" && STATE.fpMode.active) || performance.now() - _lastFpRightDragTs < 400) {
+        e.preventDefault();
+        return;
+      }
+      if (
+        STATE.activeView === "studio" &&
+        Math.hypot(e.clientX - downPos.x, e.clientY - downPos.y) < 6 &&
+        typeof window.deleteStudioEditableVertexAtScreenXY === "function" &&
+        window.deleteStudioEditableVertexAtScreenXY(e.clientX, e.clientY)
+      ) {
         e.preventDefault();
       }
     });
@@ -813,7 +822,7 @@
         }
         return;
       }
-      // Direct click-and-drag on editable vertices (especially closed Area polygon points & completed measurement points)
+      // Deferred Hold-Drag (>=5px) on any editable vertex or polygon edge midpoint, or Shift+Click to delete/insert
       if (
         e.button === 0 &&
         !e.ctrlKey &&
@@ -824,34 +833,35 @@
         STATE.activeView === "studio" &&
         STATE.activeTool !== "crop" &&
         STATE.activeTool !== "crop_delete" &&
-        !(Array.isArray(STATE.measurePoints) && STATE.measurePoints.length > 0) &&
         typeof findNearestEditableVertexAtScreenXY === "function" &&
         typeof startStudioVertexMove === "function"
       ) {
-        const nearV = findNearestEditableVertexAtScreenXY(
-          e.clientX,
-          e.clientY,
-          window.innerWidth <= 768 ? 30 : 22
-        );
-        if (
-          nearV &&
-          (nearV.measType === "area" ||
-            STATE.activeTool === "area" ||
-            STATE.activeTool === nearV.measType ||
-            STATE.activeTool === "orbit")
-        ) {
-          if (startStudioVertexMove(nearV, { dragMode: true, pointerId: e.pointerId, startClientX: e.clientX, startClientY: e.clientY })) {
-            if (controls) {
-              controls.mouseButtons.LEFT = -1;
-            }
-            if (renderer.domElement) {
-              renderer.domElement.style.cursor = "grabbing";
-              try {
-                renderer.domElement.setPointerCapture(e.pointerId);
-              } catch (_) {}
-            }
-            return;
-          }
+        const nearV = findNearestEditableVertexAtScreenXY(e.clientX, e.clientY, window.innerWidth <= 768 ? 30 : 22);
+        if (e.shiftKey && nearV && typeof window.deleteStudioEditableVertex === "function") {
+          window.deleteStudioEditableVertex(nearV);
+          return;
+        }
+        const edgeMid =
+          !nearV && typeof window.findNearestPolygonEdgeMidpointAtScreenXY === "function"
+            ? window.findNearestPolygonEdgeMidpointAtScreenXY(e.clientX, e.clientY, window.innerWidth <= 768 ? 22 : 16)
+            : null;
+        if (e.shiftKey && edgeMid && typeof window.insertPolygonEdgeVertex === "function") {
+          const insV = window.insertPolygonEdgeVertex(edgeMid);
+          if (insV) startStudioVertexMove(insV);
+          return;
+        }
+        const isClosingStartV =
+          nearV && nearV.source === "measurePoints" && nearV.pointIndex === 0 && Array.isArray(STATE.measurePoints) && STATE.measurePoints.length >= 3;
+        if ((nearV && !isClosingStartV) || edgeMid) {
+          studioThree._pendingVertexDrag = {
+            nearV: nearV || null,
+            edgeMid: edgeMid || null,
+            pointerId: e.pointerId,
+            startClientX: e.clientX,
+            startClientY: e.clientY,
+          };
+          if (controls) controls.mouseButtons.LEFT = -1;
+          return;
         }
       }
       if (
@@ -888,6 +898,10 @@
         STATE.fpMode.dragLooking = false;
         STATE.fpMode.lookPointerId = null;
       }
+      if (studioThree._pendingVertexDrag && (studioThree._pendingVertexDrag.pointerId == null || e.pointerId === studioThree._pendingVertexDrag.pointerId)) {
+        studioThree._pendingVertexDrag = null;
+        syncStudioControlsForTool();
+      }
       if (STATE.movingVertex?.dragMode && (STATE.movingVertex.pointerId == null || e.pointerId === STATE.movingVertex.pointerId)) {
         if (typeof cancelStudioVertexMove === "function") cancelStudioVertexMove(false);
         syncStudioControlsForTool();
@@ -914,6 +928,14 @@
         activeTouchPointers.delete(e.pointerId);
       }
       if (
+        studioThree._pendingVertexDrag &&
+        (e.button === 0 || e.pointerType === "touch") &&
+        (studioThree._pendingVertexDrag.pointerId == null || e.pointerId === studioThree._pendingVertexDrag.pointerId)
+      ) {
+        studioThree._pendingVertexDrag = null;
+        syncStudioControlsForTool();
+      }
+      if (
         STATE.movingVertex?.dragMode &&
         (e.button === 0 || e.pointerType === "touch") &&
         (STATE.movingVertex.pointerId == null || e.pointerId === STATE.movingVertex.pointerId)
@@ -921,22 +943,10 @@
         try {
           renderer.domElement.releasePointerCapture(e.pointerId);
         } catch (_) {}
-        const dragDistPx = Math.hypot(
-          e.clientX - (STATE.movingVertex.startClientX ?? downPos.x),
-          e.clientY - (STATE.movingVertex.startClientY ?? downPos.y)
-        );
-        if (dragDistPx >= 4 || STATE.movingVertex.hasMoved) {
-          const moveHit = pickStudio3DHit(e.clientX, e.clientY);
-          if (typeof commitStudioVertexMove === "function") {
-            commitStudioVertexMove(moveHit ? moveHit.point : null);
-          }
-          syncStudioControlsForTool();
-          return;
+        const moveHit = pickStudio3DHit(e.clientX, e.clientY);
+        if (typeof commitStudioVertexMove === "function") {
+          commitStudioVertexMove(moveHit ? moveHit.point : null);
         }
-        // User clicked without dragging: convert to sticky click-move-click mode
-        STATE.movingVertex.dragMode = false;
-        STATE.movingVertex.pointerId = null;
-        STATE.movingVertex.startedAt = performance.now();
         syncStudioControlsForTool();
         return;
       }
@@ -1053,6 +1063,23 @@
           STATE.fpMode.lookPointerId = null;
         }
       }
+      if (studioThree._pendingVertexDrag && ((e.buttons & 1) !== 0 || e.pointerType === "touch")) {
+        const pend = studioThree._pendingVertexDrag;
+        if (Math.hypot(e.clientX - pend.startClientX, e.clientY - pend.startClientY) >= 5) {
+          studioThree._pendingVertexDrag = null;
+          const targetV = pend.edgeMid && typeof window.insertPolygonEdgeVertex === "function" ? window.insertPolygonEdgeVertex(pend.edgeMid) : pend.nearV;
+          if (targetV && startStudioVertexMove(targetV, { dragMode: true, pointerId: e.pointerId, startClientX: pend.startClientX, startClientY: pend.startClientY })) {
+            if (renderer.domElement) {
+              renderer.domElement.style.cursor = "grabbing";
+              try {
+                renderer.domElement.setPointerCapture(e.pointerId);
+              } catch (_) {}
+            }
+          }
+        } else {
+          return;
+        }
+      }
       if (STATE.movingVertex?.dragMode && typeof updateStudioVertexMove === "function") {
         if ((e.buttons & 1) !== 0 || e.pointerType === "touch") {
           STATE.movingVertex.hasMoved = true;
@@ -1154,25 +1181,21 @@
       if (
         typeof findNearestEditableVertexAtScreenXY === "function" &&
         STATE.activeTool !== "crop" &&
-        STATE.activeTool !== "crop_delete" &&
-        !(Array.isArray(STATE.measurePoints) && STATE.measurePoints.length > 0)
+        STATE.activeTool !== "crop_delete"
       ) {
-        const nearHoverV = findNearestEditableVertexAtScreenXY(
-          e.clientX,
-          e.clientY,
-          window.innerWidth <= 768 ? 30 : 22
-        );
-        if (
-          nearHoverV &&
-          (nearHoverV.measType === "area" ||
-            STATE.activeTool === "area" ||
-            STATE.activeTool === nearHoverV.measType ||
-            STATE.activeTool === "orbit")
-        ) {
-          if (renderer.domElement && renderer.domElement.style.cursor !== "grab") {
-            renderer.domElement.style.cursor = "grab";
-          }
-        } else if (renderer.domElement && renderer.domElement.style.cursor === "grab") {
+        const nearHoverV = findNearestEditableVertexAtScreenXY(e.clientX, e.clientY, window.innerWidth <= 768 ? 30 : 22);
+        const nearEdge =
+          !nearHoverV && typeof window.findNearestPolygonEdgeMidpointAtScreenXY === "function"
+            ? window.findNearestPolygonEdgeMidpointAtScreenXY(e.clientX, e.clientY, window.innerWidth <= 768 ? 22 : 16)
+            : null;
+        if (typeof window.updatePolygonEdgeMidpointIndicator === "function") {
+          window.updatePolygonEdgeMidpointIndicator(nearEdge ? nearEdge.point : null);
+        }
+        if (nearHoverV) {
+          if (renderer.domElement && renderer.domElement.style.cursor !== "grab") renderer.domElement.style.cursor = "grab";
+        } else if (nearEdge) {
+          if (renderer.domElement && renderer.domElement.style.cursor !== "copy") renderer.domElement.style.cursor = "copy";
+        } else if (renderer.domElement && (renderer.domElement.style.cursor === "grab" || renderer.domElement.style.cursor === "copy")) {
           renderer.domElement.style.cursor = "";
         }
       }
@@ -1218,6 +1241,9 @@
             }
           }
         }
+      } else if (STATE.snapEnabled && typeof findNearestSnappableToolVertex === "function") {
+        const snapV = findNearestSnappableToolVertex(e.clientX, e.clientY, window.innerWidth <= 768 ? 28 : 24, STATE.movingVertex);
+        updateStudioSnapIndicator(snapV?.point || null, Boolean(snapV?.point));
       }
     });
 
@@ -2409,8 +2435,9 @@
     const hits = activeSbEval
       ? rawHits.filter((h) => h && h.point && isPointInSectionBox(h.point.x, h.point.y, h.point.z, activeSbEval))
       : rawHits;
+    const allowVertexSnap = STATE.snapEnabled && !(STATE.activeTool === "laser" && !STATE.movingVertex);
     const snappedVertex =
-      STATE.snapEnabled && typeof findNearestSnappableToolVertex === "function"
+      allowVertexSnap && typeof findNearestSnappableToolVertex === "function"
         ? findNearestSnappableToolVertex(clientX, clientY, window.innerWidth <= 768 ? 28 : 24, STATE.movingVertex)
         : null;
 
@@ -2424,16 +2451,12 @@
       const rawPoint = h0.point.clone();
       const p = rawPoint.clone();
       let snappedToToolVertex = false;
-      if (STATE.snapEnabled) {
-        if (snappedVertex && snappedVertex.point) {
-          p.copy(snappedVertex.point);
-          if (snappedVertex.source === "utilities" || snappedVertex.source === "categorize") {
-            rawPoint.copy(snappedVertex.point);
-          }
-          snappedToToolVertex = true;
-        } else {
-          p.set(Math.round(p.x * 20) / 20, Math.round(p.y * 20) / 20, Math.round(p.z * 20) / 20);
+      if (allowVertexSnap && snappedVertex && snappedVertex.point) {
+        p.copy(snappedVertex.point);
+        if (snappedVertex.source === "utilities" || snappedVertex.source === "categorize") {
+          rawPoint.copy(snappedVertex.point);
         }
+        snappedToToolVertex = true;
       }
       const normal = new THREE.Vector3(0, 1, 0);
       if (h0.face && h0.object) {
@@ -2445,7 +2468,7 @@
       return { point: p, rawPoint, normal, distance: h0.distance, object: h0.object, snappedToToolVertex, snappedVertex: snappedVertex || null };
     }
 
-    if (STATE.snapEnabled && snappedVertex && snappedVertex.point) {
+    if (allowVertexSnap && snappedVertex && snappedVertex.point) {
       const sp = snappedVertex.point.clone();
       return {
         point: sp,
@@ -2460,13 +2483,21 @@
     return null;
   }
 
-  function getAllSnappableToolVertices(excludeMovingVertex = null) {
+  function getAllSnappableToolVertices(excludeMovingVertex = null, onlyEditable = false) {
     const list = [];
     const pushV = (pt, meta, idxArg = -1, editableArg = true) => {
       if (!pt || !Number.isFinite(pt.x) || !Number.isFinite(pt.y) || !Number.isFinite(pt.z)) return;
       const metaObj = typeof meta === "string" ? { source: meta, pointIndex: idxArg, editable: editableArg } : meta || {};
       if (excludeMovingVertex) {
         if (excludeMovingVertex.point === pt) return;
+        if (
+          !onlyEditable &&
+          excludeMovingVertex.source === metaObj.source &&
+          excludeMovingVertex.measId &&
+          excludeMovingVertex.measId === metaObj.measId
+        ) {
+          return;
+        }
         if (
           excludeMovingVertex.source === metaObj.source &&
           excludeMovingVertex.measId &&
@@ -2497,15 +2528,23 @@
         pushV(m.originPt, { source: "completed", measId: m.id, measType: "laser", pointKey: "originPt", editable: false });
         pushV(m.pA, { source: "completed", measId: m.id, measType: "laser", pointKey: "pA", editable: false });
         pushV(m.pB, { source: "completed", measId: m.id, measType: "laser", pointKey: "pB", editable: false });
-        pushV(m.orthoPA, { source: "completed", measId: m.id, measType: "laser", pointKey: "orthoPA", editable: false });
-        pushV(m.orthoPB, { source: "completed", measId: m.id, measType: "laser", pointKey: "orthoPB", editable: false });
       }
     });
 
     if (Array.isArray(STATE.measurePoints)) {
-      STATE.measurePoints.forEach((pt, idx) =>
-        pushV(pt, { source: "measurePoints", measId: "__in_progress__", measType: STATE.activeTool || "measure", pointIndex: idx, label: `Point #${idx + 1}`, editable: false })
-      );
+      const isPolyTool =
+        STATE.activeTool === "area" ||
+        STATE.activeTool === "volume" ||
+        STATE.activeTool === "contours" ||
+        STATE.activeTool === "flatness" ||
+        STATE.activeTool === "crop" ||
+        STATE.activeTool === "crop_delete";
+      STATE.measurePoints.forEach((pt, idx) => {
+        if (!onlyEditable && !excludeMovingVertex) {
+          if (!(isPolyTool && idx === 0 && STATE.measurePoints.length >= 3)) return;
+        }
+        pushV(pt, { source: "measurePoints", measId: "__in_progress__", measType: STATE.activeTool || "measure", pointIndex: idx, label: `Point #${idx + 1}`, editable: true });
+      });
     }
     if (Array.isArray(STATE.cutFillPolygonPoints) && STATE.cutFillPolygonPoints.length > 0 && STATE.measurePoints.length === 0) {
       STATE.cutFillPolygonPoints.forEach((pt, idx) =>
@@ -2537,7 +2576,7 @@
     const localX = clientX - rect.left;
     const localY = clientY - rect.top;
     const cam = studioThree.camera;
-    const candidates = getAllSnappableToolVertices(excludeMovingVertex);
+    const candidates = getAllSnappableToolVertices(excludeMovingVertex, onlyEditable);
     let best = null;
     let bestDistPx = maxPx;
 
@@ -2549,6 +2588,9 @@
       const sx = (proj.x * 0.5 + 0.5) * w;
       const sy = (-proj.y * 0.5 + 0.5) * h;
       const dPx = Math.hypot(localX - sx, localY - sy);
+      if (!onlyEditable && !excludeMovingVertex && c.source === "measurePoints" && c.pointIndex === 0 && dPx <= maxPx) {
+        return Object.assign({}, c, { screenDistPx: dPx, screenX: sx, screenY: sy });
+      }
       if (dPx <= bestDistPx) {
         bestDistPx = dPx;
         best = Object.assign({}, c, { screenDistPx: dPx, screenX: sx, screenY: sy });
@@ -4183,6 +4225,7 @@
         c.userData?.isLassoHighlight ||
         c.userData?.isSnapIndicator ||
         c.userData?.isMovingVertexIndicator ||
+        c.userData?.isEdgeMidpointIndicator ||
         c.userData?.isPhotoTargetPin ||
         c.userData?.isSectionTempPin ||
         c === studioThree._sectionBoxHelper ||
@@ -4892,7 +4935,6 @@
     updateZoomInvariantElements();
   }
 
-  // Section Box Unclipped Material & 3D Triangle Clipping Evaluation Helpers
   function makeUnclippedMaterial(mat) {
     if (!mat) return mat;
     mat.clippingPlanes = [];
@@ -4903,85 +4945,20 @@
     return mat;
   }
 
-  function isSectionBoxClippingActive() {
-    return Boolean(
-      STATE.sectionBoxState &&
-        STATE.sectionBoxState.active &&
-        studioThree?.renderer?.clippingPlanes &&
-        studioThree.renderer.clippingPlanes.length > 0
-    );
-  }
-
-  function getSerializedActiveSectionBox() {
-    if (!isSectionBoxClippingActive()) return null;
-    const sb = STATE.sectionBoxState;
-    return {
-      center: [
-        Math.round((Number(sb.centerX) || 0) * 10000) / 10000,
-        Math.round((Number(sb.centerY) || 0) * 10000) / 10000,
-        Math.round((Number(sb.centerZ) || 0) * 10000) / 10000,
-      ],
-      half: [
-        Math.round(Math.max(0.1, Number(sb.halfX) || 10) * 10000) / 10000,
-        Math.round(Math.max(0.1, Number(sb.halfY) || 10) * 10000) / 10000,
-        Math.round(Math.max(0.1, Number(sb.halfZ) || 10) * 10000) / 10000,
-      ],
-      yaw_rad: Math.round((Number(sb.yawRad) || 0) * 100000) / 100000,
-    };
-  }
-
-  function parseSectionBoxForEval(rawSb) {
-    if (!rawSb || typeof rawSb !== "object") return null;
-    if (Array.isArray(rawSb.center) && Array.isArray(rawSb.half)) {
-      const yaw = Number(rawSb.yaw_rad) || 0;
-      return {
-        cx: Number(rawSb.center[0]) || 0,
-        cy: Number(rawSb.center[1]) || 0,
-        cz: Number(rawSb.center[2]) || 0,
-        hx: Math.max(0.05, Number(rawSb.half[0]) || 10),
-        hy: Math.max(0.05, Number(rawSb.half[1]) || 10),
-        hz: Math.max(0.05, Number(rawSb.half[2]) || 10),
-        cosY: Math.cos(yaw),
-        sinY: Math.sin(yaw),
-      };
-    }
-    if (rawSb.active) {
-      const yaw = Number(rawSb.yawRad) || 0;
-      return {
-        cx: Number(rawSb.centerX) || 0,
-        cy: Number(rawSb.centerY) || 0,
-        cz: Number(rawSb.centerZ) || 0,
-        hx: Math.max(0.05, Number(rawSb.halfX) || 10),
-        hy: Math.max(0.05, Number(rawSb.halfY) || 10),
-        hz: Math.max(0.05, Number(rawSb.halfZ) || 10),
-        cosY: Math.cos(yaw),
-        sinY: Math.sin(yaw),
-      };
-    }
-    return null;
-  }
-
   function isPointInSectionBox(wx, wy, wz, sb) {
     if (!sb) return true;
     const dy = wy - sb.cy;
     if (Math.abs(dy) > sb.hy + 1e-4) return false;
-    const dx = wx - sb.cx;
-    const dz = wz - sb.cz;
+    const dx = wx - sb.cx, dz = wz - sb.cz;
     const lx = dx * sb.cosY - dz * sb.sinY;
     if (Math.abs(lx) > sb.hx + 1e-4) return false;
-    const lz = dx * sb.sinY + dz * sb.cosY;
-    return Math.abs(lz) <= sb.hz + 1e-4;
+    return Math.abs(dx * sb.sinY + dz * sb.cosY) <= sb.hz + 1e-4;
   }
 
   function isTriangleInSectionBox(wx0, wy0, wz0, wx1, wy1, wz1, wx2, wy2, wz2, sb) {
     if (!sb) return true;
-    const wxc = (wx0 + wx1 + wx2) / 3.0;
-    const wyc = (wy0 + wy1 + wy2) / 3.0;
-    const wzc = (wz0 + wz1 + wz2) / 3.0;
-    if (isPointInSectionBox(wxc, wyc, wzc, sb)) return true;
-    let vIn = 0;
-    if (isPointInSectionBox(wx0, wy0, wz0, sb)) vIn++;
-    if (isPointInSectionBox(wx1, wy1, wz1, sb)) vIn++;
+    if (isPointInSectionBox((wx0 + wx1 + wx2) / 3.0, (wy0 + wy1 + wy2) / 3.0, (wz0 + wz1 + wz2) / 3.0, sb)) return true;
+    let vIn = (isPointInSectionBox(wx0, wy0, wz0, sb) ? 1 : 0) + (isPointInSectionBox(wx1, wy1, wz1, sb) ? 1 : 0);
     if (vIn < 2 && isPointInSectionBox(wx2, wy2, wz2, sb)) vIn++;
     return vIn >= 2;
   }

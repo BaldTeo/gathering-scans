@@ -345,15 +345,15 @@
       const mode = STATE.categorizeEditMode;
       const modeText =
         mode === "add_tree"
-          ? tr("🟢 點擊 3D 樹木新增", "🟢 Tap 3D tree to add")
-          : tr("🗑️ 點擊 3D 喬木刪除", "🗑️ Tap 3D tree to remove");
+          ? tr("點擊 3D 樹木新增", "Tap 3D tree to add")
+          : tr("點擊 3D 樹木刪除", "Tap 3D tree to remove");
       hud.style.display = "flex";
       hud.innerHTML = `
         <span class="gs-mobile-hud-label">${modeText}</span>
         <button type="button" class="gs-mobile-hud-btn" data-mobile-hud="expand_cat_panel">${
-          STATE.sidePanelMinimized ? tr("▴ 面板", "▴ Panel") : tr("▾ 收合", "▾ Hide")
+          STATE.sidePanelMinimized ? tr("面板", "Panel") : tr("收合", "Hide")
         }</button>
-        <button type="button" class="gs-mobile-hud-btn danger" data-mobile-hud="exit_cat_edit">✕ ${tr("結束編輯", "Exit Edit")}</button>
+        <button type="button" class="gs-mobile-hud-btn danger" data-mobile-hud="exit_cat_edit">${tr("結束", "Exit")}</button>
       `;
     } else {
       hud.style.display = "none";
@@ -4654,5 +4654,64 @@
     update2DBadgePositions();
   }
   window.renderCommentPins3D = renderCommentPins3D;
+
+  // Section Box Clipping Evaluation Helpers
+  function isSectionBoxClippingActive() {
+    return Boolean(
+      STATE.sectionBoxState &&
+        STATE.sectionBoxState.active &&
+        studioThree?.renderer?.clippingPlanes &&
+        studioThree.renderer.clippingPlanes.length > 0
+    );
+  }
+
+  function getSerializedActiveSectionBox() {
+    if (!isSectionBoxClippingActive()) return null;
+    const sb = STATE.sectionBoxState;
+    return {
+      center: [
+        Math.round((Number(sb.centerX) || 0) * 10000) / 10000,
+        Math.round((Number(sb.centerY) || 0) * 10000) / 10000,
+        Math.round((Number(sb.centerZ) || 0) * 10000) / 10000,
+      ],
+      half: [
+        Math.round(Math.max(0.1, Number(sb.halfX) || 10) * 10000) / 10000,
+        Math.round(Math.max(0.1, Number(sb.halfY) || 10) * 10000) / 10000,
+        Math.round(Math.max(0.1, Number(sb.halfZ) || 10) * 10000) / 10000,
+      ],
+      yaw_rad: Math.round((Number(sb.yawRad) || 0) * 100000) / 100000,
+    };
+  }
+
+  function parseSectionBoxForEval(rawSb) {
+    if (!rawSb || typeof rawSb !== "object") return null;
+    if (Array.isArray(rawSb.center) && Array.isArray(rawSb.half)) {
+      const yaw = Number(rawSb.yaw_rad) || 0;
+      return {
+        cx: Number(rawSb.center[0]) || 0,
+        cy: Number(rawSb.center[1]) || 0,
+        cz: Number(rawSb.center[2]) || 0,
+        hx: Math.max(0.05, Number(rawSb.half[0]) || 10),
+        hy: Math.max(0.05, Number(rawSb.half[1]) || 10),
+        hz: Math.max(0.05, Number(rawSb.half[2]) || 10),
+        cosY: Math.cos(yaw),
+        sinY: Math.sin(yaw),
+      };
+    }
+    if (rawSb.active) {
+      const yaw = Number(rawSb.yawRad) || 0;
+      return {
+        cx: Number(rawSb.centerX) || 0,
+        cy: Number(rawSb.centerY) || 0,
+        cz: Number(rawSb.centerZ) || 0,
+        hx: Math.max(0.05, Number(rawSb.halfX) || 10),
+        hy: Math.max(0.05, Number(rawSb.halfY) || 10),
+        hz: Math.max(0.05, Number(rawSb.halfZ) || 10),
+        cosY: Math.cos(yaw),
+        sinY: Math.sin(yaw),
+      };
+    }
+    return null;
+  }
 
 
