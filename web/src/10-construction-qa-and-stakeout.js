@@ -1570,149 +1570,6 @@
     return sp;
   }
 
-  function appendSingleFlatnessObjectTo3DGroup(grp, cache, metrics, opts = {}) {
-    const THREE = window.THREE;
-    if (!THREE || !grp || !cache || !cache.plane) return;
-    const isActive = Boolean(opts.isActive);
-    const showPass3D = Boolean(opts.showPass3D);
-    const displayMode = opts.displayMode === "points" ? "points" : "tiles";
-    const objLabel = opts.label || "";
-    const plane = cache.plane;
-    const fc = new THREE.Vector3(plane.center.x, plane.center.y, plane.center.z);
-    const fn = new THREE.Vector3(plane.normal.x, plane.normal.y, plane.normal.z).normalize();
-    const fu = new THREE.Vector3(plane.uAxis.x, plane.uAxis.y, plane.uAxis.z).normalize();
-    const fv = new THREE.Vector3(plane.vAxis.x, plane.vAxis.y, plane.vAxis.z).normalize();
-
-    const rawPolyPts =
-      isActive &&
-      window.STATE &&
-      Array.isArray(window.STATE.flatnessPolygonPoints) &&
-      window.STATE.flatnessPolygonPoints.length >= 3
-        ? window.STATE.flatnessPolygonPoints
-        : cache.polyPts || [];
-    const polyPts = rawPolyPts.map((p) => new THREE.Vector3(p.x, p.y, p.z));
-    const isPlumbWall = plane.planeMode === "vertical_plumb" || Number(plane.slopeDeg) > 55.0;
-
-    if (polyPts.length >= 3) {
-      const loopPts = [...polyPts, polyPts[0]];
-      const loopGeo = new THREE.BufferGeometry().setFromPoints(loopPts);
-      const loopColor = isPlumbWall ? 0xf59e0b : isActive ? 0x0284c7 : 0x64748b;
-      const loopMat = new THREE.LineBasicMaterial({
-        color: loopColor,
-        depthTest: false,
-        transparent: !isActive,
-        opacity: isActive ? 1.0 : 0.85,
-      });
-      const loopLine = new THREE.Line(loopGeo, loopMat);
-      loopLine.renderOrder = isActive ? 997 : 995;
-      grp.add(loopLine);
-
-      polyPts.forEach((p, idx) => {
-        const pinColor = idx === 0 ? 0xff3b30 : isActive ? 0x0284c7 : 0x64748b;
-        if (isActive && typeof add3DPinMarker === "function") {
-          add3DPinMarker(p, pinColor, grp);
-        } else {
-          const sp = new THREE.Mesh(
-            new THREE.SphereGeometry(isActive ? (idx === 0 ? 0.16 : 0.12) : 0.09, 12, 12),
-            new THREE.MeshBasicMaterial({ color: pinColor, depthTest: false })
-          );
-          sp.position.copy(p);
-          sp.renderOrder = isActive ? 998 : 995;
-          grp.add(sp);
-        }
-      });
-    }
-
-    // Oriented 3D Best-Fit Reference Plane Wireframe Grid
-    const basisMat = new THREE.Matrix4().makeBasis(fu, fv, fn);
-    const planeGeo = new THREE.PlaneGeometry((cache.spanU || 2) * 1.02, (cache.spanV || 2) * 1.02, 8, 8);
-    const planeMat = new THREE.MeshBasicMaterial({
-      color: isPlumbWall ? 0xfbbf24 : 0x22d3ee,
-      wireframe: true,
-      transparent: true,
-      opacity: isActive ? 0.42 : 0.24,
-      depthTest: false,
-    });
-    const planeMesh = new THREE.Mesh(planeGeo, planeMat);
-    planeMesh.applyMatrix4(basisMat);
-    planeMesh.position.copy(fc);
-    planeMesh.renderOrder = 994;
-    grp.add(planeMesh);
-
-    if (objLabel) {
-      const subTxt = `${metrics?.pass_rate_pct ?? 0}% (±${metrics?.tolerance_mm ?? 3}mm)`;
-      const tagSp = createFlatnessTagSprite(objLabel, subTxt, isActive, isPlumbWall);
-      if (tagSp) {
-        tagSp.position.copy(fc).addScaledVector(fn, 0.38);
-        grp.add(tagSp);
-      }
-    }
-
-    // Protruding (> +T, Red/Orange), Intruding (< -T, Blue/Cyan) & Pass (Green) 3D Grid Elements
-    const tolMm = Math.max(0.5, metrics?.tolerance_mm || 3.0);
-    const cells = cache.cells || [];
-    const activeCells = cells.filter((c) => showPass3D || c.status === "high" || c.status === "low");
-
-    if (activeCells.length > 0) {
-      const cellGeom =
-        displayMode === "points"
-          ? new THREE.SphereGeometry(Math.min(cache.du || 0.15, cache.dv || 0.15) * 0.28, 12, 12)
-          : new THREE.BoxGeometry((cache.du || 0.15) * 0.92, (cache.dv || 0.15) * 0.92, 1.0);
-      const instMat = new THREE.MeshBasicMaterial({
-        transparent: true,
-        opacity: isActive ? (displayMode === "points" ? 0.96 : 0.94) : 0.78,
-        depthTest: false,
-      });
-      const instMesh = new THREE.InstancedMesh(cellGeom, instMat, activeCells.length);
-      instMesh.renderOrder = isActive ? 996 : 995;
-
-      const dummyMat = new THREE.Matrix4();
-      const scaleMat = new THREE.Matrix4();
-      const posVec = new THREE.Vector3();
-      const col = new THREE.Color();
-
-      for (let i = 0; i < activeCells.length; i++) {
-        const c = activeCells[i];
-        const absMm = Math.abs(c.devMm);
-        const ratio = Math.min(3.5, absMm / tolMm);
-        const sign = c.devM >= 0 ? 1.0 : -1.0;
-
-        if (displayMode === "points") {
-          const offsetM = Math.max(0.015, Math.min(0.14, Math.abs(c.devM) + 0.01));
-          posVec.set(c.planeX, c.planeY, c.planeZ).addScaledVector(fn, sign * offsetM);
-          dummyMat.identity();
-          dummyMat.setPosition(posVec);
-        } else {
-          const prismThickM = Math.max(0.014, Math.min(0.14, Math.abs(c.devM) * 0.65 + 0.01));
-          posVec.set(c.planeX, c.planeY, c.planeZ).addScaledVector(fn, sign * prismThickM * 0.5);
-          dummyMat.copy(basisMat);
-          scaleMat.makeScale(1.0, 1.0, prismThickM);
-          dummyMat.multiply(scaleMat);
-          dummyMat.setPosition(posVec);
-        }
-        instMesh.setMatrixAt(i, dummyMat);
-
-        if (c.status === "high") {
-          if (ratio >= 2.0) col.setHex(0xef4444);
-          else col.setHex(0xf97316).lerp(new THREE.Color(0xef4444), ratio - 1.0);
-        } else if (c.status === "low") {
-          if (ratio >= 2.0) col.setHex(0x2563eb);
-          else col.setHex(0x06b6d4).lerp(new THREE.Color(0x2563eb), ratio - 1.0);
-        } else {
-          col.setHex(0x10b981);
-        }
-        instMesh.setColorAt(i, col);
-      }
-      instMesh.instanceMatrix.needsUpdate = true;
-      if (instMesh.instanceColor) instMesh.instanceColor.needsUpdate = true;
-      grp.add(instMesh);
-    }
-  }
-
-  /**
-   * Renders in-progress draft polygon vertices (V1 red, V2..Vn blue) and polyline while drawing,
-   * while keeping all previously saved flatness objects for the active scan visible in 3D when the flatness tool is active.
-   */
   function refreshFlatnessDraftVisuals() {
     if (!window.studioThree || !window.studioThree.scene || !window.THREE) return;
     if (window.STATE && window.STATE.activeTool && window.STATE.activeTool !== "flatness") {
@@ -1723,7 +1580,6 @@
     surfaceQa3DGroup = new window.THREE.Group();
     surfaceQa3DGroup.name = "GS_SurfaceQA_Overlay";
 
-    // Also render any saved flatness objects for this scan so existing regions stay visible while drawing a new region
     const savedObjs = getFlatnessObjectsForActiveScan();
     for (let i = 0; i < savedObjs.length; i++) {
       const obj = savedObjs[i];
@@ -1786,10 +1642,6 @@
     if (btnUndo) btnUndo.disabled = pts.length === 0;
   }
 
-  /**
-   * Renders the 3D Best-Fit Reference Plane Grid + Protruding (Red/Orange) & Intruding (Blue/Cyan)
-   * 3D Deviation Tiles or Points for all saved flatness objects in the active scan (when flatness tool is active).
-   */
   function renderPolygonFlatness3DOverlay(cache, metrics, showPass3D = false) {
     if (!window.studioThree || !window.studioThree.scene || !window.THREE) return;
     if (window.STATE && window.STATE.activeTool && window.STATE.activeTool !== "flatness") {
@@ -1841,6 +1693,144 @@
     }
     if (window.studioThree.renderer && window.studioThree.camera) {
       window.studioThree.renderer.render(window.studioThree.scene, window.studioThree.camera);
+    }
+  }
+
+  function appendSingleFlatnessObjectTo3DGroup(grp, cache, metrics, opts = {}) {
+    const THREE = window.THREE;
+    if (!THREE || !grp || !cache || !cache.plane) return;
+    const isActive = Boolean(opts.isActive);
+    const showPass3D = Boolean(opts.showPass3D);
+    const displayMode = opts.displayMode === "points" ? "points" : "tiles";
+    const objLabel = opts.label || "";
+    const plane = cache.plane;
+    const fc = new THREE.Vector3(plane.center.x, plane.center.y, plane.center.z);
+    const fn = new THREE.Vector3(plane.normal.x, plane.normal.y, plane.normal.z).normalize();
+    const fu = new THREE.Vector3(plane.uAxis.x, plane.uAxis.y, plane.uAxis.z).normalize();
+    const fv = new THREE.Vector3(plane.vAxis.x, plane.vAxis.y, plane.vAxis.z).normalize();
+
+    const rawPolyPts =
+      isActive &&
+      window.STATE &&
+      Array.isArray(window.STATE.flatnessPolygonPoints) &&
+      window.STATE.flatnessPolygonPoints.length >= 3
+        ? window.STATE.flatnessPolygonPoints
+        : cache.polyPts || [];
+    const polyPts = rawPolyPts.map((p) => new THREE.Vector3(p.x, p.y, p.z));
+    const isPlumbWall = plane.planeMode === "vertical_plumb" || Number(plane.slopeDeg) > 55.0;
+
+    if (polyPts.length >= 3) {
+      const loopPts = [...polyPts, polyPts[0]];
+      const loopGeo = new THREE.BufferGeometry().setFromPoints(loopPts);
+      const loopColor = isPlumbWall ? 0xf59e0b : isActive ? 0x0284c7 : 0x64748b;
+      const loopMat = new THREE.LineBasicMaterial({
+        color: loopColor,
+        depthTest: false,
+        transparent: !isActive,
+        opacity: isActive ? 1.0 : 0.85,
+      });
+      const loopLine = new THREE.Line(loopGeo, loopMat);
+      loopLine.renderOrder = isActive ? 997 : 995;
+      grp.add(loopLine);
+
+      polyPts.forEach((p, idx) => {
+        const pinColor = idx === 0 ? 0xff3b30 : isActive ? 0x0284c7 : 0x64748b;
+        if (isActive && typeof add3DPinMarker === "function") {
+          add3DPinMarker(p, pinColor, grp);
+        } else {
+          const sp = new THREE.Mesh(
+            new THREE.SphereGeometry(isActive ? (idx === 0 ? 0.16 : 0.12) : 0.09, 12, 12),
+            new THREE.MeshBasicMaterial({ color: pinColor, depthTest: false })
+          );
+          sp.position.copy(p);
+          sp.renderOrder = isActive ? 998 : 995;
+          grp.add(sp);
+        }
+      });
+    }
+
+    const basisMat = new THREE.Matrix4().makeBasis(fu, fv, fn);
+    const planeGeo = new THREE.PlaneGeometry((cache.spanU || 2) * 1.02, (cache.spanV || 2) * 1.02, 8, 8);
+    const planeMat = new THREE.MeshBasicMaterial({
+      color: isPlumbWall ? 0xfbbf24 : 0x22d3ee,
+      wireframe: true,
+      transparent: true,
+      opacity: isActive ? 0.42 : 0.24,
+      depthTest: false,
+    });
+    const planeMesh = new THREE.Mesh(planeGeo, planeMat);
+    planeMesh.applyMatrix4(basisMat);
+    planeMesh.position.copy(fc);
+    planeMesh.renderOrder = 994;
+    grp.add(planeMesh);
+
+    if (objLabel) {
+      const subTxt = `${metrics?.pass_rate_pct ?? 0}% (±${metrics?.tolerance_mm ?? 3}mm)`;
+      const tagSp = createFlatnessTagSprite(objLabel, subTxt, isActive, isPlumbWall);
+      if (tagSp) {
+        tagSp.position.copy(fc).addScaledVector(fn, 0.38);
+        grp.add(tagSp);
+      }
+    }
+
+    const tolMm = Math.max(0.5, metrics?.tolerance_mm || 3.0);
+    const cells = cache.cells || [];
+    const activeCells = cells.filter((c) => showPass3D || c.status === "high" || c.status === "low");
+
+    if (activeCells.length > 0) {
+      const cellGeom =
+        displayMode === "points"
+          ? new THREE.SphereGeometry(Math.min(cache.du || 0.15, cache.dv || 0.15) * 0.28, 12, 12)
+          : new THREE.BoxGeometry((cache.du || 0.15) * 0.92, (cache.dv || 0.15) * 0.92, 1.0);
+      const instMat = new THREE.MeshBasicMaterial({
+        transparent: true,
+        opacity: displayMode === "points" ? 0.96 : 0.94,
+        depthTest: false,
+      });
+      if (!isActive) instMat.opacity = 0.78;
+      const instMesh = new THREE.InstancedMesh(cellGeom, instMat, activeCells.length);
+      instMesh.renderOrder = isActive ? 996 : 995;
+
+      const dummyMat = new THREE.Matrix4();
+      const scaleMat = new THREE.Matrix4();
+      const posVec = new THREE.Vector3();
+      const col = new THREE.Color();
+
+      for (let i = 0; i < activeCells.length; i++) {
+        const c = activeCells[i];
+        const absMm = Math.abs(c.devMm);
+        const ratio = Math.min(3.5, absMm / tolMm);
+        const sign = c.devM >= 0 ? 1.0 : -1.0;
+
+        if (displayMode === "points") {
+          const offsetM = Math.max(0.015, Math.min(0.14, Math.abs(c.devM) + 0.01));
+          posVec.set(c.planeX, c.planeY, c.planeZ).addScaledVector(fn, sign * offsetM);
+          dummyMat.identity();
+          dummyMat.setPosition(posVec);
+        } else {
+          const prismThickM = Math.max(0.014, Math.min(0.14, Math.abs(c.devM) * 0.65 + 0.01));
+          posVec.set(c.planeX, c.planeY, c.planeZ).addScaledVector(fn, sign * prismThickM * 0.5);
+          dummyMat.copy(basisMat);
+          scaleMat.makeScale(1.0, 1.0, prismThickM);
+          dummyMat.multiply(scaleMat);
+          dummyMat.setPosition(posVec);
+        }
+        instMesh.setMatrixAt(i, dummyMat);
+
+        if (c.status === "high") {
+          if (ratio >= 2.0) col.setHex(0xef4444);
+          else col.setHex(0xf97316).lerp(new THREE.Color(0xef4444), ratio - 1.0);
+        } else if (c.status === "low") {
+          if (ratio >= 2.0) col.setHex(0x2563eb);
+          else col.setHex(0x06b6d4).lerp(new THREE.Color(0x2563eb), ratio - 1.0);
+        } else {
+          col.setHex(0x10b981);
+        }
+        instMesh.setColorAt(i, col);
+      }
+      instMesh.instanceMatrix.needsUpdate = true;
+      if (instMesh.instanceColor) instMesh.instanceColor.needsUpdate = true;
+      grp.add(instMesh);
     }
   }
 
@@ -3051,7 +3041,7 @@
         octx.strokeRect(boxX, boxY, boxW, boxH);
         octx.fillStyle = "#fbbf24";
         octx.font = "bold 12.5px 'Microsoft JhengHei', sans-serif";
-        octx.fillText(`[牆面垂直度檢驗] ${obj.code || `F${objIdx + 1}`} ${obj.name || ""}`, boxX + 8, boxY + 18);
+        octx.fillText(`[牆面垂直度檢驗] ${obj.name || obj.code || `F${objIdx + 1}`}`, boxX + 8, boxY + 18);
         octx.fillStyle = "#f8fafc";
         octx.font = "11.5px 'Microsoft JhengHei', sans-serif";
         octx.fillText(`傾角 ${r.plumb_tilt?.plumb_mm_per_m || 0} mm/m ｜ 合格率 ${r.pass_rate_pct || 0}%`, boxX + 8, boxY + 35);
@@ -3216,7 +3206,7 @@
         <div class="section-block">
           <div class="section-header">
             <span>檢驗分區明細 [${obj.code || `F${idx + 1}`}]：${obj.name || `檢驗區 #${idx + 1}`} ${isWall ? "（垂直牆面鉛垂檢驗區）" : ""}</span>
-            <span>依據規範：${spec.clause}（容許公差 ±${r.tolerance_mm} mm）</span>
+            <span>依據規範：<a href="${spec.url}" target="_blank" rel="noopener noreferrer" style="color:#0369a1;text-decoration:underline;">${spec.clause} (PDF ↗)</a>（容許公差 ±${r.tolerance_mm} mm）</span>
           </div>
           <table>
             <thead>
@@ -3558,19 +3548,19 @@
   ${detailSectionsHtml}
 
   <div class="norm-box">
-    <div style="font-weight:700;margin-bottom:4px;">肆、工程檢驗引用規範與標準條文連結（點擊開啟官方規範說明）：</div>
+    <div style="font-weight:700;margin-bottom:4px;">肆、工程檢驗引用規範與標準條文連結（點擊開啟官方規範全文 PDF）：</div>
     <ol style="margin:0;padding-left:18px;line-height:1.65;">
       <li>
         <b>行政院公共工程委員會《公共工程施工綱要規範》第 09611 章「整體粉光地坪」</b>：表面平整度以 3 m 直規檢測，精細整體粉光地坪及建築裝修完成面許可差不得大於 ±3 mm。
-        ［<a href="https://pcces.pcc.gov.tw/" target="_blank" rel="noopener noreferrer">公共工程技術資料庫 PCCES 官方規範查詢</a>］
+        ［<a href="https://www.nlma.gov.tw/filesys/file/chinese/dept/bw2/09611.pdf" target="_blank" rel="noopener noreferrer">第09611章官方規範 PDF</a> ｜ <a href="https://pcces.pcc.gov.tw/" target="_blank" rel="noopener noreferrer">工程會 PCCES 資料庫</a>］
       </li>
       <li>
-        <b>行政院公共工程委員會《公共工程施工綱要規範》第 09220 章「水泥砂漿粉刷」</b>：牆面與平頂一般粉刷完成面平整度及垂直度許可差為 ±5 mm。
-        ［<a href="https://pcces.pcc.gov.tw/" target="_blank" rel="noopener noreferrer">公共工程技術資料庫 PCCES 官方規範查詢</a>］
+        <b>行政院公共工程委員會《公共工程施工綱要規範》第 09220 章「水泥砂漿粉刷」</b>：牆面與平頂一般水泥砂漿粉刷完成面以 3 m 直規檢測，平整度及垂直度許可差不得大於 ±6 mm。
+        ［<a href="https://www.nlma.gov.tw/uploads/files/b540c458d9a9ace031fb2cec987593c0.pdf" target="_blank" rel="noopener noreferrer">第09220章官方規範 PDF</a> ｜ <a href="https://pcces.pcc.gov.tw/" target="_blank" rel="noopener noreferrer">工程會 PCCES 資料庫</a>］
       </li>
       <li>
-        <b>行政院公共工程委員會《公共工程施工綱要規範》第 03310 章「結構用混凝土」及第 02742 章「瀝青混凝土鋪面及基層」</b>：結構體模板拆模面許可差為 ±10 mm；道路路基、級配粒料基層及整地高程許可差為 ±20 mm。
-        ［<a href="https://pcces.pcc.gov.tw/" target="_blank" rel="noopener noreferrer">公共工程技術資料庫 PCCES 官方規範查詢</a>］
+        <b>行政院公共工程委員會《公共工程施工綱要規範》第 03310 章「結構用混凝土」及第 02742 章「瀝青混凝土鋪面及基層」</b>：結構體模板拆模粗底面許可差為 ±10 mm；道路與廣場鋪面基層高程許可差為 ±15 mm。
+        ［<a href="https://www.nlma.gov.tw/uploads/files/896a8dbb1440cce3f17b09e0a4b8dcff.pdf" target="_blank" rel="noopener noreferrer">第03310章官方規範 PDF</a> ｜ <a href="https://www.nlma.gov.tw/uploads/files/5ee2ba58e7e83d1d4345b233fb71d7eb.pdf" target="_blank" rel="noopener noreferrer">第02742章官方規範 PDF</a>］
       </li>
       <li>
         <b>ASTM E1155《Standard Test Method for Determining F<sub>F</sub> Floor Flatness and F<sub>L</sub> Floor Levelness Numbers》</b>：以 300 mm 步距採樣曲率變化量（q<sub>i</sub>）與 3 m 高程差（z<sub>i</sub>）計算地坪平坦度指標 F<sub>F</sub> 與水平度指標 F<sub>L</sub>。

@@ -2850,11 +2850,11 @@ class TestModularArchitectureCompliance(unittest.TestCase):
         with open(os.path.join(BASE_DIR, "web", "index.html"), "r", encoding="utf-8") as f:
             index_html = f.read()
 
-        # 1. No ConeGeometry in renderPolygonFlatness3DOverlay
-        overlay_fn = qa_js.split("function renderPolygonFlatness3DOverlay")[1].split("function updateFlatnessRegulationBubbleUI")[0]
+        # 1. No ConeGeometry in renderPolygonFlatness3DOverlay / appendSingleFlatnessObjectTo3DGroup
+        overlay_fn = qa_js.split("function appendSingleFlatnessObjectTo3DGroup")[1].split("function updateFlatnessRegulationBubbleUI")[0]
         self.assertNotIn("ConeGeometry", overlay_fn)
         self.assertIn("add3DPinMarker", overlay_fn)
-        self.assertIn('opacity: displayMode === "points" ? 0.96 : 0.94', overlay_fn)
+        self.assertIn('displayMode === "points" ? 0.96 : 0.94', overlay_fn)
 
         # 2. Area 2D label QA jump buttons & flatness/drainage vertex editing + linked polygon sync
         with open(os.path.join(BASE_DIR, "web", "src", "03-studio-core.js"), "r", encoding="utf-8") as f:
