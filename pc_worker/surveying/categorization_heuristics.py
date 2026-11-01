@@ -1047,6 +1047,10 @@ class CategorizationHeuristicsMixin:
         # CATEGORY 2: TREES + TRUNK DBH AT 1.3M (喬木與胸徑 DBH)
         # =================================================================================
         all_xy_tree = cKDTree(centroids[:, :2])
+        gb_diff = rgb[:, 1] - rgb[:, 2]
+        gr_diff = rgb[:, 1] - rgb[:, 0]
+        # True chlorophyll foliage absorbs blue and red light (rejects blue/cyan basketball court poles & cool-shadowed concrete columns where B >= G)
+        fol_tri_mask = (exg >= 0.038) & ((gb_diff >= 0.012) | ((exg >= 0.065) & (gr_diff >= 0.030)))
 
         def _has_neck_gap_bollard_at(cx_q: float, cy_q: float, th_g_q: float, idx_arr_q: np.ndarray, c_q: np.ndarray) -> bool:
             dt_q = np.hypot(c_q[:, 0] - cx_q, c_q[:, 1] - cy_q)
@@ -1107,7 +1111,7 @@ class CategorizationHeuristicsMixin:
                 & (~water_tank_occ_grid)
                 & (~bollard_occ_grid)
                 & (~coplanar_wall_grid)
-                & (hag_tree_grid >= 1.55)
+                & (hag_tree_grid >= 2.20)
                 & (hag_tree_grid <= 16.5)
             )
             st_lbl, n_st = nd_label(st_occ)
@@ -1153,20 +1157,26 @@ class CategorizationHeuristicsMixin:
                     med_sc_xy = np.median(pts_sc, axis=0)
                     sc_e, sc_n = float(med_sc_xy[0]), float(med_sc_xy[1])
                     near_sc = all_xy_tree.query_ball_point([sc_e, sc_n], r=2.65)
-                    if len(near_sc) >= 20:
-                        idx_sc = np.array(near_sc, dtype=np.int32)
-                        c_sc = centroids[idx_sc]
-                        d_sc = np.hypot(c_sc[:, 0] - sc_e, c_sc[:, 1] - sc_n)
-                        pi_sc = int(np.clip((sc_e - e_min) / res, 0, nx - 1))
-                        pj_sc = int(np.clip((sc_n - n_min) / res, 0, ny - 1))
-                        ann_sc = (d_sc >= 1.15) & (d_sc <= 2.65) & (nz_abs[idx_sc] >= 0.78) & ((tri_hag[idx_sc] <= 1.80) | (tri_hag_local[idx_sc] <= 0.45))
-                        if np.count_nonzero(ann_sc) < 5:
-                            ann_sc = (d_sc >= 1.15) & (d_sc <= 2.65) & (nz_abs[idx_sc] >= 0.78)
-                        z_ann_sc = c_sc[ann_sc, 2] if np.count_nonzero(ann_sc) >= 5 else c_sc[:, 2]
-                        p15_sc, p30_sc, p85_sc = np.percentile(z_ann_sc, [15.0, 30.0, 85.0])
-                        th_g_sc = min(float(h_dtm_local[pj_sc, pi_sc]), float(p30_sc)) if (p85_sc - p15_sc) <= 1.55 else float(np.percentile(z_ann_sc, 65.0))
-                        if _has_neck_gap_bollard_at(sc_e, sc_n, th_g_sc, idx_sc, c_sc):
-                            continue
+                    if len(near_sc) < 20:
+                        continue
+                    idx_sc = np.array(near_sc, dtype=np.int32)
+                    c_sc = centroids[idx_sc]
+                    d_sc = np.hypot(c_sc[:, 0] - sc_e, c_sc[:, 1] - sc_n)
+                    pi_sc = int(np.clip((sc_e - e_min) / res, 0, nx - 1))
+                    pj_sc = int(np.clip((sc_n - n_min) / res, 0, ny - 1))
+                    ann_sc = (d_sc >= 1.15) & (d_sc <= 2.65) & (nz_abs[idx_sc] >= 0.78) & ((tri_hag[idx_sc] <= 1.80) | (tri_hag_local[idx_sc] <= 0.45))
+                    if np.count_nonzero(ann_sc) < 5:
+                        ann_sc = (d_sc >= 1.15) & (d_sc <= 2.65) & (nz_abs[idx_sc] >= 0.78)
+                    z_ann_sc = c_sc[ann_sc, 2] if np.count_nonzero(ann_sc) >= 5 else c_sc[:, 2]
+                    p15_sc, p30_sc, p85_sc = np.percentile(z_ann_sc, [15.0, 30.0, 85.0])
+                    th_g_sc = min(float(h_dtm_local[pj_sc, pi_sc]), float(p30_sc)) if (p85_sc - p15_sc) <= 1.55 else float(np.percentile(z_ann_sc, 65.0))
+                    if _has_neck_gap_bollard_at(sc_e, sc_n, th_g_sc, idx_sc, c_sc):
+                        continue
+                    # Require genuine chlorophyll foliage crown above the candidate stem before boosting CHM peak
+                    z_rel_sc = c_sc[:, 2] - th_g_sc
+                    cr_sc_m = (d_sc <= 1.85) & (z_rel_sc >= 1.80)
+                    if int(np.count_nonzero(cr_sc_m & fol_tri_mask[idx_sc])) < 14:
+                        continue
                     pruned_stem_mask |= (st_lbl == sc_id)
                     verified_stem_centers.append((sc_e, sc_n))
 
@@ -1176,8 +1186,8 @@ class CategorizationHeuristicsMixin:
         local_max = (
             (chm_smooth == maximum_filter(chm_smooth, size=(win_pk, win_pk)))
             & canopy_mask
-            & (chm_smooth >= 1.55)
-            & (hag_tree_grid >= 1.55)
+            & (chm_smooth >= 2.00)
+            & (hag_tree_grid >= 2.10)
             & (hag_tree_grid <= 16.5)
         )
         # Ensure every verified cylindrical stem cluster contributes its local height apex and is never suppressed by Gaussian smoothing
@@ -1314,6 +1324,8 @@ class CategorizationHeuristicsMixin:
                         has_neck_gap_init = _has_neck_gap_bollard_at(te, tn, th_ground, idx_arr26, c26)
                 if has_neck_gap_init:
                     continue
+                if tree_h < 2.20:
+                    continue
 
                 if n_stem_11 >= 8:
                     med_st = np.median(c26[stem_11_mask, :2], axis=0)
@@ -1333,9 +1345,9 @@ class CategorizationHeuristicsMixin:
                     med_ts_exg = float(np.median(exg[ts_idx_pre]))
 
                 can_26_mask = (c26[:, 2] >= th_ground + 1.80) & (d26 <= 2.40)
-                n_grn_26 = int(np.count_nonzero(can_26_mask & (exg[idx_arr26] >= 0.038)))
+                n_grn_26 = int(np.count_nonzero(can_26_mask & fol_tri_mask[idx_arr26]))
                 grn_frac_26 = float(n_grn_26 / max(int(np.count_nonzero(can_26_mask)), 1))
-                # Allow tall green crowns whose canopy apex is horizontally offset from their trunk to reach bh_tree trunk search (line 1380),
+                # Allow tall green crowns whose canopy apex is horizontally offset from their trunk to reach bh_tree trunk search,
                 # where strict "No Trunk = No Tree" 3D cylinder verification (n_ts_tight >= 8, n_low_trunk >= 3, n_mid_trunk >= 3) is enforced on the centered trunk!
                 has_dense_green_crown = (
                     (tree_h >= 5.5)
@@ -1419,36 +1431,21 @@ class CategorizationHeuristicsMixin:
                     if (med_ts_rb >= 0.038 and med_ts_sat >= 0.118) or med_ts_exg >= 0.028:
                         trunk_is_warm_or_green = True
 
-                # Rule 3: Mandatory Green Foliage Directly Above Trunk (eliminates bare poles & utility posts near distant trees)
+                # Rule 3: Mandatory Chlorophyll Green Foliage Directly Above Trunk (eliminates bare poles, porch columns & basketball hoop posts)
                 core_can_m = (dt_26 <= 0.95) & (z_rel_26 >= 1.30)
                 n_core_can = int(np.count_nonzero(core_can_m))
-                core_grn_m = core_can_m & (exg[idx_arr26] >= 0.036)
+                core_grn_m = core_can_m & fol_tri_mask[idx_arr26]
                 n_core_grn = int(np.count_nonzero(core_grn_m))
                 grn_frac_core = float(n_core_grn / max(n_core_can, 1))
                 p75_core_exg = float(np.percentile(exg[idx_arr26[core_can_m]], 75.0)) if n_core_can >= 4 else 0.0
 
-                grn_frac_el = float(np.mean(exg[steep_idx] >= 0.035))
                 has_valid_green_crown = (
                     (n_core_grn >= 16 and grn_frac_core >= 0.30 and p75_core_exg >= 0.046)
                     or (tree_h >= 5.0 and n_grn_26 >= 65 and grn_frac_26 >= 0.42 and n_core_grn >= 10)
+                    or (is_verified_cyl and n_grn_26 >= 24 and grn_frac_26 >= 0.34 and n_core_grn >= 8 and p75_core_exg >= 0.042)
                 )
                 if not has_valid_green_crown:
-                    # Allow dormant/pruned woody park tree when verified cylindrical or warm brown cylindrical stem
-                    med_rb_el = float(np.median(rb_diff[steep_idx]))
-                    min_w_d = min(
-                        (math.hypot(t_cx - bp[0], t_cy - bp[1]) for wl_o in walls_list[:38] for bp in (wl_o.get("base_polyline_twd97") or [])),
-                        default=999.0,
-                    )
-                    is_warm_cyl_stem = is_verified_cyl or (n_trunk_steep >= 8 and med_ts_rb >= 0.045 and r2_ts <= 0.22)
-                    if (
-                        not is_warm_cyl_stem
-                        or r_conc_el > 0.26
-                        or (med_rb_el < 0.042 and p75_core_exg < 0.025)
-                        or n_steep_el < 24
-                        or min_w_d < 3.2
-                        or (n_core_grn < 4 and med_rb_el < 0.045)
-                    ):
-                        continue
+                    continue
 
                 # Rule 4: Reject Wide Low Bollards / Bases (e.g. RosePark T28)
                 base_low_m = (dt_26 <= 1.05) & (z_rel_26 >= 0.20) & (z_rel_26 <= 0.85)
@@ -1461,7 +1458,7 @@ class CategorizationHeuristicsMixin:
                     if r_p85_base > 0.72 and med_b_sat < 0.155 and med_b_nz > 0.38 and int(np.count_nonzero(upper_stem_m)) < 14:
                         continue
 
-                # Young / small tree verification (1.60m <= tree_h < 3.5m)
+                # Young / small tree verification (2.20m <= tree_h < 3.5m)
                 if tree_h < 3.5:
                     if not (is_verified_cyl or (trunk_is_warm_or_green and n_core_grn >= 12 and grn_frac_core >= 0.30)):
                         continue
@@ -1499,7 +1496,7 @@ class CategorizationHeuristicsMixin:
             dbh_cm = 0.0
             dbh_method = "none"
             trunk_e, trunk_n = pre_stem_xy if pre_stem_xy is not None else (te, tn)
-            if tree_h >= 1.60 and bh_tree is not None:
+            if tree_h >= 2.20 and bh_tree is not None:
                 r_bh_q = 0.78 if pre_stem_xy is not None else min(2.2, max(1.05, crown_diam_m * 0.42))
                 cand_idxs = bh_tree.query_ball_point([trunk_e, trunk_n], r=r_bh_q)
                 if len(cand_idxs) >= 6:
@@ -1563,7 +1560,7 @@ class CategorizationHeuristicsMixin:
             tj_chk = int(np.clip((trunk_n - n_min) / res, 0, ny - 1))
             if bldg_occ_grid[tj_chk, ti_chk] or coplanar_wall_grid[tj_chk, ti_chk]:
                 continue
-            # Strict "No Trunk = No Tree" verification on final (trunk_e, trunk_n)
+            # Strict "No Trunk = No Tree" & Chlorophyll Crown vs. Building Pillar / Court Pole verification on final (trunk_e, trunk_n)
             if all_xy_tree is not None:
                 if _has_neck_gap_bollard_at(trunk_e, trunk_n, th_ground, idx_arr26, c26):
                     continue
@@ -1578,6 +1575,47 @@ class CategorizationHeuristicsMixin:
                 n_mid_trunk = int(np.count_nonzero(mid_trunk_m))
                 if n_ts_tight < 8 or n_low_trunk < 3 or n_mid_trunk < 3:
                     continue
+                # Verify 3D chlorophyll crown above centered trunk and reject porch columns, building facade pillars & painted basketball hoop poles
+                cr_fin_m = (dt_fin <= 1.85) & (z_rel_fin >= 1.80) & (z_rel_fin <= tree_h + 1.50)
+                if not np.any(cr_fin_m):
+                    continue
+                cr_idx = idx_arr26[cr_fin_m]
+                cr_fol = fol_tri_mask[cr_idx]
+                n_cr_fol = int(np.count_nonzero(cr_fol))
+                cr_tot_a = float(area_3d[cr_idx].sum())
+                cr_fol_a = float(area_3d[cr_idx[cr_fol]].sum())
+                cr_fol_frac = cr_fol_a / max(cr_tot_a, 1e-5)
+                med_cr_exg = float(np.median(exg[cr_idx]))
+                med_cr_gb = float(np.median(gb_diff[cr_idx]))
+                if (
+                    n_cr_fol < 18
+                    or cr_fol_frac < 0.34
+                    or med_cr_exg < 0.025
+                    or (med_cr_gb < 0.010 and med_cr_exg < 0.065)
+                ):
+                    continue
+                ic_fin_m = (dt_fin <= 1.15) & (z_rel_fin >= 1.95) & (z_rel_fin <= tree_h + 1.50)
+                if not np.any(ic_fin_m):
+                    continue
+                ic_idx = idx_arr26[ic_fin_m]
+                ic_fol = fol_tri_mask[ic_idx]
+                n_ic_fol = int(np.count_nonzero(ic_fol))
+                ic_fol_frac = float(area_3d[ic_idx[ic_fol]].sum()) / max(float(area_3d[ic_idx].sum()), 1e-5)
+                if n_ic_fol < 6 and ic_fol_frac < 0.25:
+                    continue
+                upper26_m = z_rel_fin >= 2.00
+                if np.any(upper26_m):
+                    u26_idx = idx_arr26[upper26_m]
+                    u26_non_fol = ~fol_tri_mask[u26_idx]
+                    roof_soffit_a = float(area_3d[u26_idx[u26_non_fol & (nz_abs[u26_idx] >= 0.80)]].sum())
+                    wall_facade_a = float(area_3d[u26_idx[u26_non_fol & (nz_abs[u26_idx] <= 0.35)]].sum())
+                    bldg_to_fol_ratio = (roof_soffit_a + wall_facade_a) / (cr_fol_a + 0.5)
+                    if (
+                        (roof_soffit_a > 4.2 and cr_fol_frac < 0.56)
+                        or (wall_facade_a > 9.5 and cr_fol_frac < 0.52)
+                        or (bldg_to_fol_ratio > 1.35 and cr_fol_frac < 0.55 and med_cr_exg < 0.055)
+                    ):
+                        continue
                 # Fallback DBH from verified tight 3D trunk cylinder if bh_tree query had < 3 sectors
                 if dbh_cm <= 0.0:
                     pts_ts_xy = c26[ts_tight_m, :2]

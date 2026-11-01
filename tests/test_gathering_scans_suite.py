@@ -2865,143 +2865,40 @@ class GatheringScansTestSuite(unittest.TestCase):
         emoji_pattern = re.compile(r"[\U00010000-\U0010ffff]|[\u2600-\u27bf]|[\u2300-\u23ff]|[\u2b50-\u2b55]|[\u203c-\u2049]")
         self.assertEqual(len(emoji_pattern.findall(js09)), 0, "Zero Unicode emojis allowed in 09-construction-survey-and-bim.js")
 
-    def test_37_milestone6_scan_to_bim_fitting_and_exporters(self):
+    def test_37_trees_tool_and_scan_to_bim_removal(self):
         """
-        Milestone 6 Verification: Scan-to-BIM Simplified Classified Geometric Model,
-        Pure Python IFC SPF (ISO-10303-21) Exporter, 3D DXF Exporter, OBJ/MTL Exporter,
-        and Frontend Three.js Studio Module.
+        Verify Scan-to-BIM is completely removed and replaced with a dedicated
+        Trees & 1.3m Trunk DBH tool across Studio UI and backend heuristics.
         """
-        from pc_worker.surveying_engine import SurveyingEngine
-        from pc_worker.config import REPORTS_DIR
-        survey = SurveyingEngine(self.db)
-        sid = "quchi_20261005_merged"
-
-        # 1. Verify primitive fitting with mock classification payload
-        mock_objects = {
-            "ok": True,
-            "walls": [{
-                "id": "W1",
-                "length_m": 20.0,
-                "mean_height_m": 2.5,
-                "base_polyline_twd97": [[304910.0, 2757050.0, 99.0], [304930.0, 2757050.0, 99.0]],
-                "top_polyline_twd97": [[304910.0, 2757050.0, 101.5], [304930.0, 2757050.0, 101.5]],
-            }],
-            "trees": [{
-                "id": "T1",
-                "height_m": 7.5,
-                "dbh_cm": 35.0,
-                "trunk_twd97": [304940.0, 2757060.0, 102.0],
-            }],
-            "roads": [{
-                "id": "R1",
-                "planar_area_m2": 150.0,
-                "boundary_twd97": [
-                    [304900.0, 2757040.0, 98.0],
-                    [304950.0, 2757040.0, 98.0],
-                    [304950.0, 2757045.0, 98.0],
-                    [304900.0, 2757045.0, 98.0],
-                    [304900.0, 2757040.0, 98.0],
-                ],
-            }],
-            "water_bodies": [{
-                "id": "WB1",
-                "planar_area_m2": 80.0,
-                "water_level_twvd2001_m": 95.0,
-                "boundary_twd97": [
-                    [304910.0, 2757080.0, 95.0],
-                    [304930.0, 2757080.0, 95.0],
-                    [304930.0, 2757100.0, 95.0],
-                    [304910.0, 2757100.0, 95.0],
-                    [304910.0, 2757080.0, 95.0],
-                ],
-            }],
-            "pipes": [{
-                "id": "P1",
-                "start": [304915.0, 2757055.0, 97.0],
-                "end": [304935.0, 2757055.0, 96.8],
-                "diameter_m": 0.6,
-            }],
-            "buildings": [{
-                "id": "B1",
-                "center_twd97": [304965.0, 2757075.0, 105.0],
-                "dx": 15.0,
-                "dy": 12.0,
-                "height_m": 6.0,
-            }],
-            "anchor_twd97": {"e": 304900.0, "n": 2757000.0, "h": 90.0},
-        }
-
-        res_fit = survey.fit_scan_to_bim_primitives({
-            "scan_id": sid,
-            "classified_objects": mock_objects,
-            "wall_thickness_m": 0.25,
-        })
-        self.assertTrue(res_fit.get("ok"))
-        self.assertIn("primitives", res_fit)
-        prims = res_fit["primitives"]
-        self.assertGreaterEqual(len(prims), 6)
-        cat_set = {p["category"] for p in prims}
-        self.assertTrue({"walls", "trees", "roads", "water", "pipes", "buildings"}.issubset(cat_set))
-
-        # 2. Pure Python IFC, DXF, OBJ/MTL exporters
-        res_exp = survey.export_scan_to_bim({
-            "scan_id": sid,
-            "primitives": prims,
-            "formats": ["ifc", "dxf", "obj"],
-        })
-        self.assertTrue(res_exp.get("ok"))
-        self.assertIn("downloads", res_exp)
-        self.assertIn("ifc_url", res_exp["downloads"])
-        self.assertIn("dxf_url", res_exp["downloads"])
-        self.assertIn("obj_url", res_exp["downloads"])
-        self.assertIn("mtl_url", res_exp["downloads"])
-
-        for fp in res_exp.get("written_files", []):
-            self.assertTrue(os.path.isfile(fp))
-            self.assertGreater(os.path.getsize(fp), 0)
-
-        # Verify IFC content
-        ifc_path = next(fp for fp in res_exp["written_files"] if fp.endswith(".ifc"))
-        with open(ifc_path, "r", encoding="utf-8") as f:
-            ifc_content = f.read()
-        self.assertIn("ISO-10303-21;", ifc_content)
-        self.assertIn("FILE_SCHEMA(('IFC4'));", ifc_content)
-        self.assertIn("IFCWALL", ifc_content)
-        self.assertIn("IFCGEOGRAPHICELEMENT", ifc_content)
-        self.assertIn("IFCBUILDINGELEMENTPROXY", ifc_content)
-        self.assertIn("END-ISO-10303-21;", ifc_content)
-
-        # Verify DXF content
-        dxf_path = next(fp for fp in res_exp["written_files"] if fp.endswith(".dxf"))
-        with open(dxf_path, "r", encoding="utf-8") as f:
-            dxf_content = f.read()
-        self.assertIn("BIM_WALLS", dxf_content)
-        self.assertIn("3DFACE", dxf_content)
-
-        # Verify OBJ content
-        obj_path = next(fp for fp in res_exp["written_files"] if fp.endswith(".obj"))
-        with open(obj_path, "r", encoding="utf-8") as f:
-            obj_content = f.read()
-        self.assertIn("mtllib", obj_content)
-        self.assertIn("usemtl Mat_Wall", obj_content)
-
-        # 5. Frontend Module 11 validation (registration, zero emojis, 1-word buttons)
-        js11_path = os.path.join(BASE_DIR, "web", "src", "11-scan-to-bim-primitives.js")
-        self.assertTrue(os.path.isfile(js11_path))
-        with open(js11_path, "r", encoding="utf-8") as f:
-            js11 = f.read()
-        self.assertIn("openScanToBimInspector", js11)
-        self.assertIn("renderBimThreeMeshes", js11)
-
-        emoji_pattern = re.compile(r"[\U00010000-\U0010ffff]|[\u2600-\u27bf]|[\u2300-\u23ff]|[\u2b50-\u2b55]|[\u203c-\u2049]")
-        self.assertEqual(len(emoji_pattern.findall(js11)), 0, "Zero Unicode emojis allowed in 11-scan-to-bim-primitives.js")
-
         with open(os.path.join(BASE_DIR, "web", "index.html"), "r", encoding="utf-8") as f:
             index_html = f.read()
         with open(os.path.join(BASE_DIR, "web", "sw.js"), "r", encoding="utf-8") as f:
             sw_js = f.read()
-        self.assertIn("11-scan-to-bim-primitives.js", index_html)
-        self.assertIn("/src/11-scan-to-bim-primitives.js", sw_js)
+        with open(os.path.join(BASE_DIR, "web", "src", "05-studio-civil-inspectors.js"), "r", encoding="utf-8") as f:
+            js05 = f.read()
+        with open(os.path.join(BASE_DIR, "pc_worker", "surveying", "categorization_heuristics.py"), "r", encoding="utf-8") as f:
+            heur_py = f.read()
+
+        # 1. Verify Scan-to-BIM files and UI buttons are removed
+        self.assertFalse(os.path.isfile(os.path.join(BASE_DIR, "web", "src", "11-scan-to-bim-primitives.js")))
+        self.assertFalse(os.path.isfile(os.path.join(BASE_DIR, "pc_worker", "surveying", "scan_to_bim.py")))
+        self.assertNotIn("11-scan-to-bim-primitives.js", index_html)
+        self.assertNotIn("/src/11-scan-to-bim-primitives.js", sw_js)
+        self.assertNotIn('id="btnStudioBim"', index_html)
+        self.assertNotIn("btnCatLaunchScanToBim", js05)
+
+        # 2. Verify dedicated Trees & 1.3m DBH dock tool and inspector
+        self.assertIn('id="btnDockCategorize"', index_html)
+        self.assertIn('data-i18n-zh="樹木" data-i18n-en="Trees"', index_html)
+        self.assertIn("🌳 AI Trees & 1.3m Trunk DBH", js05)
+        self.assertIn("STATE.categorizeFilters = { roads: false, trees: true, water: false, walls: false, stockpiles: false };", js05)
+
+        # 3. Verify chlorophyll blue-absorption (gb_diff) and building column / court pole rejection in heuristics
+        self.assertIn("gb_diff = rgb[:, 1] - rgb[:, 2]", heur_py)
+        self.assertIn("fol_tri_mask = (exg >= 0.038)", heur_py)
+        self.assertIn("roof_soffit_a =", heur_py)
+        self.assertIn("wall_facade_a =", heur_py)
+        self.assertIn("bldg_to_fol_ratio =", heur_py)
 
     def test_38_milestone7_public_utilities_gis_and_gml_integration(self):
         """
@@ -3275,10 +3172,11 @@ class GatheringScansTestSuite(unittest.TestCase):
             "btnDockFlatten",
             "btnDockBookmarks",
             "btnDockUtilities",
-            "btnStudioBim",
+            "btnDockCategorize",
             "btnCompareDeltaV",
         ):
             self.assertIn(f'id="{btn_id}"', index_html)
+        self.assertNotIn('id="btnStudioBim"', index_html)
 
         with open(os.path.join(BASE_DIR, "web", "src", "10-construction-qa-and-stakeout.js"), "r", encoding="utf-8") as f:
             js10 = f.read()
@@ -3314,14 +3212,6 @@ class GatheringScansTestSuite(unittest.TestCase):
         self.assertIn('z_item.get("polygon_native")', opt_py)
         self.assertIn('z_item.get("keep_residual_ratio")', opt_py)
         self.assertIn('z_item.get("max_dev_m")', opt_py)
-
-        # 5. Gemini AI Scan-to-BIM engine presence & zero deprecated 2.5 models
-        with open(os.path.join(BASE_DIR, "pc_worker", "surveying", "scan_to_bim.py"), "r", encoding="utf-8") as f:
-            bim_py = f.read()
-        self.assertIn("gemini-3.8-flash", bim_py)
-        self.assertIn("gemini-3.5-flash-lite", bim_py)
-        self.assertNotIn("gemini-2.5-", bim_py)
-        self.assertIn("_run_gemini_ai_bim_reasoning", bim_py)
 
     def test_39_utilities_zero_synthetic_layer_isolation_master_cache_and_library_exclusion(self):
         """Verify (1) Zero synthetic scan_* pipes & strict API vs User/Scan-to-BIM layer isolation,
@@ -3399,22 +3289,10 @@ class GatheringScansTestSuite(unittest.TestCase):
         self.assertIn("!isLibraryFolderGroup(STATE.activeProjectGroup)", js01)
         self.assertIn("const mapOnlyScans = getMapScansOnly(STATE.scans);", js01)
 
-    def test_41_scan_to_bim_v4_daan_ground_truth_and_3d_exports(self):
+    def test_41_daan_ground_truth_and_multi_scan_tree_dbh_precision(self):
         """
-        Verify Scan-to-BIM & Classification v4 Ground-Truth Parity and 3D Solid Exports:
-        1. Both Daan Park scans (`edited_daan_cleared_292061` and `catch_DaAn`) extract:
-           - 3 circular pavilion roofs (`B1` Green, `B2` Yellow, `B3` Pink, `subtype == 'circular_roof'`, `IfcRoof`)
-           - 3 coupled cylindrical walls (`CW_B1`, `CW_B2`, `CW_B3`, `subtype == 'cylindrical_wall'`, `IfcWall`)
-           - 1 circular wooden slat fence (`CF1`, `subtype == 'circular_wooden_fence'`, `IfcRailing`)
-           - 4 cylindrical water storage tanks (`WT1..WT4`, `subtype == 'water_tank'`, `IfcTank`)
-           - >= 6 tubular pipes & steel pipe trusses (`IfcFlowSegment`)
-        2. Non-Daan benchmark scans (`QuChi261016_Trees`, `rosepark_20260918_merged`, `ntudorm_20260915_baseline`,
-           `edited_qihu_unified_merged_scan_4_scans__edited_372953`) have 0 false-positive water tanks (`water_tanks == []`)
-           and 0 false-positive forest/subterranean pipes (`pipes == []`).
-        3. `fit_scan_to_bim_primitives` on Daan Park generates watertight 3D solid meshes (`vertices_twd97`, `faces`),
-           and exports valid IFC4 SPF (`IFCFACETEDBREP`), 3D DXF (`3DFACE`), and Wavefront OBJ+MTL.
-        4. Studio 3D BIM UI (`11-scan-to-bim-primitives.js`) implements 50% scan mesh transparency (`setScanMeshOpacityForBim(0.50)`),
-           100% opacity restoration on close (`setScanMeshOpacityForBim(1.0)`), `#chkKeepBimOverlay`, and `normalizeBimCat`.
+        Verify Daan Park 3D geometric ground-truth parity and multi-scan 3D tree & 1.3m DBH trunk ring precision
+        (zero false-positive porch columns, building pillars, or painted basketball court poles):
         """
         from pc_worker.surveying_engine import SurveyingEngine
 
@@ -3444,7 +3322,7 @@ class GatheringScansTestSuite(unittest.TestCase):
             pipes = cat_res.get("pipes") or []
             self.assertGreaterEqual(len(pipes), 6, f"Expected >= 6 water manifold & truss pipes on {daan_sid}")
 
-        # Verify zero false-positive water tanks or fake pipes on non-Daan benchmark scans
+        # Verify zero false-positive water tanks or fake pipes and clean 1.3m DBH tree detection on benchmark scans
         for non_daan_sid in (
             "QuChi261016_Trees",
             "rosepark_20260918_merged",
@@ -3456,48 +3334,12 @@ class GatheringScansTestSuite(unittest.TestCase):
             self.assertEqual(len(nd_res.get("pipes") or []), 0, f"Expected 0 pipes on {non_daan_sid}")
             nd_circ = [b for b in (nd_res.get("buildings") or []) if b.get("subtype") == "circular_roof"]
             self.assertEqual(len(nd_circ), 0, f"Expected 0 circular roofs on {non_daan_sid}")
-
-        # Verify Scan-to-BIM 3D Solid Primitives & IFC4 / DXF / OBJ Exports on Daan Park
-        bim_res = survey.fit_scan_to_bim_primitives({"scan_id": "edited_daan_cleared_292061"})
-        self.assertEqual(bim_res.get("status"), "ok")
-        prims = bim_res.get("primitives") or []
-        self.assertGreaterEqual(len(prims), 20)
-        cats_present = {p.get("category") for p in prims}
-        for req_cat in ("buildings", "walls", "tanks", "pipes", "roads"):
-            self.assertIn(req_cat, cats_present, f"Missing BIM category {req_cat} on Daan Park")
-
-        bim_full = survey.fit_scan_to_bim_primitives({"scan_id": "catch_DaAn"})
-        self.assertIn("trees", {p.get("category") for p in (bim_full.get("primitives") or [])})
-
-        res_exp = survey.export_scan_to_bim({
-            "scan_id": "edited_daan_cleared_292061",
-            "formats": ["ifc", "dxf", "obj"],
-        })
-        self.assertTrue(res_exp.get("ok"))
-        written = res_exp.get("written_files") or []
-        ifc_path = next(fp for fp in written if fp.endswith(".ifc"))
-        dxf_path = next(fp for fp in written if fp.endswith(".dxf"))
-        obj_path = next(fp for fp in written if fp.endswith(".obj"))
-
-        with open(ifc_path, "r", encoding="utf-8") as f:
-            ifc_txt = f.read()
-        self.assertIn("IFCFACETEDBREP", ifc_txt)
-        self.assertIn("IFCTANK", ifc_txt)
-        self.assertIn("IFCROOF", ifc_txt)
-
-        with open(dxf_path, "r", encoding="utf-8") as f:
-            dxf_txt = f.read()
-        self.assertIn("3DFACE", dxf_txt)
-
-        with open(obj_path, "r", encoding="utf-8") as f:
-            obj_txt = f.read()
-        self.assertIn("mtllib", obj_txt)
-
-        with open(os.path.join(BASE_DIR, "web", "src", "11-scan-to-bim-primitives.js"), "r", encoding="utf-8") as f:
-            js11 = f.read()
-        self.assertIn("setScanMeshOpacityForBim", js11)
-        self.assertIn("chkKeepBimOverlay", js11)
-        self.assertIn("normalizeBimCat", js11)
+            trees = nd_res.get("trees") or []
+            self.assertGreater(len(trees), 0, f"Expected verified trees on {non_daan_sid}")
+            for tr_o in trees:
+                self.assertGreaterEqual(float(tr_o.get("height_m") or 0.0), 2.2)
+                self.assertGreaterEqual(float(tr_o.get("dbh_cm") or 0.0), 7.5)
+                self.assertTrue(tr_o.get("trunk_verified_3d"))
 
 
 if __name__ == "__main__":

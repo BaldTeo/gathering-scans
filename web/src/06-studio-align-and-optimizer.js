@@ -3925,7 +3925,6 @@
         "flatten_zone",
         "bookmarks",
         "utilities",
-        "bim",
         "comments",
         "optimizer",
         "crs",
@@ -4070,12 +4069,6 @@
           }
           return;
         }
-        if (tool === "bim" && isPanelOpen) {
-          if (typeof closeSidePanel === "function") {
-            closeSidePanel();
-          }
-          return;
-        }
         if (
           STATE.measurePoints.length > 0 ||
           ["distance", "area", "angle", "coordinates", "laser"].includes(tool) ||
@@ -4145,7 +4138,6 @@
       else if (tool === "trench" && typeof window.openUtilityTracerInspector === "function") window.openUtilityTracerInspector();
       else if (tool === "stakeout" && typeof window.openRtkStakeoutInspector === "function") window.openRtkStakeoutInspector();
       else if (tool === "utilities" && typeof window.openUtilitiesInspector === "function") window.openUtilitiesInspector();
-      else if (tool === "bim" && typeof openScanToBimInspector === "function") openScanToBimInspector();
       else if (tool === "bookmarks" && typeof openSavedMeasurementsInspector === "function") openSavedMeasurementsInspector();
       else if (tool === "flatten_zone") {
         STATE.flattenDraftPoints = [];

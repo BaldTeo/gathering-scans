@@ -232,7 +232,6 @@
     }
 
     mat.userData._lastBrightness = b;
-    if (typeof window.__applyBimOpacityToMaterial === "function") window.__applyBimOpacityToMaterial(mat);
   }
 
   function setStudioScanBrightness(val) {
@@ -1774,7 +1773,6 @@
           ) {
             renderCategorize3DOverlays(STATE.lastCategorizeResult);
           }
-          if (typeof window.__onBimTilesetLoaded === "function") window.__onBimTilesetLoaded(scan);
           if (
             (STATE.activeTool === "photos" || STATE.activeTool === "rtk") &&
             typeof loadAndRenderScanCameraTrajectory3D === "function"
@@ -4007,7 +4005,6 @@
     }
     if (toolName !== "profile" && typeof clearProfileVisualsOnly === "function") clearProfileVisualsOnly();
     if (toolName !== "utilities" && typeof window.onUtilitiesPanelClosed === "function") window.onUtilitiesPanelClosed();
-    if (toolName !== "bim" && typeof window.onBimPanelClosed === "function") window.onBimPanelClosed();
     if (typeof window.onQaPanelsClosed === "function") window.onQaPanelsClosed(toolName);
     if (STATE.activeTool === "photos" && toolName !== "photos" && typeof clearPhotoTargetVisuals3D === "function") {
       clearPhotoTargetVisuals3D(true);

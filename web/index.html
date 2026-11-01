@@ -18,8 +18,8 @@
   <meta name="twitter:image" content="https://scans.gatheren.cloud/assets/gathering_cloud_logo.png" />
   <!-- GS_SHARE_OG_END -->
   <link rel="icon" type="image/png" href="/assets/gathering_cloud_logo.png" />
-  <link rel="stylesheet" href="/app.css?v=20261101_v246" />
-  <link rel="stylesheet" href="/survey-bim.css?v=20261101_v246" />
+  <link rel="stylesheet" href="/app.css?v=20261101_v247" />
+  <link rel="stylesheet" href="/survey-bim.css?v=20261101_v247" />
   <script src="https://accounts.google.com/gsi/client" async defer></script>
 
 </head>
@@ -722,8 +722,8 @@
               <polyline points="6 9 12 15 18 9"/>
             </svg>
           </a>
-          <button type="button" class="btn-xs" id="btnStudioToggleCategorizeVis" title="AI 地物分類已儲存於伺服器，點擊切換顯示 3D 圖層" data-i18n-title-zh="AI 地物分類已儲存於伺服器，點擊切換顯示 3D 圖層" data-i18n-title-en="AI Classification Saved on Server: Click to Toggle 3D Overlays" style="display:none;gap:4px;white-space:nowrap;flex-shrink:0;">
-            <span id="lblStudioToggleCategorizeVis">👁️‍🗨️ 分類</span>
+          <button type="button" class="btn-xs" id="btnStudioToggleCategorizeVis" title="AI 喬木與胸徑 (DBH) 已儲存於伺服器，點擊切換顯示 3D 樹木圖層" data-i18n-title-zh="AI 喬木與胸徑 (DBH) 已儲存於伺服器，點擊切換顯示 3D 樹木圖層" data-i18n-title-en="AI Trees &amp; DBH Saved on Server: Click to Toggle 3D Tree Overlays" style="display:none;gap:4px;white-space:nowrap;flex-shrink:0;">
+            <span id="lblStudioToggleCategorizeVis">🌳 樹木</span>
           </button>
           <button type="button" class="btn-xs" id="btnStudioToggleCategorizeLabels" title="切換顯示或隱藏 2D 浮動標籤與 3D 標註" data-i18n-title-zh="切換顯示或隱藏 2D 浮動標籤與 3D 標註" data-i18n-title-en="Toggle 2D Floating Labels &amp; 3D Comment Pins" style="display:inline-flex;gap:4px;white-space:nowrap;flex-shrink:0;">
             <span id="lblStudioToggleCategorizeLabels">🏷️ 標籤</span>
@@ -967,17 +967,17 @@
           <span class="bim-dock-label" data-i18n-zh="照片" data-i18n-en="Photos">照片</span>
         </button>
 
-        <!-- 10b. AI Surface & Object Categorization (Roads, Trees DBH, Water Voids, Walls) -->
-        <button type="button" class="bim-dock-btn autodesk-measure-btn" id="btnDockCategorize" data-tool="categorize" data-dock="categorize" title="AI 地物與表面自動分類：道路、樹木胸徑、水體空洞、圍牆" data-i18n-title-zh="AI 地物與表面自動分類：道路、樹木胸徑、水體空洞、圍牆" data-i18n-title-en="AI Surface &amp; Object Categorization: Roads, Trees DBH, Water Voids, Walls" aria-label="AI Surface Categorization">
+        <!-- 10b. AI Tree & 1.3m Breast-Height Trunk DBH Detection -->
+        <button type="button" class="bim-dock-btn autodesk-measure-btn" id="btnDockCategorize" data-tool="categorize" data-dock="categorize" title="AI 喬木與 1.3m 胸高直徑 (DBH) 自動偵測與量測" data-i18n-title-zh="AI 喬木與 1.3m 胸高直徑 (DBH) 自動偵測與量測" data-i18n-title-en="AI Tree &amp; 1.3m Breast-Height Trunk DBH Detection" aria-label="AI Trees &amp; DBH">
           <div class="bim-dock-icon" style="position:relative;">
-            <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.8">
-              <polygon points="12 2 2 7 12 12 22 7 12 2"/>
-              <polyline points="2 12 12 17 22 12"/>
-              <polyline points="2 17 12 22 22 17"/>
+            <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M12 3L5 12h4l-2 5h10l-2-5h4L12 3z"/>
+              <line x1="12" y1="17" x2="12" y2="21"/>
+              <line x1="9" y1="21" x2="15" y2="21"/>
             </svg>
-            <span id="lblCategorizeSavedDot" title="AI 分類結果已儲存於伺服器" data-i18n-title-zh="AI 分類結果已儲存於伺服器" data-i18n-title-en="AI Classification Saved on Server" style="display:none;position:absolute;top:-3px;right:-4px;width:8px;height:8px;border-radius:50%;background:#10b981;border:1.5px solid var(--ui-bg-surface);"></span>
+            <span id="lblCategorizeSavedDot" title="AI 樹木與 DBH 結果已儲存於伺服器" data-i18n-title-zh="AI 樹木與 DBH 結果已儲存於伺服器" data-i18n-title-en="AI Trees &amp; DBH Saved on Server" style="display:none;position:absolute;top:-3px;right:-4px;width:8px;height:8px;border-radius:50%;background:#10b981;border:1.5px solid var(--ui-bg-surface);"></span>
           </div>
-          <span class="bim-dock-label" data-i18n-zh="分類" data-i18n-en="Classify">分類</span>
+          <span class="bim-dock-label" data-i18n-zh="樹木" data-i18n-en="Trees">樹木</span>
         </button>
 
         <!-- 10b-2. Centerline Stationing (0K+000) & Average-End-Area (AEA) Cut/Fill Volume -->
@@ -1076,18 +1076,6 @@
             </svg>
           </div>
           <span class="bim-dock-label" data-i18n-zh="管線" data-i18n-en="Utilities">管線</span>
-        </button>
-
-        <!-- 10g. AI-Assisted Scan-to-BIM Simplified Classified Geometric Model -->
-        <button type="button" class="bim-dock-btn autodesk-measure-btn" id="btnStudioBim" data-tool="bim" data-dock="bim" title="Gemini AI 輔助 Scan-to-BIM 幾何實體模型與 IFC/DXF/OBJ 匯出" data-i18n-title-zh="Gemini AI 輔助 Scan-to-BIM 幾何實體模型與 IFC/DXF/OBJ 匯出" data-i18n-title-en="Gemini AI Scan-to-BIM Geometric Primitives &amp; IFC/DXF/OBJ Exporter" aria-label="Scan-to-BIM Primitives">
-          <div class="bim-dock-icon">
-            <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.8">
-              <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/>
-              <polyline points="3.27 6.96 12 12.01 20.73 6.96"/>
-              <line x1="12" y1="22.08" x2="12" y2="12"/>
-            </svg>
-          </div>
-          <span class="bim-dock-label" data-i18n-zh="BIM" data-i18n-en="BIM">BIM</span>
         </button>
 
         <!-- 11. 3D Geo-Comments -->
@@ -2481,25 +2469,24 @@
   <!-- Three.js + 3D Tileset / KTX2 / Meshopt Libraries -->
   <script src="/lib/three.min.js"></script>
   <script src="/lib/OrbitControls.js?v=20261029_v48"></script>
-  <script src="/lib/GLTFLoader.js?v=20261101_v246"></script>
+  <script src="/lib/GLTFLoader.js?v=20261101_v247"></script>
   <script src="/lib/KTX2Loader.js"></script>
   <script src="/lib/meshopt_decoder.js"></script>
   <script src="/lib/3d-tiles-renderer.bundle.js?v=20261031_v218"></script>
 
   <!-- Main GatheringScans Bilingual Translation & Modular Application Logic (< 5,000 lines per module) -->
-  <script src="/i18n.js?v=20261101_v246"></script>
-  <script src="/src/01-core-state.js?v=20261101_v246"></script>
-  <script src="/src/02-map-and-timeline.js?v=20261101_v246"></script>
-  <script src="/src/03-studio-core.js?v=20261101_v246"></script>
-  <script src="/src/04-studio-lasso-and-edits.js?v=20261101_v246"></script>
-  <script src="/src/05-studio-civil-inspectors.js?v=20261101_v246"></script>
-  <script src="/src/06-studio-align-and-optimizer.js?v=20261101_v246"></script>
-  <script src="/src/07-compare-and-queue.js?v=20261101_v246"></script>
-  <script src="/src/08-advanced-surveying-and-qa.js?v=20261101_v246"></script>
-  <script src="/src/09-construction-survey-and-bim.js?v=20261101_v246"></script>
-  <script src="/src/10-construction-qa-and-stakeout.js?v=20261101_v246"></script>
-  <script src="/src/11-scan-to-bim-primitives.js?v=20261101_v246"></script>
-  <script src="/src/12-public-utilities-gis.js?v=20261101_v246"></script>
-  <script src="/app.js?v=20261101_v246"></script>
+  <script src="/i18n.js?v=20261101_v247"></script>
+  <script src="/src/01-core-state.js?v=20261101_v247"></script>
+  <script src="/src/02-map-and-timeline.js?v=20261101_v247"></script>
+  <script src="/src/03-studio-core.js?v=20261101_v247"></script>
+  <script src="/src/04-studio-lasso-and-edits.js?v=20261101_v247"></script>
+  <script src="/src/05-studio-civil-inspectors.js?v=20261101_v247"></script>
+  <script src="/src/06-studio-align-and-optimizer.js?v=20261101_v247"></script>
+  <script src="/src/07-compare-and-queue.js?v=20261101_v247"></script>
+  <script src="/src/08-advanced-surveying-and-qa.js?v=20261101_v247"></script>
+  <script src="/src/09-construction-survey-and-bim.js?v=20261101_v247"></script>
+  <script src="/src/10-construction-qa-and-stakeout.js?v=20261101_v247"></script>
+  <script src="/src/12-public-utilities-gis.js?v=20261101_v247"></script>
+  <script src="/app.js?v=20261101_v247"></script>
 </body>
 </html>

@@ -44,7 +44,6 @@
     const bodyEl = document.getElementById("sidePanelBody");
     if (!panel || !titleEl || !bodyEl) return;
     if (STATE.activeTool !== "utilities" && typeof window.onUtilitiesPanelClosed === "function") window.onUtilitiesPanelClosed();
-    if (STATE.activeTool !== "bim" && typeof window.onBimPanelClosed === "function") window.onBimPanelClosed();
     if (typeof window.onQaPanelsClosed === "function") window.onQaPanelsClosed(STATE.activeTool);
     const tTitle = typeof window.translateDynamicHtml === "function" ? window.translateDynamicHtml(String(title || "")) : String(title || "");
     const tBody = typeof window.translateDynamicHtml === "function" ? window.translateDynamicHtml(String(htmlContent || "")) : String(htmlContent || "");
@@ -89,11 +88,10 @@
       if (typeof syncCategorizeVisibilityUI === "function") syncCategorizeVisibilityUI();
     }
     if (typeof window.onUtilitiesPanelClosed === "function") window.onUtilitiesPanelClosed();
-    if (typeof window.onBimPanelClosed === "function") window.onBimPanelClosed();
     if (typeof window.onQaPanelsClosed === "function") window.onQaPanelsClosed("");
     if (STATE.activeTool === "crop_delete" || STATE.activeTool === "crop" || STATE.activeTool === "optimizer") {
       cancelLassoToolMode(false);
-    } else if (["section", "profile", "crs", "generate_scan", "rtk", "photos", "comments", "drainage", "gcp_qa", "bookmarks", "categorize", "utilities", "bim", "flatness", "trench", "stakeout", "compare_volume", "stationing"].includes(STATE.activeTool)) {
+    } else if (["section", "profile", "crs", "generate_scan", "rtk", "photos", "comments", "drainage", "gcp_qa", "bookmarks", "categorize", "utilities", "flatness", "trench", "stakeout", "compare_volume", "stationing"].includes(STATE.activeTool)) {
       setActiveStudioTool(STATE.multiAlign?.active ? "align_merge" : "orbit");
     }
     const panel = document.getElementById("studioSidePanel");
@@ -1656,7 +1654,7 @@
       topBtn.style.color = vis ? "#34d399" : "";
     }
     if (topLbl) {
-      topLbl.textContent = vis ? tr("👁️ 分類", "👁️ AI") : tr("👁️‍🗨️ 分類", "👁️‍🗨️ AI");
+      topLbl.textContent = vis ? tr("🌳 樹木", "🌳 Trees") : tr("🌳 樹木", "🌳 Trees");
     }
 
     const topLblBtn = document.getElementById("btnStudioToggleCategorizeLabels");
@@ -1682,8 +1680,8 @@
       dockDot.style.display = hasSaved ? "block" : "none";
       dockDot.style.background = vis ? "#10b981" : "#38bdf8";
       dockDot.title = vis
-        ? tr("AI 分類已儲存於伺服器 · 3D 圖層顯示中", "AI Classification Saved on Server · 3D Overlays Visible")
-        : tr("AI 分類已儲存於伺服器 · 預設隱藏", "AI Classification Saved on Server · Hidden by Default");
+        ? tr("AI 喬木與胸徑 (DBH) 已儲存於伺服器 · 3D 圖層顯示中", "AI Trees & DBH Saved on Server · 3D Overlays Visible")
+        : tr("AI 喬木與胸徑 (DBH) 已儲存於伺服器 · 預設隱藏", "AI Trees & DBH Saved on Server · Hidden by Default");
     }
 
     const masterChk = document.getElementById("chkCategorizeMasterVis");
@@ -1701,8 +1699,8 @@
     const masterBtn = document.getElementById("btnToggleCategorizeOverlayVis");
     if (masterBtn) {
       masterBtn.textContent = vis
-        ? tr("👁️ 顯示中 · 隱藏圖層", "👁️ Visible · Hide Overlays")
-        : tr("👁️‍🗨️ 已隱藏 · 顯示圖層", "👁️‍🗨️ Hidden · Show Overlays");
+        ? tr("👁️ 顯示中 · 隱藏樹木圖層", "👁️ Visible · Hide Tree Overlays")
+        : tr("👁️‍🗨️ 已隱藏 · 顯示樹木圖層", "👁️‍🗨️ Hidden · Show Tree Overlays");
       masterBtn.classList.toggle("primary", vis);
     }
     const masterBadge = document.getElementById("lblCategorizeVisBadge");
@@ -1760,24 +1758,24 @@
         if (action === "manual_remove") {
           showToast(
             tr(
-              `🗑️ 已刪除分類項目 ${itemId || ""}（已儲存於伺服器）`,
+              `🗑️ 已刪除項目 ${itemId || ""}（已儲存於伺服器）`,
               `🗑️ Removed item ${itemId || ""} (Saved on Server)`
             )
           );
         } else if (action === "manual_add") {
           showToast(
             tr(
-              `➕ 已新增分類項目 (${category})（已儲存於伺服器）`,
+              `➕ 已新增項目 (${category})（已儲存於伺服器）`,
               `➕ Added item (${category}) (Saved on Server)`
             )
           );
         } else if (action === "manual_reset") {
-          showToast(tr("↺ 已還原所有手動新增/刪除變更", "↺ Reset all manual classification edits"));
+          showToast(tr("↺ 已還原所有手動新增/刪除變更", "↺ Reset all manual edits"));
         }
         return updated;
       }
     } catch (err) {
-      showToast(tr(`手動編輯分類失敗: ${err.message || err}`, `Manual classification edit failed: ${err.message || err}`), "error");
+      showToast(tr(`手動編輯失敗: ${err.message || err}`, `Manual edit failed: ${err.message || err}`), "error");
     }
     return null;
   }
@@ -1790,11 +1788,10 @@
       STATE.lastCategorizeResult.scan_id === scanId &&
       STATE.lastCategorizeResult.status === "ok"
     ) {
-      if (STATE.lastCategorizeResult.layer_filters && typeof STATE.lastCategorizeResult.layer_filters === "object") {
-        STATE.categorizeFilters = Object.assign(
-          { roads: true, trees: true, water: true, walls: true, stockpiles: true },
-          STATE.lastCategorizeResult.layer_filters
-        );
+      if (!STATE.categorizeFilters) {
+        STATE.categorizeFilters = { roads: false, trees: true, water: false, walls: false, stockpiles: false };
+      } else {
+        STATE.categorizeFilters.trees = true;
       }
       if (renderWhenLoaded) {
         STATE.categorizeOverlayVisible = true;
@@ -1817,11 +1814,10 @@
         return res;
       }
       STATE.lastCategorizeResult = res;
-      if (res.layer_filters && typeof res.layer_filters === "object") {
-        STATE.categorizeFilters = Object.assign(
-          { roads: true, trees: true, water: true, walls: true, stockpiles: true },
-          res.layer_filters
-        );
+      if (!STATE.categorizeFilters) {
+        STATE.categorizeFilters = { roads: false, trees: true, water: false, walls: false, stockpiles: false };
+      } else {
+        STATE.categorizeFilters.trees = true;
       }
       const targetScan = scanObj || STATE.activeScan || (STATE.scans || []).find((s) => s.scan_id === scanId);
       if (targetScan) {
@@ -1879,8 +1875,8 @@
     if (!opts.silent) {
       showToast(
         nextVis
-          ? tr("AI 地物分類 3D 圖層：顯示中", "3D Classification Overlays: Visible")
-          : tr("AI 地物分類 3D 圖層：已隱藏（預設隱藏）", "3D Classification Overlays: Hidden (Default)")
+          ? tr("🌳 AI 喬木與 1.3m DBH 3D 圖層：顯示中", "🌳 3D Trees & 1.3m DBH Overlays: Visible")
+          : tr("🌳 AI 喬木與 1.3m DBH 3D 圖層：已隱藏", "🌳 3D Trees & 1.3m DBH Overlays: Hidden")
       );
     }
   }
@@ -1961,11 +1957,11 @@
 
     if (!STATE.categorizeFilters) {
       STATE.categorizeFilters = {
-        roads: true,
+        roads: false,
         trees: true,
-        water: true,
-        walls: true,
-        stockpiles: true,
+        water: false,
+        walls: false,
+        stockpiles: false,
       };
     }
     const flt = STATE.categorizeFilters;
@@ -2235,7 +2231,7 @@
         const treeH = Math.max(2.5, Number(t.height_m || 6.0));
         const dbhCm = Math.max(10.0, Number(t.dbh_cm || 30.0));
         const crownD = Math.max(2.0, Number(t.crown_diameter_m || 4.0));
-        const rTrunk = Math.max(0.22, (dbhCm / 200.0) * 1.35);
+        const rTrunk = Math.max(0.14, Math.min(0.65, (dbhCm / 200.0) * 1.15));
         const trunkH = Math.max(1.8, treeH * 0.52);
 
         const trunkGeo = new THREE.CylinderGeometry(rTrunk * 0.85, rTrunk * 1.15, trunkH, 10);
@@ -2352,15 +2348,15 @@
     const s = res.summary || {};
     if (!STATE.categorizeFilters) {
       STATE.categorizeFilters = {
-        roads: true,
+        roads: false,
         trees: true,
-        water: true,
-        walls: true,
-        stockpiles: true,
+        water: false,
+        walls: false,
+        stockpiles: false,
       };
     }
     const flt = STATE.categorizeFilters;
-    const activeTab = STATE.categorizeActiveTab || "all";
+    const activeTab = STATE.categorizeActiveTab || "trees";
     const originTwd = localToTwd97({ x: 0, y: 0, z: 0 });
 
     const toFlyAttr = (twdArr, locArr) => {
@@ -2446,31 +2442,15 @@
       });
     }
 
-    const breakdownHtml = (res.categories_breakdown || [])
-      .slice(0, 10)
-      .map((c) => {
-        const cleanZh = String(c.name_zh || c.name_en || "").replace(/\s*[\(（][^\)）]*[\)）]\s*/g, "").trim();
-        const cleanEn = String(c.name_en || c.name_zh || "").replace(/\s*[\(（][^\)）]*[\)）]\s*/g, "").trim();
-        return `
-        <div style="display:flex;align-items:center;justify-content:space-between;font-size:10.5px;padding:2px 0;">
-          <span style="display:inline-flex;align-items:center;gap:5px;color:var(--ui-text-primary);font-weight:600;">
-            <span style="width:8px;height:8px;border-radius:2px;background:${escapeHtml(c.color || "#38bdf8")};display:inline-block;"></span>
-            ${escapeHtml(tr(cleanZh, cleanEn))}
-          </span>
-          <span style="font-family:monospace;color:var(--ui-text-secondary);">${Number(c.planar_area_m2 || c.surface_area_3d_m2 || 0).toLocaleString()} m² · ${Number(c.site_share_pct || 0).toFixed(1)}%</span>
-        </div>`;
-      })
-      .join("");
-
     const exportBarHtml = `
       <div style="display:flex;gap:4px;flex-wrap:wrap;margin-bottom:8px;">
-        <a class="btn-xs primary" style="flex:1 1 auto;justify-content:center;font-weight:700;white-space:nowrap;font-size:10px;padding:4px 5px;" href="${escapeHtml(appendAuthToDownloadUrl(res.dxf_url))}" download="Civil3D_Categorized.dxf" title="${tr("下載 AutoCAD Civil 3D 分類圖層 .DXF", "Download AutoCAD Civil 3D Categorized .DXF")}">
+        <a class="btn-xs primary" style="flex:1 1 auto;justify-content:center;font-weight:700;white-space:nowrap;font-size:10px;padding:4px 5px;" href="${escapeHtml(appendAuthToDownloadUrl(res.dxf_url))}" download="Civil3D_Trees_DBH.dxf" title="${tr("下載 AutoCAD Civil 3D 喬木與 DBH 圖層 .DXF", "Download AutoCAD Civil 3D Trees & DBH .DXF")}">
           <span>${tr("📐 .DXF 圖檔", "📐 .DXF CAD")}</span>
         </a>
-        <a class="btn-xs primary" style="flex:1 1 auto;justify-content:center;font-weight:700;white-space:nowrap;font-size:10px;padding:4px 5px;" href="${escapeHtml(appendAuthToDownloadUrl(res.report_html_url))}" target="_blank" title="${tr("開啟可列印分類明細報表 · HTML / 另存 PDF", "Open Printable Categorization Report · HTML / Save PDF")}">
+        <a class="btn-xs primary" style="flex:1 1 auto;justify-content:center;font-weight:700;white-space:nowrap;font-size:10px;padding:4px 5px;" href="${escapeHtml(appendAuthToDownloadUrl(res.report_html_url))}" target="_blank" title="${tr("開啟可列印喬木與胸徑明細報表 · HTML / 另存 PDF", "Open Printable Trees & DBH Report · HTML / Save PDF")}">
           <span>${tr("📄 報表 · HTML/PDF", "📄 Report · HTML/PDF")}</span>
         </a>
-        <a class="btn-xs" style="flex:1 1 auto;justify-content:center;font-weight:700;white-space:nowrap;font-size:10px;padding:4px 5px;" href="${escapeHtml(appendAuthToDownloadUrl(res.report_csv_url))}" download="Categorization_Schedule.csv" title="${tr("下載 UTF-8 Excel 數量明細表 .CSV", "Download UTF-8 Excel Schedule .CSV")}">
+        <a class="btn-xs" style="flex:1 1 auto;justify-content:center;font-weight:700;white-space:nowrap;font-size:10px;padding:4px 5px;" href="${escapeHtml(appendAuthToDownloadUrl(res.report_csv_url))}" download="Trees_DBH_Schedule.csv" title="${tr("下載 UTF-8 Excel 喬木胸徑明細表 .CSV", "Download UTF-8 Excel Trees & DBH Schedule .CSV")}">
           <span>${tr("📊 明細表 · .CSV", "📊 Schedule · .CSV")}</span>
         </a>
       </div>
@@ -2483,30 +2463,18 @@
     const savedAtStr = rawSavedAt ? rawSavedAt : tr("已儲存於伺服器", "Persisted on Server");
 
     let editStatusMsg = tr(
-      "點選上方按鈕後，直接點擊 3D 場景即可新增或刪除分類項目",
-      "Click a mode button above, then click directly on the 3D scene to add or remove items"
+      "點選上方按鈕後，直接點擊 3D 場景即可新增或刪除喬木",
+      "Click a mode button above, then click directly on the 3D scene to add or remove trees"
     );
     if (editMode === "add_tree") {
       editStatusMsg = tr(
         "🟢 新增喬木模式：請點擊 3D 場景中的樹木位置",
         "🟢 Add Tree Mode: Click tree location on the 3D model"
       );
-    } else if (editMode === "add_wall") {
-      const nPts = (STATE.categorizeEditPoints || []).length;
-      editStatusMsg = tr(
-        `🔴 新增牆面模式：請依序點擊牆面起點與終點 · ${nPts}/2 點`,
-        `🔴 Add Wall Mode: Click start and end points on 3D wall · ${nPts}/2 pts`
-      );
-    } else if (editMode === "add_road") {
-      const nPts = (STATE.categorizeEditPoints || []).length;
-      editStatusMsg = tr(
-        `🟠 新增道路模式：點擊多邊形頂點 · ${nPts} 點 · 點擊起點 V1 或按 Enter 完成`,
-        `🟠 Add Road Mode: Click polygon vertices · ${nPts} pts · click V1 or press Enter to finish`
-      );
     } else if (editMode === "remove_click") {
       editStatusMsg = tr(
-        "🗑️ 點選刪除模式：點擊 3D 場景中的樹木/牆面/道路，或點擊下方表格 🗑️ 即可刪除",
-        "🗑️ Remove Mode: Click any tree/wall/road in 3D or click 🗑️ in the table below"
+        "🗑️ 點選刪除模式：點擊 3D 場景中的樹木，或點擊下方表格 🗑️ 即可刪除",
+        "🗑️ Remove Mode: Click any tree in 3D or click 🗑️ in the table below"
       );
     }
 
@@ -2515,6 +2483,8 @@
       rawAiModel.replace("Multimodal + 3D Geometry", "多模態 + 3D 幾何分析"),
       rawAiModel
     );
+    const treesCount = Number(s.trees_count ?? (res.trees || []).length);
+    const verifiedTrunkCount = (res.trees || []).filter((t) => t.trunk_verified_3d).length;
 
     const rawCatHtml = `
       ${exportBarHtml}
@@ -2532,10 +2502,10 @@
         <div style="display:flex;align-items:center;justify-content:space-between;gap:6px;flex-wrap:wrap;margin-bottom:5px;">
           <label style="display:inline-flex;align-items:center;gap:5px;cursor:pointer;font-size:11px;font-weight:700;color:var(--ui-text-primary);white-space:nowrap;">
             <input type="checkbox" id="chkCategorizeMasterVis" ${isVis ? "checked" : ""} />
-            ${tr("顯示 3D 地物分類圖層", "Show 3D Overlays")}
+            ${tr("顯示 3D 喬木與 1.3m DBH 環", "Show 3D Trees & 1.3m DBH Rings")}
           </label>
           <button type="button" class="btn-xs ${isVis ? "primary" : ""}" id="btnToggleCategorizeOverlayVis" style="padding:3px 8px;font-weight:700;white-space:nowrap;">
-            ${isVis ? tr("👁️ 顯示中 · 隱藏圖層", "👁️ Visible · Hide Overlays") : tr("👁️‍🗨️ 已隱藏 · 顯示圖層", "👁️‍🗨️ Hidden · Show Overlays")}
+            ${isVis ? tr("👁️ 顯示中 · 隱藏樹木圖層", "👁️ Visible · Hide Tree Overlays") : tr("👁️‍🗨️ 已隱藏 · 顯示樹木圖層", "👁️‍🗨️ Hidden · Show Tree Overlays")}
           </button>
         </div>
         <div style="display:flex;align-items:center;justify-content:space-between;gap:6px;flex-wrap:wrap;padding-top:4px;border-top:1px dashed rgba(56,189,248,0.25);">
@@ -2549,23 +2519,17 @@
 
       <div style="background:rgba(245,158,11,0.08);border:1px solid rgba(245,158,11,0.35);border-radius:8px;padding:7px 9px;margin-bottom:8px;">
         <div style="display:flex;align-items:center;justify-content:space-between;gap:4px;margin-bottom:5px;">
-          <span style="font-size:10.5px;font-weight:800;color:#fbbf24;">${tr("🛠️ 手動新增 / 刪除分類", "🛠️ Manual Add / Remove Classification")}</span>
+          <span style="font-size:10.5px;font-weight:800;color:#fbbf24;">${tr("🛠️ 手動新增 / 刪除喬木", "🛠️ Manual Add / Remove Trees")}</span>
           <button type="button" class="btn-xs" id="btnResetCategorizeManualEdits" style="padding:1px 6px;font-size:9.5px;" title="${tr("還原所有手動新增或刪除的項目", "Reset Manual Overrides")}">
             ${tr("↺ 重設手動變更", "↺ Reset Edits")}
           </button>
         </div>
         <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:5px;">
           <button type="button" class="btn-xs ${editMode === "add_tree" ? "primary" : ""}" data-cat-edit-mode="add_tree" style="flex:1 1 auto;justify-content:center;font-size:10px;white-space:nowrap;border-color:rgba(16,185,129,0.5);">
-            ${tr("➕ 喬木", "➕ Tree")}
-          </button>
-          <button type="button" class="btn-xs ${editMode === "add_wall" ? "primary" : ""}" data-cat-edit-mode="add_wall" style="flex:1 1 auto;justify-content:center;font-size:10px;white-space:nowrap;border-color:rgba(244,63,94,0.5);">
-            ${tr("➕ 擋土牆", "➕ Wall")}
-          </button>
-          <button type="button" class="btn-xs ${editMode === "add_road" ? "primary" : ""}" data-cat-edit-mode="add_road" style="flex:1 1 auto;justify-content:center;font-size:10px;white-space:nowrap;border-color:rgba(245,158,11,0.5);">
-            ${tr("➕ 道路", "➕ Road")}
+            ${tr("➕ 新增喬木", "➕ Add Tree")}
           </button>
           <button type="button" class="btn-xs ${editMode === "remove_click" ? "primary" : ""}" data-cat-edit-mode="remove_click" style="flex:1 1 auto;justify-content:center;font-size:10px;white-space:nowrap;border-color:rgba(239,68,68,0.5);color:#fca5a5;">
-            ${tr("🗑️ 刪除", "🗑️ Remove")}
+            ${tr("🗑️ 點選刪除", "🗑️ Remove Tree")}
           </button>
         </div>
         <div id="categorizeEditStatusHint" style="font-size:9.5px;color:${editMode ? "#fbbf24" : "var(--ui-text-muted)"};line-height:1.35;">
@@ -2576,88 +2540,42 @@
       <div style="background:rgba(16,185,129,0.10);border:1px solid rgba(16,185,129,0.35);border-radius:8px;padding:8px 10px;margin-bottom:8px;">
         <div style="display:flex;align-items:center;justify-content:space-between;gap:4px;margin-bottom:4px;">
           <span style="font-size:10.5px;font-weight:800;color:#34d399;">✨ ${escapeHtml(localizedAiModel)}</span>
-          <span style="font-size:9.5px;padding:1px 6px;border-radius:99px;background:rgba(6,182,212,0.18);color:#22d3ee;font-weight:700;">${tr("RTK + 3D 幾何驗證", "RTK + 3D Verified")}</span>
+          <span style="font-size:9.5px;padding:1px 6px;border-radius:99px;background:rgba(6,182,212,0.18);color:#22d3ee;font-weight:700;">${tr("1.3m 樹幹圓擬合 + RTK 驗證", "1.3m Pratt Circle + RTK Verified")}</span>
         </div>
-        <div style="font-size:11px;color:var(--ui-text-primary);line-height:1.42;margin-bottom:5px;">${escapeHtml(tr(res.ai_summary_zh || res.ai_summary_en || "", res.ai_summary_en || res.ai_summary_zh || ""))}</div>
-        <div style="display:flex;align-items:center;justify-content:space-between;gap:6px;flex-wrap:wrap;padding-top:5px;border-top:1px solid rgba(16,185,129,0.22);">
-          <span style="font-size:10px;color:#cbd5e1;font-weight:600;">BIM v4 · ${tr("建築/圓頂", "Roofs")} ${(res.buildings || []).length} · ${tr("圓柱儲水塔", "Water Tanks")} ${(res.water_tanks || []).length} · ${tr("管線", "Pipes")} ${(res.pipes || []).length}</span>
-          <button type="button" class="btn-xs primary" id="btnCatLaunchScanToBim" style="padding:2px 8px;font-size:10px;">${tr("開啟 3D Scan-to-BIM 實體模型 (50% 半透明)", "Open 3D Scan-to-BIM Solids (50% Opacity)")}</button>
-        </div>
+        <div style="font-size:11px;color:var(--ui-text-primary);line-height:1.42;">${escapeHtml(tr(res.ai_summary_zh || res.ai_summary_en || "", res.ai_summary_en || res.ai_summary_zh || ""))}</div>
       </div>
 
       <div class="gs-metric-grid" style="grid-template-columns:1fr 1fr;gap:6px;margin-bottom:8px;">
-        <div class="gs-metric-box" style="border-left:3px solid #f59e0b;">
-          <div class="lbl">${tr(`🛣️ 道路鋪面 · ${s.roads_count || 0}`, `🛣️ Roads · ${s.roads_count || 0}`)}</div>
-          <div class="val" style="color:#fbbf24;font-size:13px;">${Number(s.roads_planar_area_m2 || 0).toLocaleString()} m²</div>
-          <div style="font-size:9.5px;color:var(--ui-text-muted);">${Number(s.roads_planar_area_ping || 0).toLocaleString()} ${tr("坪", "ping")} · 3D ${Number(s.roads_surface_area_3d_m2 || 0).toLocaleString()} m²</div>
-        </div>
         <div class="gs-metric-box" style="border-left:3px solid #10b981;">
-          <div class="lbl">${tr(`🌳 喬木與胸徑 · ${s.trees_count || 0} 棵`, `🌳 Trees & DBH · ${s.trees_count || 0}`)}</div>
-          <div class="val" style="color:#34d399;font-size:13px;">DBH ${Number(s.trees_mean_dbh_cm || 0).toFixed(1)} cm</div>
-          <div style="font-size:9.5px;color:var(--ui-text-muted);">${tr(`最大 ${Number(s.trees_max_dbh_cm || 0).toFixed(1)} cm · 樹高 ${Number(s.trees_mean_height_m || 0).toFixed(1)} m`, `Max ${Number(s.trees_max_dbh_cm || 0).toFixed(1)} cm · H ${Number(s.trees_mean_height_m || 0).toFixed(1)} m`)}</div>
+          <div class="lbl">${tr("🌳 偵測喬木總數", "🌳 Detected Trees")}</div>
+          <div class="val" style="color:#34d399;font-size:14px;">${treesCount} ${tr("棵", "trees")}</div>
+          <div style="font-size:9.5px;color:var(--ui-text-muted);">${tr(`✓ 3D 樹幹幾何驗證 ${verifiedTrunkCount} 棵`, `✓ 3D Trunk Verified: ${verifiedTrunkCount}`)}</div>
         </div>
-        <div class="gs-metric-box" style="border-left:3px solid #06b6d4;">
-          <div class="lbl">${tr(`💧 水體與河道空洞 · ${s.water_count || 0}`, `💧 Water & Voids · ${s.water_count || 0}`)}</div>
-          <div class="val" style="color:#22d3ee;font-size:13px;">${Number(s.water_count || 0) > 0 && s.water_level_twvd2001_m !== null && s.water_level_twvd2001_m !== undefined ? `+${Number(s.water_level_twvd2001_m).toFixed(2)} m` : tr("無水域", "None")}</div>
-          <div style="font-size:9.5px;color:var(--ui-text-muted);">${Number(s.water_count || 0) > 0 ? `${Number(s.water_planar_area_m2 || 0).toLocaleString()} m² · ${tr("岸際等位面", "shoreline")}` : `0 m² · ${tr("乾燥陸域場址", "dry site")}`}</div>
+        <div class="gs-metric-box" style="border-left:3px solid #fef08a;">
+          <div class="lbl">${tr("📏 1.3m 平均胸徑 (DBH)", "📏 Mean 1.3m DBH")}</div>
+          <div class="val" style="color:#fde047;font-size:14px;">${Number(s.trees_mean_dbh_cm || 0).toFixed(1)} cm</div>
+          <div style="font-size:9.5px;color:var(--ui-text-muted);">${tr(`最大胸徑 ${Number(s.trees_max_dbh_cm || 0).toFixed(1)} cm`, `Max DBH ${Number(s.trees_max_dbh_cm || 0).toFixed(1)} cm`)}</div>
         </div>
-        <div class="gs-metric-box" style="border-left:3px solid #f43f5e;">
-          <div class="lbl">${tr(`🧱 擋土牆與垂直面 · ${s.walls_count || 0}`, `🧱 Retaining Walls · ${s.walls_count || 0}`)}</div>
-          <div class="val" style="color:#fb7185;font-size:13px;">3D ${Number(s.walls_vertical_area_m2 || 0).toLocaleString()} m²</div>
-          <div style="font-size:9.5px;color:var(--ui-text-muted);">${tr("總長 L", "Total L")} ${Number(s.walls_total_length_m || 0).toFixed(1)} m · PCA</div>
+        <div class="gs-metric-box" style="border-left:3px solid #38bdf8;">
+          <div class="lbl">${tr("🌲 平均樹高", "🌲 Mean Tree Height")}</div>
+          <div class="val" style="color:#38bdf8;font-size:13px;">${Number(s.trees_mean_height_m || 0).toFixed(1)} m</div>
+          <div style="font-size:9.5px;color:var(--ui-text-muted);">${tr("排除廊柱、燈桿與籃球架", "Excludes porch columns & poles")}</div>
         </div>
-      </div>
-
-      <div style="background:var(--ui-bg-pill);border:1px solid var(--ui-border-strong);border-radius:7px;padding:6px 8px;margin-bottom:8px;">
-        <div style="font-size:10px;font-weight:700;color:var(--ui-text-secondary);margin-bottom:4px;">${tr("3D 子圖層開關", "3D SCENE OVERLAY FILTERS")}</div>
-        <div style="display:flex;flex-wrap:wrap;gap:6px;font-size:10.5px;">
-          <label style="display:inline-flex;align-items:center;gap:3px;cursor:pointer;color:#fbbf24;font-weight:600;">
-            <input type="checkbox" data-cat-filter="roads" ${flt.roads ? "checked" : ""} /> ${tr("道路", "Roads")} · ${(res.roads || []).length}
-          </label>
-          <label style="display:inline-flex;align-items:center;gap:3px;cursor:pointer;color:#34d399;font-weight:600;">
-            <input type="checkbox" data-cat-filter="trees" ${flt.trees ? "checked" : ""} /> ${tr("喬木 DBH", "Trees DBH")} · ${(res.trees || []).length}
-          </label>
-          <label style="display:inline-flex;align-items:center;gap:3px;cursor:pointer;color:#22d3ee;font-weight:600;">
-            <input type="checkbox" data-cat-filter="water" ${flt.water ? "checked" : ""} /> ${tr("水域空洞", "Water Voids")} · ${(res.water_bodies || []).length}
-          </label>
-          <label style="display:inline-flex;align-items:center;gap:3px;cursor:pointer;color:#fb7185;font-weight:600;">
-            <input type="checkbox" data-cat-filter="walls" ${flt.walls ? "checked" : ""} /> ${tr("擋土牆", "Walls")} · ${(res.walls || []).length}
-          </label>
-          <label style="display:inline-flex;align-items:center;gap:3px;cursor:pointer;color:#f59e0b;font-weight:600;">
-            <input type="checkbox" data-cat-filter="stockpiles" ${flt.stockpiles ? "checked" : ""} /> ${tr("土石堆置", "Stockpiles")} · ${(res.stockpiles || []).length}
-          </label>
+        <div class="gs-metric-box" style="border-left:3px solid #34d399;">
+          <div class="lbl">${tr("🌿 樹冠投影面積", "🌿 Canopy Footprint")}</div>
+          <div class="val" style="color:#6ee7b7;font-size:13px;">${Number(s.trees_canopy_area_m2 || 0).toLocaleString()} m²</div>
+          <div style="font-size:9.5px;color:var(--ui-text-muted);">${Number((s.trees_canopy_area_m2 || 0) * 0.3025).toFixed(1)} ${tr("坪", "ping")}</div>
         </div>
       </div>
 
-      <div style="background:var(--ui-bg-pill);border:1px solid var(--ui-border-strong);border-radius:7px;padding:6px 8px;margin-bottom:8px;">
-        <div style="font-size:10px;font-weight:700;color:var(--ui-text-secondary);margin-bottom:3px;">${tr("全場地物面積組成", "SITE SURFACE BREAKDOWN")} · ${(s.triangle_count || 0).toLocaleString()} ${tr("三角面", "tris")}</div>
-        ${breakdownHtml}
-      </div>
-
-      <div style="display:flex;gap:3px;margin-bottom:5px;flex-wrap:wrap;">
-        ${[
-          ["all", tr("全部", "All")],
-          ["roads", tr("道路", "Roads")],
-          ["trees", tr("喬木 DBH", "Trees DBH")],
-          ["water", tr("水域", "Water")],
-          ["walls", tr("擋土牆", "Walls")],
-          ["stockpiles", tr("土石", "Stockpiles")],
-        ]
-          .map(
-            ([k, lbl]) =>
-              `<button type="button" class="btn-xs ${activeTab === k ? "primary" : ""}" data-cat-tab="${k}" style="padding:2px 7px;font-size:10px;">${lbl}</button>`
-          )
-          .join("")}
-      </div>
-
-      <div style="max-height:165px;overflow-y:auto;border:1px solid var(--ui-border-strong);border-radius:6px;margin-bottom:8px;">
+      <div style="max-height:220px;overflow-y:auto;border:1px solid var(--ui-border-strong);border-radius:6px;margin-bottom:8px;">
         <table style="width:100%;border-collapse:collapse;font-size:10.5px;">
           <thead>
             <tr style="background:var(--ui-bg-pill);color:var(--ui-text-secondary);text-align:left;position:sticky;top:0;">
               <th style="padding:4px 6px;">ID</th>
               <th style="padding:4px 6px;">${tr("類別", "Type")}</th>
-              <th style="padding:4px 6px;">${tr("主量測值", "Primary Metric")}</th>
-              <th style="padding:4px 6px;">${tr("次要參數 · 點擊定位", "Secondary · Click to Fly")}</th>
+              <th style="padding:4px 6px;">${tr("1.3m 胸徑 DBH", "1.3m DBH")}</th>
+              <th style="padding:4px 6px;">${tr("樹高 · 樹冠 · 點擊定位", "Height · Crown · Fly")}</th>
               <th style="padding:4px 4px;text-align:center;">${tr("刪除", "Del")}</th>
             </tr>
           </thead>
@@ -2673,7 +2591,7 @@
                 <td style="padding:3px 4px;text-align:center;">
                   ${
                     r.catType && r.catType !== "stockpiles"
-                      ? `<button type="button" class="btn-xs" data-cat-delete-id="${escapeHtml(r.id || "")}" data-cat-delete-type="${escapeHtml(r.catType)}" title="${tr("刪除此分類項目", "Remove")} ${escapeHtml(r.id || "")}" style="padding:1px 5px;font-size:10px;color:#fca5a5;border-color:rgba(239,68,68,0.35);">🗑️</button>`
+                      ? `<button type="button" class="btn-xs" data-cat-delete-id="${escapeHtml(r.id || "")}" data-cat-delete-type="${escapeHtml(r.catType)}" title="${tr("刪除此項目", "Remove")} ${escapeHtml(r.id || "")}" style="padding:1px 5px;font-size:10px;color:#fca5a5;border-color:rgba(239,68,68,0.35);">🗑️</button>`
                       : ""
                   }
                 </td>
@@ -2688,10 +2606,6 @@
     `;
     box.innerHTML = typeof window.translateDynamicHtml === "function" ? window.translateDynamicHtml(rawCatHtml) : rawCatHtml;
 
-    document.getElementById("btnCatLaunchScanToBim")?.addEventListener("click", () => {
-      if (typeof window.setActiveStudioTool === "function") window.setActiveStudioTool("bim");
-      if (typeof window.openScanToBimInspector === "function") window.openScanToBimInspector();
-    });
     document.getElementById("chkCategorizeMasterVis")?.addEventListener("change", (ev) => {
       setCategorizeOverlayVisibility(Boolean(ev.target.checked));
       renderCategorizePanelContent(res);
@@ -2748,56 +2662,6 @@
       });
     });
 
-    box.querySelectorAll("[data-cat-filter]").forEach((cb) => {
-      cb.addEventListener("change", () => {
-        const k = cb.getAttribute("data-cat-filter");
-        if (k && STATE.categorizeFilters) {
-          STATE.categorizeFilters[k] = cb.checked;
-          if (cb.checked && !STATE.categorizeOverlayVisible) {
-            STATE.categorizeOverlayVisible = true;
-          }
-          renderCategorize3DOverlays(res);
-          syncCategorizeVisibilityUI();
-          renderCategorizePanelContent(res);
-          apiPost("/api/survey/categorize", {
-            scan_id: res.scan_id || STATE.activeScanId,
-            only_update_filters: true,
-            layer_filters: STATE.categorizeFilters,
-          }).catch(() => {});
-        }
-      });
-    });
-
-    box.querySelectorAll("[data-cat-tab]").forEach((btn) => {
-      btn.addEventListener("click", () => {
-        const tabKey = btn.getAttribute("data-cat-tab") || "all";
-        STATE.categorizeActiveTab = tabKey;
-        if (!STATE.categorizeOverlayVisible) {
-          STATE.categorizeOverlayVisible = true;
-        }
-        if (tabKey !== "all" && STATE.categorizeFilters && STATE.categorizeFilters[tabKey] === false) {
-          STATE.categorizeFilters[tabKey] = true;
-        }
-        renderCategorize3DOverlays(res);
-        syncCategorizeVisibilityUI();
-        const prefixMap = { roads: "R", trees: "T", water: "W", walls: "WL", stockpiles: "S" };
-        const pref = prefixMap[tabKey] || "";
-        STATE.badges2D.forEach((b) => {
-          if (b.isCategorize) {
-            if (!pref) {
-              b.isFocused = false;
-            } else if (pref === "W") {
-              b.isFocused = Boolean(b.featureId && b.featureId.startsWith("W") && !b.featureId.startsWith("WL"));
-            } else {
-              b.isFocused = Boolean(b.featureId && b.featureId.startsWith(pref));
-            }
-          }
-        });
-        update2DBadgePositions();
-        renderCategorizePanelContent(res);
-      });
-    });
-
     box.querySelectorAll("[data-cat-photo-file]").forEach((pBtn) => {
       pBtn.addEventListener("click", (ev) => {
         ev.stopPropagation();
@@ -2841,6 +2705,14 @@
     if (!STATE.categorizeEditMode) {
       STATE.sidePanelMinimized = false;
     }
+    STATE.categorizeActiveTab = "trees";
+    STATE.categorizeFilters = {
+      roads: false,
+      trees: true,
+      water: false,
+      walls: false,
+      stockpiles: false,
+    };
     const activeScan = STATE.activeScan || STATE.scans.find((s) => s.scan_id === STATE.activeScanId) || {
       scan_id: STATE.activeScanId || "scan",
       name: STATE.activeScanId || "Active Scan",
@@ -2855,27 +2727,27 @@
     }
 
     showSidePanel(
-      `<span>${tr("AI 自動地物分類", "AI Surface & Object Categorization")}</span>`,
+      `<span>${tr("🌳 AI 喬木與 1.3m 胸徑 (DBH)", "🌳 AI Trees & 1.3m Trunk DBH")}</span>`,
       `
       <div style="font-size:11px;color:var(--ui-text-secondary);background:var(--ui-bg-pill);border:1px solid var(--ui-border-strong);border-radius:7px;padding:7px 9px;margin-bottom:8px;line-height:1.42;">
         ${tr(
-          "結合 <b>3D 網格幾何分析</b>（純地形 DTM、1.3m 胸高樹幹切片與 Pratt 圓擬合 DBH、水域空洞岸際等高線夾取、3D PCA 牆面共面分析）與 <b>Gemini 3.6 Flash 多模態</b>驗證。",
-          "Combines <b>3D Mesh Geometry</b> (Bare-Earth DTM, 1.3m Breast-Height Trunk Slicing + Pratt Circle DBH, Un-Modelled Water Void Shoreline Clamping, 3D PCA Wall Coplanarity) with <b>Gemini 3.6 Flash Multimodal</b> verification."
+          "結合 <b>3D 網格幾何分析</b>（純地形 DTM、1.3m 胸高樹幹橫斷面切片與 Pratt 圓擬合 DBH、自動排除建築廊柱/燈桿/籃球架）與 <b>RTK 實景照片</b>驗證。",
+          "Combines <b>3D Mesh Geometry</b> (Bare-Earth DTM, 1.3m Breast-Height Trunk Slicing + Pratt Circle DBH, automatic building porch column / pole / basketball hoop exclusion) with <b>RTK Photo</b> verification."
         )}
       </div>
       <div style="display:flex;gap:6px;margin-bottom:8px;">
         <button type="button" class="gs-top-btn accent" style="flex:1;justify-content:center;" id="btnRunCategorize">
-          <span>${tr("執行 / 顯示 AI 地物分類", "Analyze & Show 3D Overlays")}</span>
+          <span>${tr("偵測 / 顯示 3D 喬木與 DBH", "Detect & Show 3D Trees & DBH")}</span>
         </button>
-        <button type="button" class="btn-xs" id="btnRecomputeCategorize" title="${tr("強制重新計算並執行 Gemini 多模態分析", "Force Recompute & Re-run Gemini Multimodal Analysis")}">
+        <button type="button" class="btn-xs" id="btnRecomputeCategorize" title="${tr("強制重新計算 3D 喬木與 1.3m 胸徑 (DBH)", "Force Recompute 3D Trees & 1.3m Trunk DBH")}">
           <span>${tr("↻ 重新計算", "↻ Recompute")}</span>
         </button>
       </div>
       <div id="catResultContainer">
         <div style="padding:18px 10px;text-align:center;color:var(--ui-text-secondary);font-size:11.5px;">
           ${tr(
-            "⏳ 正在從伺服器載入已儲存之 AI 分類結果（或分析 3D 網格）...",
-            "⏳ Loading saved AI classification from server (or analyzing 3D mesh triangles)..."
+            "⏳ 正在從伺服器載入已儲存之 AI 喬木與 DBH 結果（或分析 3D 網格）...",
+            "⏳ Loading saved AI Trees & DBH from server (or analyzing 3D mesh triangles)..."
           )}
         </div>
       </div>
@@ -2888,8 +2760,8 @@
         box.innerHTML = `
           <div style="padding:18px 10px;text-align:center;color:var(--ui-text-secondary);font-size:11.5px;">
             ${tr(
-              `⏳ 正在對 <b>${escapeHtml(activeScan.name || activeScan.scan_id)}</b> ${forceRecompute ? "重新計算" : "載入 / 執行"} 3D 幾何與 Gemini 多模態分類分析...`,
-              `⏳ ${forceRecompute ? "Recomputing" : "Loading / Running"} 3D Geometric + Gemini Multimodal Categorization on <b>${escapeHtml(activeScan.name || activeScan.scan_id)}</b>...`
+              `⏳ 正在對 <b>${escapeHtml(activeScan.name || activeScan.scan_id)}</b> ${forceRecompute ? "重新計算" : "載入 / 執行"} 3D 喬木與 1.3m DBH 幾何分析...`,
+              `⏳ ${forceRecompute ? "Recomputing" : "Loading / Running"} 3D Tree & 1.3m DBH Analysis on <b>${escapeHtml(activeScan.name || activeScan.scan_id)}</b>...`
             )}
           </div>
         `;
@@ -2903,12 +2775,13 @@
         activeScan.has_categorization = true;
         activeScan.categorization_overlay_visible_default = false;
         if (res.summary) activeScan.categorization_summary = res.summary;
-        if (res.layer_filters && typeof res.layer_filters === "object") {
-          STATE.categorizeFilters = Object.assign(
-            { roads: true, trees: true, water: true, walls: true, stockpiles: true },
-            res.layer_filters
-          );
-        }
+        STATE.categorizeFilters = {
+          roads: false,
+          trees: true,
+          water: false,
+          walls: false,
+          stockpiles: false,
+        };
         if (STATE.activeTool !== "categorize") {
           STATE.categorizeOverlayVisible = false;
           STATE.categorizeLabelsVisible = false;

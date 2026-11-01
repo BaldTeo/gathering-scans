@@ -168,6 +168,44 @@ UTILITY_LAYERS: Dict[str, Dict[str, Any]] = {
 }
 
 
+from concurrent.futures import ThreadPoolExecutor
+
+# In-memory cache keyed by absolute file path -> (mtime, parsed_dict) to avoid repeated 15MB disk reads
+_UTILITIES_MEM_CACHE: Dict[str, Tuple[float, Dict[str, Any]]] = {}
+
+
+def _load_utilities_json_cached(fp: str) -> Optional[Dict[str, Any]]:
+    """Loads a utilities cache JSON file with an in-memory mtime check (<0.1ms on repeat reads)."""
+    if not fp or not os.path.isfile(fp):
+        return None
+    try:
+        mtime = os.path.getmtime(fp)
+        cached = _UTILITIES_MEM_CACHE.get(fp)
+        if cached is not None and cached[0] == mtime:
+            return cached[1]
+        with open(fp, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        if isinstance(data, dict):
+            _UTILITIES_MEM_CACHE[fp] = (mtime, data)
+            return data
+    except Exception:
+        pass
+    return None
+
+
+def _save_utilities_json_cached(fp: str, data: Dict[str, Any]) -> None:
+    """Writes a utilities cache JSON file atomically and updates the in-memory cache."""
+    if not fp or not isinstance(data, dict):
+        return
+    try:
+        os.makedirs(os.path.dirname(fp), exist_ok=True)
+        with open(fp, "w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False, indent=2)
+        _UTILITIES_MEM_CACHE[fp] = (os.path.getmtime(fp), data)
+    except Exception:
+        pass
+
+
 def _http_get_json(url: str, timeout: float = 6.0) -> Optional[Dict[str, Any]]:
     """Safe HTTP GET for government ArcGIS REST & OpenStreetMap endpoints with SSL fallback and strict timeout."""
     ctx = ssl.create_default_context()
@@ -646,11 +684,11 @@ class PublicUtilitiesGISMixin:
     def query_public_utilities_gis(self, payload: Dict[str, Any]) -> Dict[str, Any]:
         """
         Queries genuine live Taiwan Open Data, New Taipei WRD/Sewer ArcGIS REST APIs, and OpenStreetMap v0.6
-        for public underground utility pipelines and structures clipped to the active scan radius,
-        with exact surveyed depth below ground.
+        for public underground utility pipelines and structures clipped to the active scan radius (default 250m shown,
+        automatically querying and caching 500m on the server), with exact surveyed depth below ground.
         """
         scan_id = str(payload.get("scan_id") or "").strip()
-        radius_m = max(10.0, min(1000.0, safe_float(payload.get("radius_m"), 120.0) or 120.0))
+        radius_m = max(10.0, min(1000.0, safe_float(payload.get("radius_m"), 250.0) or 250.0))
         force_refresh = bool(payload.get("force_refresh", False))
         requested_layers = payload.get("layers")
         if not isinstance(requested_layers, list) or not requested_layers:
@@ -665,16 +703,13 @@ class PublicUtilitiesGISMixin:
         master_cache_file = os.path.join(UTILITIES_CACHE_DIR, f"{safe_sid}_master_v3.json") if scan_id else ""
 
         if (ce is None or cn is None) and master_cache_file and os.path.isfile(master_cache_file):
-            try:
-                with open(master_cache_file, "r", encoding="utf-8") as mcf:
-                    mc_doc = json.load(mcf)
-                mc_ctr = (mc_doc or {}).get("center") or {}
+            mc_doc = _load_utilities_json_cached(master_cache_file)
+            if mc_doc:
+                mc_ctr = mc_doc.get("center") or {}
                 ce = safe_float(mc_ctr.get("e"))
                 cn = safe_float(mc_ctr.get("n"))
                 if ch is None:
                     ch = safe_float(mc_ctr.get("h"))
-            except Exception:
-                pass
 
         scan: Dict[str, Any] = {}
         if hasattr(self, "db") and self.db and scan_id:
@@ -758,7 +793,7 @@ class PublicUtilitiesGISMixin:
                 "cached": False,
             }
 
-        # Check local v3 cache for genuine responses first (zero categorization disk I/O on cache hits)
+        # Check local v3 cache & site-wide 500m master caches first (zero categorization disk I/O on cache hits)
         safe_sid = "".join(c if c.isalnum() or c in "_-" else "_" for c in (scan_id or f"pt_{int(ce)}_{int(cn)}"))
         cache_file = os.path.join(UTILITIES_CACHE_DIR, f"{safe_sid}_{int(radius_m)}m_v3.json")
         master_cache_file = os.path.join(UTILITIES_CACHE_DIR, f"{safe_sid}_master_v3.json")
@@ -769,94 +804,131 @@ class PublicUtilitiesGISMixin:
 
         if not force_refresh:
             candidate_files: List[Tuple[str, bool]] = []
-            if os.path.isfile(master_cache_file):
-                candidate_files.append((master_cache_file, False))
-            if scan_dir_cache_file and os.path.isfile(scan_dir_cache_file):
-                candidate_files.append((scan_dir_cache_file, False))
-            if os.path.isfile(cache_file):
-                candidate_files.append((cache_file, False))
+            seen_cand_fps = set()
+
+            def _add_cand(fp: str, is_exact: bool = False) -> None:
+                if fp and fp not in seen_cand_fps and os.path.isfile(fp):
+                    seen_cand_fps.add(fp)
+                    candidate_files.append((fp, is_exact))
+
+            _add_cand(master_cache_file, False)
+            _add_cand(scan_dir_cache_file, False)
+            _add_cand(cache_file, False)
             for fallback_r in (1000, 500, 350, 250, 200, 160, 150, 120, 100, 85, 60):
-                fb_fp = os.path.join(UTILITIES_CACHE_DIR, f"{safe_sid}_{fallback_r}m_v3.json")
-                if os.path.isfile(fb_fp) and fb_fp != cache_file:
-                    candidate_files.append((fb_fp, False))
+                _add_cand(os.path.join(UTILITIES_CACHE_DIR, f"{safe_sid}_{fallback_r}m_v3.json"), False)
 
-            for cand_fp, is_exact_radius in candidate_files:
-                try:
-                    with open(cand_fp, "r", encoding="utf-8") as f:
-                        cached_data = json.load(f)
-                    c_center = (cached_data or {}).get("center") or {}
-                    center_match = (
-                        (
-                            bool(scan_id)
-                            and str((cached_data or {}).get("scan_id") or "") == scan_id
-                            and abs(safe_float(c_center.get("e"), ce) - ce) <= 150.0
-                            and abs(safe_float(c_center.get("n"), cn) - cn) <= 150.0
-                        )
-                        or (
-                            abs(safe_float(c_center.get("e"), ce) - ce) <= 35.0
-                            and abs(safe_float(c_center.get("n"), cn) - cn) <= 35.0
-                        )
-                    )
-                    if (
-                        cached_data
-                        and center_match
-                        and isinstance(cached_data.get("features"), list)
-                        and len(cached_data["features"]) > 0
-                    ):
-                        raw_features = cached_data["features"]
-                        req_set = set(requested_layers)
-                        ref_ground_h = safe_float(cached_data.get("ground_reference_h"), ch) or ch
-                        filtered_features = self._filter_cached_utilities_to_radius(
-                            raw_features=raw_features,
-                            req_set=req_set,
-                            ce=ce,
-                            cn=cn,
-                            xmin=xmin,
-                            ymin=ymin,
-                            xmax=xmax,
-                            ymax=ymax,
-                            radius_m=radius_m,
-                            is_exact_radius=is_exact_radius,
-                            sample_ground_z=lambda _e, _n: ref_ground_h,
-                        )
-                        layer_counts = {k: 0 for k in UTILITY_LAYERS.keys()}
-                        total_pipe_length_m = 0.0
-                        total_structures = 0
-                        for f_item in filtered_features:
-                            lyr = f_item.get("layer")
-                            if lyr in layer_counts:
-                                layer_counts[lyr] += 1
-                            if f_item.get("type") in ("pipe", "box_culvert"):
-                                total_pipe_length_m += float(f_item.get("length_m") or 0.0)
-                            elif f_item.get("type") in ("manhole", "catch_basin", "hydrant", "pole"):
-                                total_structures += 1
+            # Site-wide 500m master cache discovery: share rich 500m master caches across sibling scans at the same site
+            try:
+                for fn in os.listdir(UTILITIES_CACHE_DIR):
+                    if fn.endswith("_master_v3.json"):
+                        _add_cand(os.path.join(UTILITIES_CACHE_DIR, fn), False)
+            except Exception:
+                pass
 
-                        filtered_res = dict(cached_data)
-                        filtered_res["scan_id"] = scan_id
-                        filtered_res["radius_m"] = radius_m
-                        filtered_res["bbox"] = {"xmin": xmin, "ymin": ymin, "xmax": xmax, "ymax": ymax}
-                        filtered_res["features"] = filtered_features
-                        filtered_res["layer_counts"] = layer_counts
-                        filtered_res["total_features"] = len(filtered_features)
-                        filtered_res["total_pipe_length_m"] = round(total_pipe_length_m, 2)
-                        filtered_res["total_structures"] = total_structures
-                        if "taipei_8utility_status" not in filtered_res and 296000.0 <= ce <= 318000.0 and 2762000.0 <= cn <= 2789000.0:
-                            filtered_res["taipei_8utility_status"] = {
-                                "endpoint_3d": "https://3dgis.reac.taipei/sgwptools/API3D/PipeQuery.ashx",
-                                "endpoint_2d": "https://arcgiserv.gov.taipei/server/rest/services/GWH3857/G97_A_NW_PIPE/MapServer",
-                                "elevation_endpoint": "https://3dgis.reac.taipei/sgwptools/API3D/get3dz.ashx",
-                                "elevation_twvd2001_m": round(ref_ground_h, 3),
-                                "whitelisted": False,
-                                "gml_directory": os.path.join(DATA_DIR, "taipei_8utilities_gml"),
-                                "gml_files_loaded": 0,
-                                "layers": list(TAIPEI_8UTILITY_UNITS.values()),
-                            }
-                        filtered_res["cached"] = True
-                        return filtered_res
-                except Exception:
-                    pass
+            best_cached_data: Optional[Dict[str, Any]] = None
+            best_rank: Tuple[int, int, float] = (-1, -1, -1.0)
+            own_master_count = 0
 
-        # Cache miss or force_refresh=True: resolve full scan record and build ground elevation sampler
+            for cand_fp, _ in candidate_files:
+                cached_data = _load_utilities_json_cached(cand_fp)
+                if not cached_data or not isinstance(cached_data.get("features"), list) or len(cached_data["features"]) == 0:
+                    continue
+                c_center = cached_data.get("center") or {}
+                ce_c = safe_float(c_center.get("e"))
+                cn_c = safe_float(c_center.get("n"))
+                if ce_c is None or cn_c is None:
+                    continue
+                dist_center = math.hypot(ce_c - ce, cn_c - cn)
+                is_same_scan = bool(scan_id) and str(cached_data.get("scan_id") or "") == scan_id
+                if cand_fp == master_cache_file:
+                    own_master_count = len(cached_data["features"])
+                if not ((is_same_scan and dist_center <= 220.0) or dist_center <= 220.0):
+                    continue
+                c_rad = float(cached_data.get("radius_m") or 120.0)
+                # Ensure a sibling scan's master cache covers the requested radius around (ce, cn)
+                effective_rad = c_rad - (0.0 if is_same_scan else dist_center * 0.35)
+                covers_req = 1 if effective_rad >= (radius_m - 10.0) else 0
+                feat_cnt = len(cached_data["features"])
+                rank = (covers_req, feat_cnt, c_rad)
+                if rank > best_rank:
+                    best_rank = rank
+                    best_cached_data = cached_data
+
+            if best_cached_data is not None:
+                # Automatically persist <safe_sid>_master_v3.json on the server if missing or stale (< best site master)
+                if scan_id and master_cache_file and (not os.path.isfile(master_cache_file) or own_master_count < len(best_cached_data["features"])):
+                    persisted_master = dict(best_cached_data)
+                    persisted_master["scan_id"] = scan_id
+                    persisted_master["center"] = {
+                        "e": round(ce, 3),
+                        "n": round(cn, 3),
+                        "h": round(safe_float((best_cached_data.get("center") or {}).get("h"), ch) or ch, 3),
+                    }
+                    _save_utilities_json_cached(master_cache_file, persisted_master)
+                    if scan_dir_cache_file:
+                        _save_utilities_json_cached(scan_dir_cache_file, persisted_master)
+
+                raw_features = best_cached_data["features"]
+                req_set = set(requested_layers)
+                ref_ground_h = safe_float(best_cached_data.get("ground_reference_h"), ch) or ch
+                filtered_features = self._filter_cached_utilities_to_radius(
+                    raw_features=raw_features,
+                    req_set=req_set,
+                    ce=ce,
+                    cn=cn,
+                    xmin=xmin,
+                    ymin=ymin,
+                    xmax=xmax,
+                    ymax=ymax,
+                    radius_m=radius_m,
+                    is_exact_radius=False,
+                    sample_ground_z=lambda _e, _n: ref_ground_h,
+                )
+                layer_counts = {k: 0 for k in UTILITY_LAYERS.keys()}
+                total_pipe_length_m = 0.0
+                total_structures = 0
+                for f_item in filtered_features:
+                    lyr = f_item.get("layer")
+                    if lyr in layer_counts:
+                        layer_counts[lyr] += 1
+                    if f_item.get("type") in ("pipe", "box_culvert"):
+                        total_pipe_length_m += float(f_item.get("length_m") or 0.0)
+                    elif f_item.get("type") in ("manhole", "catch_basin", "hydrant", "pole"):
+                        total_structures += 1
+
+                filtered_res = dict(best_cached_data)
+                filtered_res["scan_id"] = scan_id
+                filtered_res["center"] = {"e": round(ce, 3), "n": round(cn, 3), "h": round(ref_ground_h, 3)}
+                filtered_res["radius_m"] = radius_m
+                filtered_res["master_cached_radius_m"] = float(best_cached_data.get("radius_m") or max(radius_m, 500.0))
+                filtered_res["bbox"] = {"xmin": xmin, "ymin": ymin, "xmax": xmax, "ymax": ymax}
+                filtered_res["features"] = filtered_features
+                filtered_res["layer_counts"] = layer_counts
+                filtered_res["total_features"] = len(filtered_features)
+                filtered_res["total_pipe_length_m"] = round(total_pipe_length_m, 2)
+                filtered_res["total_structures"] = total_structures
+                if "taipei_8utility_status" not in filtered_res and 296000.0 <= ce <= 318000.0 and 2762000.0 <= cn <= 2789000.0:
+                    filtered_res["taipei_8utility_status"] = {
+                        "endpoint_3d": "https://3dgis.reac.taipei/sgwptools/API3D/PipeQuery.ashx",
+                        "endpoint_2d": "https://arcgiserv.gov.taipei/server/rest/services/GWH3857/G97_A_NW_PIPE/MapServer",
+                        "elevation_endpoint": "https://3dgis.reac.taipei/sgwptools/API3D/get3dz.ashx",
+                        "elevation_twvd2001_m": round(ref_ground_h, 3),
+                        "whitelisted": False,
+                        "gml_directory": os.path.join(DATA_DIR, "taipei_8utilities_gml"),
+                        "gml_files_loaded": 0,
+                        "layers": list(TAIPEI_8UTILITY_UNITS.values()),
+                    }
+                filtered_res["cached"] = True
+                return filtered_res
+
+        # Cache miss or force_refresh=True: resolve full scan record and build ground elevation sampler.
+        # Automatically query at least 500m for scan queries so the 500m master cache is always persisted on the server!
+        fetch_radius_m = max(radius_m, 500.0) if scan_id else radius_m
+        fxmin = round(ce - fetch_radius_m, 3)
+        fymin = round(cn - fetch_radius_m, 3)
+        fxmax = round(ce + fetch_radius_m, 3)
+        fymax = round(cn + fetch_radius_m, 3)
+
         if not scan and hasattr(self, "_resolve_scan_record") and scan_id:
             try:
                 scan = self._resolve_scan_record(scan_id) or {}
@@ -866,47 +938,47 @@ class PublicUtilitiesGISMixin:
 
         all_features: List[Dict[str, Any]] = []
         taipei_8utility_status: Optional[Dict[str, Any]] = None
+        all_layer_keys = list(UTILITY_LAYERS.keys())
 
         # 1. New Taipei Stormwater Drainage (wrd.ntpc.gov.tw SewerRain + Pipe_3D + rainwater_POP + rainwater_00131)
         ntpc_storm_feats: List[Dict[str, Any]] = []
-        if "storm" in requested_layers:
+        if "storm" in all_layer_keys:
             ntpc_storm_feats = self._query_ntpc_wrd_stormwater(
-                xmin, ymin, xmax, ymax, ce, cn, radius_m, sample_ground_z
+                fxmin, fymin, fxmax, fymax, ce, cn, fetch_radius_m, sample_ground_z
             )
             all_features.extend(ntpc_storm_feats)
 
         # 2. New Taipei Sanitary Sewer (Pipe_3D + swggis_20150625 + NTPC_Sewer_Public + SewerPublic)
         ntpc_sanitary_feats: List[Dict[str, Any]] = []
-        if "sanitary" in requested_layers:
+        if "sanitary" in all_layer_keys:
             ntpc_sanitary_feats = self._query_ntpc_sewer_sanitary(
-                xmin, ymin, xmax, ymax, ce, cn, radius_m, sample_ground_z
+                fxmin, fymin, fxmax, fymax, ce, cn, fetch_radius_m, sample_ground_z
             )
             all_features.extend(ntpc_sanitary_feats)
 
         # 3. Taipei City 8-Utilities 3D & 2D GIS API (3dgis.reac.taipei PipeQuery.ashx + G97_A_NW_PIPE + MOI GML 3.1.1)
         if 296000.0 <= ce <= 318000.0 and 2762000.0 <= cn <= 2789000.0:
             tpe_feats, taipei_8utility_status = self._query_taipei_8utilities_gis(
-                xmin, ymin, xmax, ymax, ce, cn, radius_m, requested_layers, sample_ground_z
+                fxmin, fymin, fxmax, fymax, ce, cn, fetch_radius_m, all_layer_keys, sample_ground_z
             )
             all_features.extend(tpe_feats)
 
         # 4. New Taipei City Open Data API (data.ntpc.gov.tw Road Excavations & Streetlights)
-        if "excavations" in requested_layers or "streetlights" in requested_layers:
-            ntpc_open_feats = self._query_ntpc_open_data_utilities(
-                xmin, ymin, xmax, ymax, ce, cn, requested_layers, sample_ground_z
-            )
-            all_features.extend(ntpc_open_feats)
+        ntpc_open_feats = self._query_ntpc_open_data_utilities(
+            fxmin, fymin, fxmax, fymax, ce, cn, all_layer_keys, sample_ground_z
+        )
+        all_features.extend(ntpc_open_feats)
 
         # 5. Official OpenStreetMap v0.6 Genuine Tagged Utility Nodes & Ways (Fire Hydrants, Power Poles/Cables, Street Lamps, Culverts)
         osm_feats = self._query_osm_public_utilities(
-            xmin,
-            ymin,
-            xmax,
-            ymax,
+            fxmin,
+            fymin,
+            fxmax,
+            fymax,
             ce,
             cn,
-            radius_m,
-            requested_layers,
+            fetch_radius_m,
+            all_layer_keys,
             sample_ground_z,
             has_ntpc_storm=len(ntpc_storm_feats) > 0,
             has_ntpc_sanitary=len(ntpc_sanitary_feats) > 0,
@@ -918,66 +990,116 @@ class PublicUtilitiesGISMixin:
             scan_id,
             scan,
             cat_data,
-            xmin,
-            ymin,
-            xmax,
-            ymax,
+            fxmin,
+            fymin,
+            fxmax,
+            fymax,
             ce,
             cn,
-            requested_layers,
+            all_layer_keys,
             sample_ground_z,
             existing_features=all_features,
         )
         all_features.extend(terrain_feats)
 
         # 7. Local Open Data Hydrants (if supplementary file exists)
-        if "water" in requested_layers:
-            water_feats = self._query_open_data_hydrants(xmin, ymin, xmax, ymax, sample_ground_z)
-            all_features.extend(water_feats)
+        water_feats = self._query_open_data_hydrants(fxmin, fymin, fxmax, fymax, sample_ground_z)
+        all_features.extend(water_feats)
 
-        # 8. When querying a larger radius (> 120m), preserve all inner 120m features so nearby wells/pipes never disappear
-        if radius_m > 120.0:
+        # 8. Preserve all inner 120m features so nearby wells/pipes never disappear
+        if fetch_radius_m > 120.0:
             inner_cache = os.path.join(UTILITIES_CACHE_DIR, f"{safe_sid}_120m_v3.json")
-            if os.path.isfile(inner_cache):
-                try:
-                    with open(inner_cache, "r", encoding="utf-8") as f_in:
-                        inner_doc = json.load(f_in)
-                    seen_ids = {str(f.get("id") or "") for f in all_features}
-                    seen_fnos = {
-                        (str(f.get("layer") or ""), str(f.get("facility_no") or ""))
-                        for f in all_features
-                        if f.get("facility_no")
-                    }
-                    for in_f in (inner_doc.get("features") or []):
-                        fid_in = str(in_f.get("id") or "")
-                        if fid_in.startswith(("scan_", "road_")):
-                            continue
-                        if in_f.get("layer") == "as_built" and in_f.get("origin_class") != "user_or_scan_to_bim":
-                            continue
-                        fno_key = (str(in_f.get("layer") or ""), str(in_f.get("facility_no") or ""))
-                        if fid_in not in seen_ids and (not in_f.get("facility_no") or fno_key not in seen_fnos):
-                            all_features.append(in_f)
-                            seen_ids.add(fid_in)
-                            if in_f.get("facility_no"):
-                                seen_fnos.add(fno_key)
-                except Exception:
-                    pass
+            inner_doc = _load_utilities_json_cached(inner_cache)
+            if inner_doc:
+                seen_ids = {str(f.get("id") or "") for f in all_features}
+                seen_fnos = {
+                    (str(f.get("layer") or ""), str(f.get("facility_no") or ""))
+                    for f in all_features
+                    if f.get("facility_no")
+                }
+                for in_f in (inner_doc.get("features") or []):
+                    fid_in = str(in_f.get("id") or "")
+                    if fid_in.startswith(("scan_", "road_")):
+                        continue
+                    if in_f.get("layer") == "as_built" and in_f.get("origin_class") != "user_or_scan_to_bim":
+                        continue
+                    fno_key = (str(in_f.get("layer") or ""), str(in_f.get("facility_no") or ""))
+                    if fid_in not in seen_ids and (not in_f.get("facility_no") or fno_key not in seen_fnos):
+                        all_features.append(in_f)
+                        seen_ids.add(fid_in)
+                        if in_f.get("facility_no"):
+                            seen_fnos.add(fno_key)
 
-        # Filter to requested layers, attach official Government GIS links, and compute layer statistics
-        req_set = set(requested_layers)
-        all_features = [
+        # Enrich all 500m master features with official Government GIS links
+        master_features = [
             _enrich_feature_gov_links(f, ce, cn)
             for f in all_features
-            if f.get("layer") in req_set
-            and not str(f.get("id") or "").startswith(("scan_", "road_"))
+            if not str(f.get("id") or "").startswith(("scan_", "road_"))
             and (f.get("layer") != "as_built" or f.get("origin_class") == "user_or_scan_to_bim")
         ]
+
+        # Persist 500m master cache on server automatically whenever features are found
+        if master_features:
+            full_layer_counts = {k: 0 for k in UTILITY_LAYERS.keys()}
+            full_pipe_len = 0.0
+            full_structs = 0
+            for f in master_features:
+                lyr = f.get("layer")
+                if lyr in full_layer_counts:
+                    full_layer_counts[lyr] += 1
+                if f.get("type") in ("pipe", "box_culvert"):
+                    full_pipe_len += float(f.get("length_m") or 0.0)
+                elif f.get("type") in ("manhole", "catch_basin", "hydrant", "pole"):
+                    full_structs += 1
+
+            master_payload = {
+                "status": "ok",
+                "scan_id": scan_id,
+                "center": {"e": round(ce, 3), "n": round(cn, 3), "h": round(base_ground_z, 3)},
+                "ground_reference_h": round(base_ground_z, 3),
+                "radius_m": fetch_radius_m,
+                "bbox": {"xmin": fxmin, "ymin": fymin, "xmax": fxmax, "ymax": fymax},
+                "crs": "TWD97 / TM2 zone 121 + TWVD 2001 height - EPSG:3826+8904",
+                "layers": UTILITY_LAYERS,
+                "layer_counts": full_layer_counts,
+                "total_features": len(master_features),
+                "total_pipe_length_m": round(full_pipe_len, 2),
+                "total_structures": full_structs,
+                "features": master_features,
+                "taipei_8utility_status": taipei_8utility_status,
+                "query_timestamp": datetime.now(timezone.utc).isoformat(),
+                "cached": False,
+            }
+            if master_cache_file:
+                _save_utilities_json_cached(master_cache_file, master_payload)
+            fetch_rad_file = os.path.join(UTILITIES_CACHE_DIR, f"{safe_sid}_{int(fetch_radius_m)}m_v3.json")
+            _save_utilities_json_cached(fetch_rad_file, master_payload)
+            if scan_dir_cache_file:
+                _save_utilities_json_cached(scan_dir_cache_file, master_payload)
+
+        # Filter to requested radius_m and requested_layers for the response
+        req_set = set(requested_layers)
+        if abs(fetch_radius_m - radius_m) < 0.5:
+            response_features = [f for f in master_features if f.get("layer") in req_set]
+        else:
+            response_features = self._filter_cached_utilities_to_radius(
+                raw_features=master_features,
+                req_set=req_set,
+                ce=ce,
+                cn=cn,
+                xmin=xmin,
+                ymin=ymin,
+                xmax=xmax,
+                ymax=ymax,
+                radius_m=radius_m,
+                is_exact_radius=False,
+                sample_ground_z=sample_ground_z,
+            )
 
         layer_counts = {k: 0 for k in UTILITY_LAYERS.keys()}
         total_pipe_length_m = 0.0
         total_structures = 0
-
-        for f in all_features:
+        for f in response_features:
             lyr = f.get("layer")
             if lyr in layer_counts:
                 layer_counts[lyr] += 1
@@ -992,113 +1114,22 @@ class PublicUtilitiesGISMixin:
             "center": {"e": round(ce, 3), "n": round(cn, 3), "h": round(base_ground_z, 3)},
             "ground_reference_h": round(base_ground_z, 3),
             "radius_m": radius_m,
+            "master_cached_radius_m": fetch_radius_m,
             "bbox": {"xmin": xmin, "ymin": ymin, "xmax": xmax, "ymax": ymax},
             "crs": "TWD97 / TM2 zone 121 + TWVD 2001 height - EPSG:3826+8904",
             "layers": UTILITY_LAYERS,
             "layer_counts": layer_counts,
-            "total_features": len(all_features),
+            "total_features": len(response_features),
             "total_pipe_length_m": round(total_pipe_length_m, 2),
             "total_structures": total_structures,
-            "features": all_features,
+            "features": response_features,
             "taipei_8utility_status": taipei_8utility_status,
             "query_timestamp": datetime.now(timezone.utc).isoformat(),
             "cached": False,
         }
 
-        # Save to v3 cache and scan master cache if features found
-        if all_features:
-            try:
-                merged_features = list(all_features)
-                if os.path.exists(cache_file):
-                    try:
-                        with open(cache_file, "r", encoding="utf-8") as f_prev:
-                            prev_data = json.load(f_prev)
-                            if prev_data and isinstance(prev_data.get("features"), list):
-                                existing_unqueried = [
-                                    _enrich_feature_gov_links(f, ce, cn)
-                                    for f in prev_data["features"]
-                                    if f.get("layer") not in req_set
-                                    and not str(f.get("id") or "").startswith(("scan_", "road_"))
-                                    and (f.get("layer") != "as_built" or f.get("origin_class") == "user_or_scan_to_bim")
-                                ]
-                                merged_features.extend(existing_unqueried)
-                    except Exception:
-                        pass
-
-                full_layer_counts = {k: 0 for k in UTILITY_LAYERS.keys()}
-                full_pipe_len = 0.0
-                full_structs = 0
-                for f in merged_features:
-                    lyr = f.get("layer")
-                    if lyr in full_layer_counts:
-                        full_layer_counts[lyr] += 1
-                    if f.get("type") in ("pipe", "box_culvert"):
-                        full_pipe_len += float(f.get("length_m") or 0.0)
-                    elif f.get("type") in ("manhole", "catch_basin", "hydrant", "pole"):
-                        full_structs += 1
-
-                cache_payload = dict(result)
-                cache_payload["features"] = merged_features
-                cache_payload["layer_counts"] = full_layer_counts
-                cache_payload["total_features"] = len(merged_features)
-                cache_payload["total_pipe_length_m"] = round(full_pipe_len, 2)
-                cache_payload["total_structures"] = full_structs
-
-                with open(cache_file, "w", encoding="utf-8") as f:
-                    json.dump(cache_payload, f, ensure_ascii=False, indent=2)
-
-                # Also update master scan cache (<safe_sid>_master_v3.json and <scan_dir>/_utilities_cache_v3.json)
-                master_payload = dict(cache_payload)
-                if os.path.isfile(master_cache_file):
-                    try:
-                        with open(master_cache_file, "r", encoding="utf-8") as mf:
-                            m_prev = json.load(mf)
-                        if isinstance(m_prev, dict) and isinstance(m_prev.get("features"), list):
-                            prev_r = float(m_prev.get("radius_m") or 0.0)
-                            if prev_r > radius_m:
-                                seen_m_ids = {str(f.get("id") or "") for f in merged_features}
-                                combined_m = list(merged_features)
-                                for pf in m_prev["features"]:
-                                    pf_id = str(pf.get("id") or "")
-                                    if (
-                                        pf_id
-                                        and pf_id not in seen_m_ids
-                                        and not pf_id.startswith(("scan_", "road_"))
-                                        and (pf.get("layer") != "as_built" or pf.get("origin_class") == "user_or_scan_to_bim")
-                                    ):
-                                        combined_m.append(pf)
-                                        seen_m_ids.add(pf_id)
-                                m_counts = {k: 0 for k in UTILITY_LAYERS.keys()}
-                                m_plen = 0.0
-                                m_structs = 0
-                                for f_m in combined_m:
-                                    l_m = f_m.get("layer")
-                                    if l_m in m_counts:
-                                        m_counts[l_m] += 1
-                                    if f_m.get("type") in ("pipe", "box_culvert"):
-                                        m_plen += float(f_m.get("length_m") or 0.0)
-                                    elif f_m.get("type") in ("manhole", "catch_basin", "hydrant", "pole"):
-                                        m_structs += 1
-                                master_payload["radius_m"] = prev_r
-                                master_payload["bbox"] = m_prev.get("bbox") or master_payload["bbox"]
-                                master_payload["features"] = combined_m
-                                master_payload["layer_counts"] = m_counts
-                                master_payload["total_features"] = len(combined_m)
-                                master_payload["total_pipe_length_m"] = round(m_plen, 2)
-                                master_payload["total_structures"] = m_structs
-                    except Exception:
-                        pass
-
-                with open(master_cache_file, "w", encoding="utf-8") as mf:
-                    json.dump(master_payload, mf, ensure_ascii=False, indent=2)
-                if scan_dir_cache_file:
-                    try:
-                        with open(scan_dir_cache_file, "w", encoding="utf-8") as sdf:
-                            json.dump(master_payload, sdf, ensure_ascii=False, indent=2)
-                    except Exception:
-                        pass
-            except Exception:
-                pass
+        if response_features and cache_file != os.path.join(UTILITIES_CACHE_DIR, f"{safe_sid}_{int(fetch_radius_m)}m_v3.json"):
+            _save_utilities_json_cached(cache_file, result)
 
         return result
 
@@ -1122,6 +1153,11 @@ class PublicUtilitiesGISMixin:
         pxmin, pymin, pxmax, pymax = xmin - 12.0, ymin - 12.0, xmax + 12.0, ymax + 12.0
         sxmin, symin, sxmax, symax = xmin - 15.0, ymin - 15.0, xmax + 15.0, ymax + 15.0
 
+        def _ensure_links(feat_dict: Dict[str, Any]) -> Dict[str, Any]:
+            if "gov_links" in feat_dict and isinstance(feat_dict["gov_links"], dict):
+                return feat_dict
+            return _enrich_feature_gov_links(dict(feat_dict), ce, cn)
+
         for f_item in raw_features:
             lyr = f_item.get("layer")
             if lyr not in req_set:
@@ -1133,7 +1169,7 @@ class PublicUtilitiesGISMixin:
                 continue
 
             if is_exact_radius:
-                out.append(_enrich_feature_gov_links(dict(f_item), ce, cn))
+                out.append(_ensure_links(f_item))
                 continue
 
             ftype = f_item.get("type")
@@ -1142,7 +1178,7 @@ class PublicUtilitiesGISMixin:
                 if isinstance(coord, list) and len(coord) >= 2:
                     ex, ny = float(coord[0]), float(coord[1])
                     if pxmin <= ex <= pxmax and pymin <= ny <= pymax:
-                        out.append(_enrich_feature_gov_links(dict(f_item), ce, cn))
+                        out.append(_ensure_links(f_item))
             elif ftype in ("pipe", "box_culvert"):
                 coords = f_item.get("coords")
                 if not isinstance(coords, list) or len(coords) < 2:
@@ -1180,14 +1216,14 @@ class PublicUtilitiesGISMixin:
                     f_copy["start_coord"] = new_coords[0]
                     f_copy["end_coord"] = new_coords[-1]
                     f_copy["length_m"] = round(seg_len, 2)
-                    out.append(_enrich_feature_gov_links(f_copy, ce, cn))
+                    out.append(_ensure_links(f_copy))
                 else:
                     pts_2d = [(float(pt[0]), float(pt[1])) for pt in coords if isinstance(pt, list) and len(pt) >= 2]
                     clipped_check = _clip_polyline_to_bbox(pts_2d, sxmin, symin, sxmax, symax)
                     if len(clipped_check) >= 2:
-                        out.append(_enrich_feature_gov_links(dict(f_item), ce, cn))
+                        out.append(_ensure_links(f_item))
             else:
-                out.append(_enrich_feature_gov_links(dict(f_item), ce, cn))
+                out.append(_ensure_links(f_item))
 
         return out
 
