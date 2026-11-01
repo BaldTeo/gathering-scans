@@ -2638,13 +2638,16 @@
       surfaceClassEn: angleFromHorizontalDeg > 55.0 ? `Curved Wall (${rLabel})` : `Curved Surface (${rLabel})`,
     };
 
+    const validRadiusM = circleFit.isValidArc ? Number(circleFit.radiusM.toFixed(2)) : null;
+
     return {
       evalAt,
       projectPoint,
       lut,
       arcLengthM: Number(arcLengthM.toFixed(3)),
       extrudeDepthM: Number(extrudeDepthM.toFixed(3)),
-      radiusM: circleFit.isValidArc ? Number(circleFit.radiusM.toFixed(2)) : null,
+      radiusM: validRadiusM,
+      curvatureRadiusM: validRadiusM,
       sagittaM: circleFit.sagittaM,
       isValidArc: circleFit.isValidArc,
       curveType,
@@ -2692,13 +2695,13 @@
         wAxis = { x: 0, y: -1, z: 0 };
       } else {
         // 2. For curved ramps / vaulted slabs, test candidate ruling directions in tangent plane
-        // and select the axis wAxis whose orthogonal profile circle/parabola fit has minimum residual variance
+        // using a 36-step (5 deg) search + 1 deg local refinement around the minimum profile dispersion
         const u0 = initPlane.uAxis;
         const v0 = initPlane.vAxis;
-        let bestW = v0;
-        let bestRms = Infinity;
-        for (let aIdx = 0; aIdx < 12; aIdx++) {
-          const ang = (aIdx * Math.PI) / 12.0;
+        const c0 = initPlane.center;
+        const candE2 = initPlane.normal;
+        const step = Math.max(1, Math.floor(pts.length / 250));
+        const evalCandidateAngle = (ang) => {
           const candW = cVecNorm({
             x: Math.cos(ang) * u0.x + Math.sin(ang) * v0.x,
             y: Math.cos(ang) * u0.y + Math.sin(ang) * v0.y,
@@ -2709,22 +2712,62 @@
             y: -Math.sin(ang) * u0.y + Math.cos(ang) * v0.y,
             z: -Math.sin(ang) * u0.z + Math.cos(ang) * v0.z,
           });
-          const candE2 = initPlane.normal;
-          const c0 = initPlane.center;
-          const step = Math.max(1, Math.floor(pts.length / 250));
           const p2d = [];
+          let uMin = Infinity, uMax = -Infinity;
           for (let i = 0; i < pts.length; i += step) {
             const dx = pts[i].x - c0.x, dy = pts[i].y - c0.y, dz = pts[i].z - c0.z;
-            p2d.push({
-              u: dx * candE1.x + dy * candE1.y + dz * candE1.z,
-              v: dx * candE2.x + dy * candE2.y + dz * candE2.z,
-              w: 1.0,
-            });
+            const pu = dx * candE1.x + dy * candE1.y + dz * candE1.z;
+            const pv = dx * candE2.x + dy * candE2.y + dz * candE2.z;
+            if (pu < uMin) uMin = pu;
+            if (pu > uMax) uMax = pu;
+            p2d.push({ u: pu, v: pv, w: 1.0 });
           }
-          const cf = fit2DCircleAlgebraicAndRefine(p2d);
-          if (cf.rmsResidualM < bestRms) {
-            bestRms = cf.rmsResidualM;
-            bestW = candW;
+          if (curveType === "arc") {
+            const cf = fit2DCircleAlgebraicAndRefine(p2d);
+            return { rms: cf.rmsResidualM, candW };
+          }
+          const nBins = 10;
+          const uSpan = Math.max(1e-4, uMax - uMin);
+          const bins = Array.from({ length: nBins }, () => ({ n: 0, su: 0, sv: 0, suu: 0, suv: 0, svv: 0 }));
+          for (let i = 0; i < p2d.length; i++) {
+            const bIdx = Math.min(nBins - 1, Math.max(0, Math.floor(((p2d[i].u - uMin) / uSpan) * nBins)));
+            const b = bins[bIdx];
+            const u = p2d[i].u, v = p2d[i].v;
+            b.n++; b.su += u; b.sv += v; b.suu += u * u; b.suv += u * v; b.svv += v * v;
+          }
+          let sumSqErr = 0, totalN = 0;
+          for (let bIdx = 0; bIdx < nBins; bIdx++) {
+            const b = bins[bIdx];
+            if (b.n < 2) continue;
+            const mu = b.su / b.n, mv = b.sv / b.n;
+            const suuC = b.suu - b.n * mu * mu;
+            const suvC = b.suv - b.n * mu * mv;
+            const svvC = Math.max(0, b.svv - b.n * mv * mv);
+            const slope = suuC > 1e-9 ? suvC / suuC : 0;
+            sumSqErr += Math.max(0, svvC - slope * suvC);
+            totalN += b.n;
+          }
+          return { rms: totalN > 0 ? Math.sqrt(sumSqErr / totalN) : Infinity, candW };
+        };
+        let bestAng = 0;
+        let bestW = v0;
+        let bestRms = Infinity;
+        for (let aIdx = 0; aIdx < 36; aIdx++) {
+          const ang = (aIdx * Math.PI) / 36.0;
+          const res = evalCandidateAngle(ang);
+          if (res.rms < bestRms) {
+            bestRms = res.rms;
+            bestAng = ang;
+            bestW = res.candW;
+          }
+        }
+        for (let dDeg = -4; dDeg <= 4; dDeg++) {
+          if (dDeg === 0) continue;
+          const ang = bestAng + (dDeg * Math.PI) / 180.0;
+          const res = evalCandidateAngle(ang);
+          if (res.rms < bestRms) {
+            bestRms = res.rms;
+            bestW = res.candW;
           }
         }
         wAxis = bestW;
@@ -2746,9 +2789,9 @@
     const e1Axis = cVecNorm(cVecCross(e2Guess, wAxis));
     const e2Axis = cVecNorm(cVecCross(wAxis, e1Axis));
 
-    // Find w and u bounds across polygon + sampled points
+    // Find w and u bounds across sampled points (falling back to boundaryPts only when pts is sparse)
     let minW = Infinity, maxW = -Infinity, minU = Infinity, maxU = -Infinity;
-    const allBoundsPts = boundaryPts.concat(pts);
+    const allBoundsPts = pts.length >= 6 ? pts : boundaryPts.concat(pts);
     for (let i = 0; i < allBoundsPts.length; i++) {
       const p = allBoundsPts[i];
       const dx = p.x - c0.x, dy = p.y - c0.y, dz = p.z - c0.z;
@@ -2788,10 +2831,11 @@
     }
 
     const circleFit = fit2DCircleAlgebraicAndRefine(dense2D);
-    const numCtrl = 5;
+    const useCircleStations = circleFit.isValidArc && (curveType === "arc" || circleFit.rmsResidualM <= 0.004);
+    const numCtrl = useCircleStations ? 5 : 9;
     const splinePts = [];
 
-    if (circleFit.isValidArc) {
+    if (useCircleStations) {
       // Sample 5 control points directly along the fitted circular arc spanning [minU, maxU]
       const a = circleFit.centerU;
       const b = circleFit.centerV;
@@ -2813,24 +2857,46 @@
         });
       }
     } else {
-      // Robust binned median profile stations across [minU, maxU]
+      // Robust local linear/median profile stations across [minU, maxU] for parabolic / S-curve / freeform spline surfaces
       const spanU = Math.max(0.2, maxU - minU);
       for (let k = 0; k < numCtrl; k++) {
         const targetU = minU + (k / (numCtrl - 1)) * spanU;
-        const winHalf = spanU * 0.18;
-        const nearV = [];
+        let winHalf = spanU * 0.04;
+        const nearPts = [];
         for (let i = 0; i < dense2D.length; i++) {
-          if (Math.abs(dense2D[i].u - targetU) <= winHalf) nearV.push(dense2D[i].v);
+          const du = Math.abs(dense2D[i].u - targetU);
+          if (du <= winHalf) nearPts.push({ u: dense2D[i].u - targetU, v: dense2D[i].v, w: 1.0 - 0.65 * (du / winHalf) });
         }
-        let medV = 0;
-        if (nearV.length > 0) {
-          nearV.sort((x, y) => x - y);
-          medV = nearV[Math.floor(nearV.length * 0.5)];
+        if (nearPts.length < 3) {
+          nearPts.length = 0;
+          winHalf = spanU * 0.14;
+          for (let i = 0; i < dense2D.length; i++) {
+            const du = Math.abs(dense2D[i].u - targetU);
+            if (du <= winHalf) nearPts.push({ u: dense2D[i].u - targetU, v: dense2D[i].v, w: 1.0 - 0.65 * (du / winHalf) });
+          }
+        }
+        let estV = 0;
+        if (nearPts.length >= 3) {
+          // Local weighted linear regression v(u) = b0 + b1 * (u - targetU) to eliminate boundary bias at k=0 and k=4
+          let sw = 0, su = 0, sv = 0, suu = 0, suv = 0;
+          for (let i = 0; i < nearPts.length; i++) {
+            const np = nearPts[i];
+            sw += np.w;
+            su += np.w * np.u;
+            sv += np.w * np.v;
+            suu += np.w * np.u * np.u;
+            suv += np.w * np.u * np.v;
+          }
+          const det = sw * suu - su * su;
+          estV = Math.abs(det) > 1e-9 ? (suu * sv - su * suv) / det : sv / Math.max(1e-9, sw);
+        } else if (nearPts.length > 0) {
+          nearPts.sort((x, y) => x.v - y.v);
+          estV = nearPts[Math.floor(nearPts.length * 0.5)].v;
         }
         splinePts.push({
-          x: topOrigin.x + targetU * e1Axis.x + medV * e2Axis.x,
-          y: topOrigin.y + targetU * e1Axis.y + medV * e2Axis.y,
-          z: topOrigin.z + targetU * e1Axis.z + medV * e2Axis.z,
+          x: topOrigin.x + targetU * e1Axis.x + estV * e2Axis.x,
+          y: topOrigin.y + targetU * e1Axis.y + estV * e2Axis.y,
+          z: topOrigin.z + targetU * e1Axis.z + estV * e2Axis.z,
         });
       }
     }
@@ -2962,6 +3028,7 @@
         extrudeDepthM: evaluator.extrudeDepthM,
         arcLengthM: evaluator.arcLengthM,
         radiusM: evaluator.radiusM,
+        curvatureRadiusM: evaluator.radiusM,
         sagittaM: evaluator.sagittaM,
         isValidArc: evaluator.isValidArc,
         splinePts: evaluator.splinePts3D.map((p) => ({ x: Number(p.x.toFixed(3)), y: Number(p.y.toFixed(3)), z: Number(p.z.toFixed(3)) })),
@@ -3284,6 +3351,73 @@
     `;
   }
 
+  function buildUtilityTraceThreeGroup(res) {
+    if (!window.studioThree || !window.studioThree.scene || !window.THREE) return null;
+    const group = new window.THREE.Group();
+    group.name = "GS_UtilityTrace_Overlay";
+    const originTwd = typeof window.localToTwd97 === "function" ? window.localToTwd97({ x: 0, y: 0, z: 0 }) : { e: 0, n: 0, h: 0 };
+    const stations = (res && res.stations) || [];
+    const dia = Math.max(0.2, (res && res.pipe_diameter_m) || 0.3);
+    if (stations.length >= 2) {
+      const invPoints = [];
+      for (let i = 0; i < stations.length; i++) {
+        const s = stations[i];
+        const lx = Number(s.e) - originTwd.e;
+        const ly_inv = Number(s.invert_z) - originTwd.h;
+        const ly_crown = Number(s.crown_z !== undefined ? s.crown_z : s.invert_z + dia) - originTwd.h;
+        const ly_ground = Number(s.ground_z !== undefined ? s.ground_z : ly_crown + (s.cover_depth_m || 1.2)) - originTwd.h;
+        const lz = originTwd.n - Number(s.n);
+        const vInv = new window.THREE.Vector3(lx, ly_inv, lz);
+        const vCrown = new window.THREE.Vector3(lx, ly_crown, lz);
+        const vGround = new window.THREE.Vector3(lx, ly_ground, lz);
+        invPoints.push(vInv);
+        const dropLine = new window.THREE.Line(
+          new window.THREE.BufferGeometry().setFromPoints([vGround, vCrown]),
+          new window.THREE.LineBasicMaterial({ color: 0x10b981, depthTest: false })
+        );
+        dropLine.renderOrder = 997;
+        group.add(dropLine);
+        const ringGeo = new window.THREE.RingGeometry(dia * 0.6, dia * 0.9, 16);
+        ringGeo.rotateX(-Math.PI / 2);
+        const ringMesh = new window.THREE.Mesh(ringGeo, new window.THREE.MeshBasicMaterial({ color: 0xf59e0b, side: window.THREE.DoubleSide, depthTest: false }));
+        ringMesh.position.copy(vGround);
+        ringMesh.renderOrder = 998;
+        group.add(ringMesh);
+      }
+      const pipeMat = new window.THREE.MeshStandardMaterial({
+        color: 0x06b6d4, emissive: 0x06b6d4, emissiveIntensity: 0.5, roughness: 0.3, metalness: 0.2, transparent: true, opacity: 0.92, depthTest: false,
+      });
+      for (let i = 0; i < invPoints.length - 1; i++) {
+        const v1 = invPoints[i], v2 = invPoints[i + 1];
+        const segDist = v1.distanceTo(v2);
+        if (segDist < 0.02) continue;
+        const mid = new window.THREE.Vector3().addVectors(v1, v2).multiplyScalar(0.5);
+        const dir = new window.THREE.Vector3().subVectors(v2, v1).normalize();
+        const cylMesh = new window.THREE.Mesh(new window.THREE.CylinderGeometry(dia * 0.5, dia * 0.5, segDist, 16), pipeMat);
+        cylMesh.position.copy(mid);
+        cylMesh.quaternion.setFromUnitVectors(new window.THREE.Vector3(0, 1, 0), dir);
+        cylMesh.renderOrder = 996;
+        group.add(cylMesh);
+        const trenchMesh = new window.THREE.Mesh(
+          new window.THREE.BoxGeometry(Math.max(1.0, dia * 2.5), dia * 1.5, segDist),
+          new window.THREE.MeshBasicMaterial({ color: 0xf59e0b, wireframe: true, transparent: true, opacity: 0.45, depthTest: false })
+        );
+        trenchMesh.position.copy(mid);
+        trenchMesh.quaternion.setFromUnitVectors(new window.THREE.Vector3(0, 0, 1), dir);
+        trenchMesh.renderOrder = 995;
+        group.add(trenchMesh);
+      }
+      if (invPoints.length > 0 && window.studioThree.camera && window.studioThree.controls) {
+        const center = invPoints[Math.floor(invPoints.length / 2)];
+        const camDist = Math.max(15, ((res && res.total_length_3d_m) || 20) * 0.8);
+        window.studioThree.controls.target.copy(center);
+        window.studioThree.camera.position.set(center.x + camDist * 0.7, center.y + camDist * 0.65, center.z + camDist * 0.7);
+        window.studioThree.controls.update();
+      }
+    }
+    return group;
+  }
+
   window.__GS_CURVED_QA = {
     fit2DCircleAlgebraicAndRefine,
     evaluateCatmullRomChain3D,
@@ -3294,6 +3428,7 @@
     buildCurvedDraftPreviewThreeGroup,
     getFlatnessReportStylesheet,
     renderFlatnessCurvedConfigCardHtml,
+    buildUtilityTraceThreeGroup,
   };
 
   // Auto-launch Stationing or Drainage Inspector if tool requested in URL

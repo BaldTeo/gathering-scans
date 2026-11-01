@@ -3899,6 +3899,10 @@ class GatheringScansTestSuite(unittest.TestCase):
         ):
             self.assertIn(token, js12, f"Missing {token} in 12-public-utilities-gis.js")
 
+        with open(os.path.join(BASE_DIR, "web", "src", "03-studio-core.js"), "r", encoding="utf-8") as f:
+            js03 = f.read()
+        self.assertIn("QA_STATE.curvedHoverPt =", js03)
+
         import shutil
         import subprocess
         import json as _json
@@ -3936,7 +3940,7 @@ vm.runInContext(fs.readFileSync('./web/src/10-construction-qa-and-stakeout.js', 
 vm.runInContext(fs.readFileSync('./web/src/12-public-utilities-gis.js', 'utf8'), sandbox);
 
 (async () => {
-  const cylGeo = new THREE.CylinderGeometry(5.0, 5.0, 3.0, 64, 16, true, -Math.PI/4, Math.PI/2);
+  const cylGeo = new THREE.CylinderGeometry(5.0, 5.0, 4.0, 64, 16, true, -Math.PI/4, Math.PI/2);
   cylGeo.translate(0, 1.5, -5.0);
   const cylMesh = new THREE.Mesh(cylGeo, new THREE.MeshBasicMaterial({ side: THREE.DoubleSide }));
   cylMesh.updateMatrixWorld(true);
@@ -3961,7 +3965,20 @@ vm.runInContext(fs.readFileSync('./web/src/12-public-utilities-gis.js', 'utf8'),
   const snappedAfterWfA = [];
   sandbox.window.collectExtraSnappableVertices((pt, meta) => snappedAfterWfA.push({ pt, meta }));
 
+  // Test Pick E1 custom extrusion depth (3.1m down from y=2.6 to y=-0.5)
+  sandbox.window.QA_STATE.curvedPickStage = 'extrude';
+  const midPt = ctrlPts[1];
+  sandbox.window.handleQaTool3DCanvasPick('flatness', new THREE.Vector3(midPt.x, -0.5, midPt.z), { e: midPt.x, n: -midPt.z, h: -0.5 }, false);
+  await new Promise(r => setTimeout(r, 30));
+  const e1DepthM = sandbox.window.QA_STATE.flatnessCache.curvedMeta.extrudeDepthM;
+
+  // Test live drag ('move') updates flatnessCache.curvedMeta.splinePts immediately
+  sandbox.window.syncQaLinkedPolygonEdit('flatnessSplinePoints', 'move', 0, new THREE.Vector3(ctrlPts[0].x + 0.12, 2.6, ctrlPts[0].z));
+  const movedSplineX = sandbox.window.QA_STATE.flatnessCache.curvedMeta.splinePts[0].x;
+
+  // Test Workflow B Polygon Auto-Fit on cylindrical wall
   sandbox.window.startNewFlatnessObjectDraft(false);
+  sandbox.window.QA_STATE.flatnessCurveType = 'arc';
   const polyPts = [
     new THREE.Vector3(ctrlPts[0].x, 2.6, ctrlPts[0].z),
     new THREE.Vector3(ctrlPts[3].x, 2.6, ctrlPts[3].z),
@@ -3973,14 +3990,36 @@ vm.runInContext(fs.readFileSync('./web/src/12-public-utilities-gis.js', 'utf8'),
   const wfBMeta = sandbox.window.QA_STATE.flatnessCache.curvedMeta;
   const wfBRmsMm = sandbox.window.QA_STATE.flatnessCache.rmsMm;
 
+  // Test Workflow B on a non-circular cubic S-curve transition ramp in 'spline' mode
+  const sCurveSamples = [];
+  for (let u = -2.0; u <= 2.001; u += 0.1) {
+    for (let w = 0; w <= 3.001; w += 0.15) {
+      sCurveSamples.push({ x: u, y: 0.08 * u * u * u + 0.15 * u * u, z: w });
+    }
+  }
+  const sCurveFit = sandbox.window.__GS_CURVED_QA.fitCurvedExtrudedSurfaceFromPolygonSamples(sCurveSamples, polyPts, {
+    curveType: 'spline',
+    offsetMode: 'auto_center'
+  });
+  let sCurveSumSq = 0;
+  for (const p of sCurveSamples) {
+    const pr = sCurveFit.projectPoint(p.x, p.y, p.z);
+    sCurveSumSq += pr.signedN * pr.signedN;
+  }
+  const sCurveRmsMm = Math.sqrt(sCurveSumSq / sCurveSamples.length) * 1000;
+
   console.log(JSON.stringify({
     wfARadiusM: wfAMeta.radiusM,
+    wfACurvatureRadiusM: wfAMeta.curvatureRadiusM,
     wfARmsMm,
     wfAPassPct: wfARes.pass_rate_pct,
     snappedCount: snappedAfterWfA.length,
+    e1DepthM,
+    movedSplineDeltaX: Math.abs(movedSplineX - (ctrlPts[0].x + 0.12)),
     wfBRadiusM: wfBMeta.radiusM,
     wfBRmsMm,
-    wfBPassPct: wfBRes.pass_rate_pct
+    wfBPassPct: wfBRes.pass_rate_pct,
+    sCurveRmsMm
   }));
 })();
 """
@@ -3994,12 +4033,16 @@ vm.runInContext(fs.readFileSync('./web/src/12-public-utilities-gis.js', 'utf8'),
             self.assertEqual(proc.returncode, 0, f"Node VM curved QA test failed: {proc.stderr}")
             out = _json.loads(proc.stdout.strip().splitlines()[-1])
             self.assertAlmostEqual(float(out["wfARadiusM"]), 5.0, delta=0.05)
+            self.assertAlmostEqual(float(out["wfACurvatureRadiusM"]), 5.0, delta=0.05)
             self.assertLess(float(out["wfARmsMm"]), 1.0)
             self.assertGreaterEqual(float(out["wfAPassPct"]), 99.0)
             self.assertEqual(int(out["snappedCount"]), 5)
+            self.assertAlmostEqual(float(out["e1DepthM"]), 3.1, delta=0.15)
+            self.assertLess(float(out["movedSplineDeltaX"]), 1e-4)
             self.assertAlmostEqual(float(out["wfBRadiusM"]), 5.0, delta=0.05)
             self.assertLess(float(out["wfBRmsMm"]), 1.0)
             self.assertGreaterEqual(float(out["wfBPassPct"]), 99.0)
+            self.assertLess(float(out["sCurveRmsMm"]), 3.0)
 
 
 if __name__ == "__main__":

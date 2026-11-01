@@ -2013,7 +2013,8 @@
 
     const modeNameZh = (m, slopeDeg, cMeta) => {
       if (m === "curved_extruded") {
-        const rTxt = cMeta && Number.isFinite(cMeta.curvatureRadiusM) && cMeta.curvatureRadiusM < 999 ? ` R=${Number(cMeta.curvatureRadiusM).toFixed(1)}m` : "";
+        const radVal = Number(cMeta?.radiusM ?? cMeta?.curvatureRadiusM);
+        const rTxt = Number.isFinite(radVal) && radVal < 999 ? ` R=${radVal.toFixed(1)}m` : "";
         return `${t("弧形曲面", "Curved Surface")}${rTxt}`;
       }
       if (m === "vertical_plumb" || Number(slopeDeg) > 55) return t("鉛直牆面", "Plumb Wall");
@@ -2104,15 +2105,19 @@
     QA_STATE.surfaceQaLastResult = obj.metrics;
     const cMeta = obj.curvedMeta || obj.cache?.curvedMeta || null;
     if (cMeta) {
-      QA_STATE.flatnessCurveType = cMeta.curveType || QA_STATE.flatnessCurveType || "auto";
+      QA_STATE.flatnessCurveType = cMeta.curveType || QA_STATE.flatnessCurveType || "spline";
       QA_STATE.flatnessExtrudeDirMode = cMeta.extrudeDirMode || QA_STATE.flatnessExtrudeDirMode || "auto";
       QA_STATE.flatnessCurvedOffsetMode = cMeta.offsetMode || QA_STATE.flatnessCurvedOffsetMode || "auto_center";
-      QA_STATE.flatnessExtrudeDepthM = Number(cMeta.extrudeDepthM) || QA_STATE.flatnessExtrudeDepthM || 2.5;
+      QA_STATE.flatnessExtrudeDepthM = Number(cMeta.extrudeDepthM) || QA_STATE.flatnessExtrudeDepthM || 1.8;
       if (Array.isArray(cMeta.splinePts) && cMeta.splinePts.length >= 2) {
         QA_STATE.curvedSplinePoints = cMeta.splinePts.map((p) => ({ x: Number(p.x) || 0, y: Number(p.y) || 0, z: Number(p.z) || 0 }));
       }
       QA_STATE.curvedExtrudeTargetPt = cMeta.extrudeHandlePt ? { ...cMeta.extrudeHandlePt } : null;
       QA_STATE.curvedHasExplicitSpline = Boolean(obj.curvedHasExplicitSpline);
+    } else {
+      QA_STATE.curvedSplinePoints = [];
+      QA_STATE.curvedExtrudeTargetPt = null;
+      QA_STATE.curvedHasExplicitSpline = false;
     }
     syncCurvedSplineHandlesToStudioState(cMeta);
 
@@ -2133,6 +2138,28 @@
     });
     const curvedWrap = document.getElementById("flatnessCurvedConfigWrap");
     if (curvedWrap) curvedWrap.style.display = QA_STATE.flatnessPlaneMode === "curved_extruded" ? "block" : "none";
+    document.querySelectorAll('#surfaceQaContainer input[name="flatnessCurveType"]').forEach((r) => {
+      const match = r.value === (QA_STATE.flatnessCurveType || "spline");
+      r.checked = match;
+      r.closest(".gs-qa-mode-pill")?.classList.toggle("active", match);
+    });
+    document.querySelectorAll('#surfaceQaContainer input[name="flatnessCurvedOffsetMode"]').forEach((r) => {
+      const match = r.value === (QA_STATE.flatnessCurvedOffsetMode || "auto_center");
+      r.checked = match;
+      r.closest(".gs-qa-mode-pill")?.classList.toggle("active", match);
+    });
+    const selDir = document.getElementById("selFlatnessExtrudeDir");
+    if (selDir) selDir.value = QA_STATE.flatnessExtrudeDirMode || "auto";
+    const rngExt = document.getElementById("rngFlatnessExtrudeDepthM");
+    const inpExt = document.getElementById("inpFlatnessExtrudeDepthM");
+    const extM = Number(QA_STATE.flatnessExtrudeDepthM) || 1.8;
+    if (rngExt) rngExt.value = String(Math.min(15, Math.max(0.2, extM)));
+    if (inpExt) inpExt.value = extM.toFixed(2);
+    const lblRadBadge = document.getElementById("lblFlatnessCurvedRadiusBadge");
+    if (lblRadBadge) {
+      const radV = Number(cMeta?.radiusM ?? cMeta?.curvatureRadiusM);
+      lblRadBadge.textContent = Number.isFinite(radV) && radV < 999 ? `R = ${radV} m` : QA_STATE.flatnessCurveType === "arc" ? t("圓弧擬合", "Circular Arc") : t("樣條擠出", "Spline Extrude");
+    }
     document.querySelectorAll('#surfaceQaContainer input[name="flatnessVolMode"]').forEach((r) => {
       const match = r.value === QA_STATE.flatnessVolumeMode;
       r.checked = match;
@@ -2759,8 +2786,15 @@
       const lblCurvedSt = document.getElementById("lblFlatnessCurvedStatus");
       if (lblCurvedSt && cache.curvedMeta) {
         const cm = cache.curvedMeta;
-        const rTxt = Number.isFinite(cm.curvatureRadiusM) && cm.curvatureRadiusM < 999 ? `R = ${cm.curvatureRadiusM.toFixed(2)} m` : t("樣條曲線", "Spline");
+        const radV = Number(cm.radiusM ?? cm.curvatureRadiusM);
+        const rTxt = Number.isFinite(radV) && radV < 999 ? `R = ${radV.toFixed(2)} m` : t("樣條曲線", "Spline");
         lblCurvedSt.textContent = `${rTxt} · ${t("弧長", "Arc")} ${cm.arcLengthM} m × ${t("擠出", "Ext")} ${cm.extrudeDepthM} m`;
+      }
+      const lblRadBadge = document.getElementById("lblFlatnessCurvedRadiusBadge");
+      if (lblRadBadge && cache.curvedMeta) {
+        const cm = cache.curvedMeta;
+        const radV = Number(cm.radiusM ?? cm.curvatureRadiusM);
+        lblRadBadge.textContent = Number.isFinite(radV) && radV < 999 ? `R = ${radV.toFixed(2)} m` : t("樣條擠出", "Spline Extrude");
       }
       renderSavedFlatnessObjectsMenu();
       recomputeFlatnessMetricsAndVisuals();
@@ -2787,12 +2821,20 @@
     QA_STATE.curvedHasExplicitSpline = true;
     const ev = window.__GS_CURVED_QA.buildCurvedExtrudedSurfaceEvaluator({
       splinePts: QA_STATE.curvedSplinePoints,
-      curveType: QA_STATE.flatnessCurveType || "auto",
+      curveType: QA_STATE.flatnessCurveType || "spline",
       extrudeDirMode: QA_STATE.flatnessExtrudeDirMode || "auto",
-      extrudeDepthM: QA_STATE.flatnessExtrudeDepthM || 2.5,
+      extrudeDepthM: QA_STATE.flatnessExtrudeDepthM || 1.8,
       extrudeTargetPt: QA_STATE.curvedExtrudeTargetPt || null,
+      useE1Depth: QA_STATE.flatnessExtrudeDirMode === "custom_e1" && Boolean(QA_STATE.curvedExtrudeTargetPt),
     });
     if (!ev || !Array.isArray(ev.ribbonBoundaryPts3D) || ev.ribbonBoundaryPts3D.length < 4) return;
+    if (Number.isFinite(ev.extrudeDepthM)) {
+      QA_STATE.flatnessExtrudeDepthM = Number(ev.extrudeDepthM);
+      const inpExt = document.getElementById("inpFlatnessExtrudeDepthM");
+      const rngExt = document.getElementById("rngFlatnessExtrudeDepthM");
+      if (inpExt) inpExt.value = ev.extrudeDepthM.toFixed(2);
+      if (rngExt) rngExt.value = String(Math.min(15, Math.max(0.2, ev.extrudeDepthM)));
+    }
     await lockFlatnessPolygonAndAnalyze(ev.ribbonBoundaryPts3D, {
       updateActiveObject: Boolean(opts.updateActiveObject || QA_STATE.activeFlatnessObjectId),
     });
@@ -2924,25 +2966,29 @@
     const lblExt = document.getElementById("lblFlatnessExtrudeDepthReadout");
     let extTimer = null;
     const triggerExtrudeDepthChange = (valM) => {
-      const cleanM = Math.max(0.2, Math.min(30, safeFloat(valM, 2.5)));
+      const cleanM = Math.max(0.2, Math.min(30, safeFloat(valM, 1.8)));
       QA_STATE.flatnessExtrudeDepthM = cleanM;
       QA_STATE.curvedExtrudeTargetPt = null;
-      if (lblExt) lblExt.textContent = `${cleanM.toFixed(2)} m`;
+      if (QA_STATE.flatnessExtrudeDirMode === "custom_e1") QA_STATE.flatnessExtrudeDirMode = "auto";
+      if (lblExt) lblExt.textContent = "m";
       refreshFlatnessDraftVisuals();
       if (extTimer) clearTimeout(extTimer);
       extTimer = setTimeout(() => {
-        if (QA_STATE.curvedHasExplicitSpline && Array.isArray(QA_STATE.curvedSplinePoints) && QA_STATE.curvedSplinePoints.length >= 2) {
+        if (Array.isArray(QA_STATE.curvedSplinePoints) && QA_STATE.curvedSplinePoints.length >= 2) {
+          QA_STATE.curvedHasExplicitSpline = true;
           applyCurvedSplineExtrusionAnalysis({ updateActiveObject: true });
+        } else if (window.STATE && Array.isArray(window.STATE.flatnessPolygonPoints) && window.STATE.flatnessPolygonPoints.length >= 3) {
+          lockFlatnessPolygonAndAnalyze(window.STATE.flatnessPolygonPoints, { updateActiveObject: true });
         }
       }, 120);
     };
     rngExt?.addEventListener("input", (e) => {
-      const v = Math.max(0.2, Math.min(15, safeFloat(e.target.value, 2.5)));
+      const v = Math.max(0.2, Math.min(15, safeFloat(e.target.value, 1.8)));
       if (inpExt) inpExt.value = v.toFixed(2);
       triggerExtrudeDepthChange(v);
     });
     inpExt?.addEventListener("change", (e) => {
-      const v = Math.max(0.2, Math.min(30, safeFloat(e.target.value, 2.5)));
+      const v = Math.max(0.2, Math.min(30, safeFloat(e.target.value, 1.8)));
       if (inpExt) inpExt.value = v.toFixed(2);
       if (rngExt) rngExt.value = String(Math.min(15, v));
       triggerExtrudeDepthChange(v);
@@ -3170,7 +3216,7 @@
           <span style="color:var(--ui-text-muted);">${t("表面型態 / 坡度", "Surface / Slope")}:</span>
           <span style="font-weight:700;color:var(--ui-text-primary);">${t(plumb.surface_class_zh || "平面", plumb.surface_class_en || "Plane")} · ${plumb.slope_deg || 0}° (${plumb.tilt_ratio || "1:INF"})</span>
         </div>
-        ${cMeta ? `<div style="display:flex;justify-content:space-between;font-size:10.5px;margin-bottom:3px;"><span style="color:var(--ui-text-muted);">${t("曲率半徑 / 弧長×擠出", "Curvature R / Arc×Ext")}:</span><span style="font-weight:700;color:#22d3ee;">${Number.isFinite(cMeta.curvatureRadiusM) && cMeta.curvatureRadiusM < 999 ? `R = ${Number(cMeta.curvatureRadiusM).toFixed(2)} m` : t("樣條曲線", "Spline")} · ${cMeta.arcLengthM || 0}m × ${cMeta.extrudeDepthM || 0}m</span></div>` : ""}
+        ${cMeta ? `<div style="display:flex;justify-content:space-between;font-size:10.5px;margin-bottom:3px;"><span style="color:var(--ui-text-muted);">${t("曲率半徑 / 弧長×擠出", "Curvature R / Arc×Ext")}:</span><span style="font-weight:700;color:#22d3ee;">${Number.isFinite(cMeta.radiusM ?? cMeta.curvatureRadiusM) && (cMeta.radiusM ?? cMeta.curvatureRadiusM) < 999 ? `R = ${Number(cMeta.radiusM ?? cMeta.curvatureRadiusM).toFixed(2)} m` : t("樣條曲線", "Spline")} · ${cMeta.arcLengthM || 0}m × ${cMeta.extrudeDepthM || 0}m</span></div>` : ""}
         <div style="display:flex;justify-content:space-between;font-size:10.5px;margin-bottom:3px;">
           <span style="color:var(--ui-text-muted);">ASTM E1155 (F_F / F_L):</span>
           <span style="font-weight:700;color:var(--ui-text-primary);">F_F ${astm.ff_flatness || "—"} / F_L ${astm.fl_levelness || "—"}</span>
@@ -3516,8 +3562,9 @@
 
     const summaryRowsHtml = objectSnapshots.map(({ obj, r, c }, idx) => {
       const cm = r.curved_meta || obj.curvedMeta || c.curvedMeta || null;
+      const cmRad = Number(cm?.radiusM ?? cm?.curvatureRadiusM);
       const modeZh = r.reference_mode === "curved_extruded"
-        ? `弧形擠出曲面 (${cm && Number.isFinite(cm.curvatureRadiusM) && cm.curvatureRadiusM < 999 ? `R=${Number(cm.curvatureRadiusM).toFixed(2)}m` : "樣條"} · ${cm ? `${cm.arcLengthM}×${cm.extrudeDepthM}m` : ""})`
+        ? `弧形擠出曲面 (${Number.isFinite(cmRad) && cmRad < 999 ? `R=${cmRad.toFixed(2)}m` : "樣條"} · ${cm ? `${cm.arcLengthM}×${cm.extrudeDepthM}m` : ""})`
         : r.reference_mode === "horizontal"
         ? "水平高程面 (0° 標高)"
         : r.reference_mode === "vertical_plumb"
@@ -3931,114 +3978,15 @@
   function renderUtilityTrace3DOverlay(res) {
     if (!window.studioThree || !window.studioThree.scene || !window.THREE) return;
     utilityTrace3DGroup = clear3DGroup(utilityTrace3DGroup);
-    utilityTrace3DGroup = new window.THREE.Group();
-    utilityTrace3DGroup.name = "GS_UtilityTrace_Overlay";
-
-    const originTwd = (typeof localToTwd97 === "function") ? localToTwd97({ x: 0, y: 0, z: 0 }) : { e: 0, n: 0, h: 0 };
-    const stations = res.stations || [];
-    const dia = Math.max(0.2, res.pipe_diameter_m || 0.3);
-
-    if (stations.length >= 2) {
-      const invPoints = [];
-      const crownPoints = [];
-      const groundPoints = [];
-
-      for (let i = 0; i < stations.length; i++) {
-        const s = stations[i];
-        const lx = Number(s.e) - originTwd.e;
-        const ly_inv = Number(s.invert_z) - originTwd.h;
-        const ly_crown = Number(s.crown_z !== undefined ? s.crown_z : s.invert_z + dia) - originTwd.h;
-        const ly_ground = Number(s.ground_z !== undefined ? s.ground_z : ly_crown + (s.cover_depth_m || 1.2)) - originTwd.h;
-        const lz = originTwd.n - Number(s.n);
-
-        const vInv = new window.THREE.Vector3(lx, ly_inv, lz);
-        const vCrown = new window.THREE.Vector3(lx, ly_crown, lz);
-        const vGround = new window.THREE.Vector3(lx, ly_ground, lz);
-
-        invPoints.push(vInv);
-        crownPoints.push(vCrown);
-        groundPoints.push(vGround);
-
-        // Vertical depth-of-cover drop lines from ground down to pipe crown
-        const dropGeo = new window.THREE.BufferGeometry().setFromPoints([vGround, vCrown]);
-        const dropMat = new window.THREE.LineBasicMaterial({ color: 0x10b981, depthTest: false });
-        const dropLine = new window.THREE.Line(dropGeo, dropMat);
-        dropLine.renderOrder = 997;
-        utilityTrace3DGroup.add(dropLine);
-
-        // Floating station marker disk / ring
-        const ringGeo = new window.THREE.RingGeometry(dia * 0.6, dia * 0.9, 16);
-        ringGeo.rotateX(-Math.PI / 2);
-        const ringMat = new window.THREE.MeshBasicMaterial({ color: 0xf59e0b, side: window.THREE.DoubleSide, depthTest: false });
-        const ringMesh = new window.THREE.Mesh(ringGeo, ringMat);
-        ringMesh.position.copy(vGround);
-        ringMesh.renderOrder = 998;
-        utilityTrace3DGroup.add(ringMesh);
-      }
-
-      // True 3D Cylindrical Pipe segments
-      const pipeMat = new window.THREE.MeshStandardMaterial({
-        color: 0x06b6d4,
-        emissive: 0x06b6d4,
-        emissiveIntensity: 0.5,
-        roughness: 0.3,
-        metalness: 0.2,
-        transparent: true,
-        opacity: 0.92,
-        depthTest: false,
-      });
-
-      for (let i = 0; i < invPoints.length - 1; i++) {
-        const v1 = invPoints[i];
-        const v2 = invPoints[i + 1];
-        const segDist = v1.distanceTo(v2);
-        if (segDist < 0.02) continue;
-
-        const cylGeo = new window.THREE.CylinderGeometry(dia * 0.5, dia * 0.5, segDist, 16);
-        const mid = new window.THREE.Vector3().addVectors(v1, v2).multiplyScalar(0.5);
-        const dir = new window.THREE.Vector3().subVectors(v2, v1).normalize();
-
-        const cylMesh = new window.THREE.Mesh(cylGeo, pipeMat);
-        cylMesh.position.copy(mid);
-        cylMesh.quaternion.setFromUnitVectors(new window.THREE.Vector3(0, 1, 0), dir);
-        cylMesh.renderOrder = 996;
-        utilityTrace3DGroup.add(cylMesh);
-
-        // Trench wireframe corridor
-        const trenchWidth = Math.max(1.0, dia * 2.5);
-        const trenchGeo = new window.THREE.BoxGeometry(trenchWidth, dia * 1.5, segDist);
-        const trenchMat = new window.THREE.MeshBasicMaterial({
-          color: 0xf59e0b,
-          wireframe: true,
-          transparent: true,
-          opacity: 0.45,
-          depthTest: false,
-        });
-        const trenchMesh = new window.THREE.Mesh(trenchGeo, trenchMat);
-        trenchMesh.position.copy(mid);
-        trenchMesh.quaternion.setFromUnitVectors(new window.THREE.Vector3(0, 0, 1), dir);
-        trenchMesh.renderOrder = 995;
-        utilityTrace3DGroup.add(trenchMesh);
-      }
-
-      // Auto-frame camera on trench
-      if (invPoints.length > 0 && window.studioThree.camera && window.studioThree.controls) {
-        const midIdx = Math.floor(invPoints.length / 2);
-        const center = invPoints[midIdx];
-        const totalLen = res.total_length_3d_m || 20;
-        const camDist = Math.max(15, totalLen * 0.8);
-        window.studioThree.controls.target.copy(center);
-        window.studioThree.camera.position.set(center.x + camDist * 0.7, center.y + camDist * 0.65, center.z + camDist * 0.7);
-        window.studioThree.controls.update();
-      }
+    if (window.__GS_CURVED_QA && typeof window.__GS_CURVED_QA.buildUtilityTraceThreeGroup === "function") {
+      utilityTrace3DGroup = window.__GS_CURVED_QA.buildUtilityTraceThreeGroup(res);
     }
-
+    if (!utilityTrace3DGroup) return;
     if (window.studioThree.overlayGroup) {
       window.studioThree.overlayGroup.add(utilityTrace3DGroup);
     } else {
       window.studioThree.scene.add(utilityTrace3DGroup);
     }
-
     if (window.studioThree.renderer && window.studioThree.camera) {
       window.studioThree.renderer.render(window.studioThree.scene, window.studioThree.camera);
     }
@@ -4720,17 +4668,33 @@
     if (!st) return;
     if (source === "flatnessSplinePoints" && Number.isFinite(idx) && Array.isArray(QA_STATE.curvedSplinePoints) && QA_STATE.curvedSplinePoints[idx]) {
       if ((action === "move" || action === "commit") && pt) {
-        QA_STATE.curvedSplinePoints[idx] = { x: Number(pt.x), y: Number(pt.y), z: Number(pt.z) };
+        const cleanPt = { x: Number(pt.x), y: Number(pt.y), z: Number(pt.z) };
+        QA_STATE.curvedSplinePoints[idx] = cleanPt;
         QA_STATE.curvedHasExplicitSpline = true;
+        if (QA_STATE.flatnessCache?.curvedMeta?.splinePts?.[idx]) {
+          QA_STATE.flatnessCache.curvedMeta.splinePts[idx] = cleanPt;
+        }
+        const actObj = getActiveFlatnessObject();
+        if (actObj?.curvedMeta?.splinePts?.[idx]) {
+          actObj.curvedMeta.splinePts[idx] = cleanPt;
+        }
       }
       if (action === "commit") applyCurvedSplineExtrusionAnalysis({ updateActiveObject: true });
       return;
     }
     if (source === "flatnessExtrusionHandle") {
       if ((action === "move" || action === "commit") && pt) {
-        QA_STATE.curvedExtrudeTargetPt = { x: Number(pt.x), y: Number(pt.y), z: Number(pt.z) };
+        const cleanPt = { x: Number(pt.x), y: Number(pt.y), z: Number(pt.z) };
+        QA_STATE.curvedExtrudeTargetPt = cleanPt;
         QA_STATE.flatnessExtrudeDirMode = "custom_e1";
         QA_STATE.curvedHasExplicitSpline = true;
+        if (QA_STATE.flatnessCache?.curvedMeta) {
+          QA_STATE.flatnessCache.curvedMeta.extrudeHandlePt = cleanPt;
+        }
+        const actObj = getActiveFlatnessObject();
+        if (actObj?.curvedMeta) {
+          actObj.curvedMeta.extrudeHandlePt = cleanPt;
+        }
         const selDir = document.getElementById("selFlatnessExtrudeDir");
         if (selDir) selDir.value = "custom_e1";
       }

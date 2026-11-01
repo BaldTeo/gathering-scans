@@ -1266,6 +1266,12 @@
             }
           }
         }
+      } else if (STATE.activeTool === "flatness" && window.QA_STATE?.flatnessPlaneMode === "curved_extruded" && window.QA_STATE?.curvedPickStage && typeof window.refreshFlatnessDraftVisuals === "function") {
+        const hoverPt = pickStudio3DPoint(e.clientX, e.clientY);
+        if (hoverPt) {
+          window.QA_STATE.curvedHoverPt = { x: hoverPt.x, y: hoverPt.y, z: hoverPt.z };
+          window.refreshFlatnessDraftVisuals();
+        }
       } else if (STATE.snapEnabled && typeof findNearestSnappableToolVertex === "function") {
         const snapV = findNearestSnappableToolVertex(e.clientX, e.clientY, window.innerWidth <= 768 ? 28 : 24, STATE.movingVertex);
         updateStudioSnapIndicator(snapV?.point || null, Boolean(snapV?.point));
