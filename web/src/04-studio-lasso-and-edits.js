@@ -678,6 +678,10 @@
 
   function computeLaserSpanAtPoint(rawPt, surfNormal) {
     if (!studioThree || !rawPt) return null;
+    if (typeof window.computeLaserSpanForOverlayHit === "function") {
+      const ovSpan = window.computeLaserSpanForOverlayHit(rawPt);
+      if (ovSpan) return ovSpan;
+    }
     const idx = getLaserSpatialIndex();
     if (!idx) return null;
 

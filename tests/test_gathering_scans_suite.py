@@ -3445,9 +3445,9 @@ class GatheringScansTestSuite(unittest.TestCase):
     def test_42_utilities_vertical_elevation_keep_layers_and_group1_tool_coexistence(self):
         """
         Verify:
-        1. Open waterway channels (e.g. QiHu 磺港溪 排水河道 osm_waterway_*) are marked is_open_channel=True with shallow surface depth (0.45m) instead of buried 2.25m below gorge floor.
+        1. Open waterway channels (e.g. QiHu 磺港溪 排水河道 osm_waterway_*) are marked is_open_channel=True with shallow surface depth (0.45m) and street-grade ground_reference_h >= 11.5m (not dragged down by sunken park footpaths/trees).
         2. Utilities panel provides 'keepLayersOnClose' (#chkUtilKeepOnClose) and vertical elevation Z-offset (#rngUtilZOffset).
-        3. Group 1 tools (distance, angle, area, coordinates, laser, clear) do NOT close right-pane tools (#studioSidePanel) and can raycast/snap to 3D utilities & categorized trees/walls.
+        3. Group 1 tools (distance, angle, area, coordinates, laser, clear) do NOT close right-pane tools (#studioSidePanel) and can raycast/snap/laser-measure 3D utilities & categorized trees/walls.
         """
         from pc_worker.surveying_engine import SurveyingEngine
 
@@ -3456,12 +3456,20 @@ class GatheringScansTestSuite(unittest.TestCase):
             {"scan_id": "edited_qihu_unified_merged_scan_4_scans__edited_372953", "radius_m": 250.0, "force_refresh": False}
         )
         self.assertEqual(qihu_res.get("status"), "ok")
+        self.assertGreaterEqual(float(qihu_res.get("ground_reference_h") or 0.0), 11.5)
         q_feats = qihu_res.get("features") or []
         open_waterways = [f for f in q_feats if str(f.get("id") or "").startswith("osm_waterway_") and f.get("is_open_channel")]
         self.assertGreaterEqual(len(open_waterways), 1, "Expected open waterway channel in QiHu Park utilities")
         for ow in open_waterways:
             self.assertLessEqual(float(ow.get("start_depth_m") or 0.0), 0.65)
             self.assertLessEqual(float(ow.get("height_m") or 0.0), 0.90)
+            self.assertGreaterEqual(float(ow.get("start_ground_h") or 0.0), 11.4)
+            self.assertGreaterEqual(float(ow.get("start_invert_h") or 0.0), 10.9)
+
+        culverts = [f for f in q_feats if f.get("id") == "osm_waterway_238866764"]
+        self.assertEqual(len(culverts), 1)
+        self.assertLessEqual(float(culverts[0].get("start_depth_m") or 0.0), 0.95)
+        self.assertGreaterEqual(float(culverts[0].get("end_invert_h") or 0.0), 10.5)
 
         with open(os.path.join(BASE_DIR, "web", "src", "12-public-utilities-gis.js"), "r", encoding="utf-8") as f:
             js12 = f.read()
@@ -3470,7 +3478,10 @@ class GatheringScansTestSuite(unittest.TestCase):
         self.assertIn('id="rngUtilZOffset"', js12)
         self.assertIn("window.collectExtraStudioPickTargets", js12)
         self.assertIn("window.collectExtraSnappableVertices", js12)
+        self.assertIn("window.computeLaserSpanForOverlayHit", js12)
         self.assertIn("STATE.lastCategorizeResult", js12)
+        self.assertIn("wb.water_level_twvd2001_m", js12)
+        self.assertIn("STATE.categorizeFilters?.trees", js12)
 
         with open(os.path.join(BASE_DIR, "web", "src", "03-studio-core.js"), "r", encoding="utf-8") as f:
             js03 = f.read()
@@ -3478,6 +3489,9 @@ class GatheringScansTestSuite(unittest.TestCase):
         self.assertIn("window.collectExtraStudioPickTargets(", js03)
         self.assertIn("window.collectExtraSnappableVertices(", js03)
         self.assertIn("const keepSidePanel = Boolean(isG1 || opts?.keepSidePanel);", js03)
+        self.assertIn("studioThree.pondingGroup", js03)
+        self.assertIn("studioThree.photoTargetGroup", js03)
+        self.assertIn('cname.startsWith("GS_")', js03)
 
 
 if __name__ == "__main__":

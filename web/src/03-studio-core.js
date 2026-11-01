@@ -2416,7 +2416,10 @@
     updateStudioSnapIndicator(snappedVertex?.point || null, Boolean(snappedVertex?.point));
 
     if (hits.length > 0) {
-      const h0 = hits[0];
+      const hOverlay = hits.find(
+        (h) => h?.object && (h.object.userData?.isUtilityFeature || h.object.parent === studioThree.categoryGroup)
+      );
+      const h0 = hOverlay || hits[0];
       const rawPoint = h0.point.clone();
       const p = rawPoint.clone();
       let snappedToToolVertex = false;
@@ -3938,7 +3941,7 @@
       showToast("Unavailable during Multi-Scan Editing — merge scans first (or exit Multi-Scan mode)");
       return;
     }
-    const isG1 = isStudioGroup1Tool(toolName);
+    const isG1 = isStudioGroup1Tool(toolName) || (isStudioGroup1Tool(STATE.activeTool) && toolName === "orbit");
     const keepSidePanel = Boolean(isG1 || opts?.keepSidePanel);
     const sidePanelEl = document.getElementById("studioSidePanel");
     const openPanelTool =
@@ -4166,6 +4169,7 @@
     const toRemove = [];
     studioThree.overlayGroup.children.forEach((c) => {
       if (!c) return;
+      const cname = String(c.name || "");
       if (
         c.userData?.isLassoHighlight ||
         c.userData?.isSnapIndicator ||
@@ -4175,10 +4179,14 @@
         c === studioThree._sectionBoxHelper ||
         c === studioThree.sectionBoxGizmoGroup ||
         c === studioThree.drainageGroup ||
+        c === studioThree.pondingGroup ||
         c === studioThree.gcpQaGroup ||
         c === studioThree.photoFrustumGroup ||
+        c === studioThree.photoTargetGroup ||
+        c === studioThree.cameraTrajectoryGroup ||
         c === window.UTILS_STATE?.threeGroup ||
-        c.name === "PublicUtilitiesGroup"
+        cname === "PublicUtilitiesGroup" ||
+        cname.startsWith("GS_")
       ) {
         return;
       }

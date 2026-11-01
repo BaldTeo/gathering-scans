@@ -282,12 +282,13 @@ def _hydrate_utilities_doc(data: Dict[str, Any]) -> Dict[str, Any]:
                             if len(p) >= 3
                         ]
                         f["coords"] = cs
-                    elif not is_open_ch and d1 > 1.65:
+                    elif not is_open_ch and d1 > 1.25:
                         old_d1, old_d2 = d1, d2
-                        hm = min(hm, 1.1)
+                        wm = float(f.get("width_m") or 2.4)
+                        hm = 0.85 if wm >= 3.0 else 0.65
                         f["height_m"] = round(hm, 2)
-                        d1, d2 = 1.40, 1.48
-                        f["start_depth_m"], f["end_depth_m"], f["depth_m"] = d1, d2, 1.44
+                        d1, d2 = (1.15, 1.20) if wm >= 3.0 else (0.85, 0.90)
+                        f["start_depth_m"], f["end_depth_m"], f["depth_m"] = d1, d2, round(0.5 * (d1 + d2), 2)
                         cs = [
                             [
                                 p[0],
@@ -860,12 +861,35 @@ class PublicUtilitiesGISMixin:
         road_hs: List[float] = []
 
         if isinstance(cat_data, dict):
-            for r in (cat_data.get("roads") or []):
+            raw_roads = [r for r in (cat_data.get("roads") or []) if isinstance(r, dict)]
+            max_road_area = max((safe_float(r.get("planar_area_m2"), 0.0) or 0.0 for r in raw_roads), default=0.0)
+            primary_hs: List[float] = []
+            for r in raw_roads:
+                r_area = safe_float(r.get("planar_area_m2"), 100.0) or 100.0
                 rc = r.get("center_twd97")
+                if isinstance(rc, list) and len(rc) >= 3 and r_area >= 0.20 * max_road_area:
+                    rh_v = safe_float(rc[2])
+                    if rh_v is not None:
+                        primary_hs.append(rh_v)
+            primary_road_h = (sum(primary_hs) / len(primary_hs)) if primary_hs else None
+
+            for r in raw_roads:
+                r_area = safe_float(r.get("planar_area_m2"), 100.0) or 100.0
+                rc = r.get("center_twd97")
+                rh_center = safe_float(rc[2]) if (isinstance(rc, list) and len(rc) >= 3) else None
+                # Exclude minor sunken park footpaths (< 20% of primary street area sitting > 1.0m below street grade)
+                if (
+                    primary_road_h is not None
+                    and r_area < 0.20 * max_road_area
+                    and rh_center is not None
+                    and (primary_road_h - rh_center) > 1.0
+                ):
+                    continue
+                area_w = max(1.0, min(4.0, (r_area / max(200.0, max_road_area)) * 4.0))
                 if isinstance(rc, list) and len(rc) >= 3:
                     re_v, rn_v, rh_v = safe_float(rc[0]), safe_float(rc[1]), safe_float(rc[2])
                     if re_v is not None and rn_v is not None and rh_v is not None:
-                        samples.append((re_v, rn_v, rh_v, 5.0))
+                        samples.append((re_v, rn_v, rh_v, 5.0 * area_w))
                         road_hs.append(rh_v)
                 b_pts = r.get("boundary_twd97") or []
                 stride = max(1, len(b_pts) // 36)
@@ -873,29 +897,31 @@ class PublicUtilitiesGISMixin:
                     if isinstance(pt, list) and len(pt) >= 3:
                         pe, pn, ph = safe_float(pt[0]), safe_float(pt[1]), safe_float(pt[2])
                         if pe is not None and pn is not None and ph is not None:
-                            samples.append((pe, pn, ph, 3.0))
+                            if primary_road_h is not None and (primary_road_h - ph) > 1.2:
+                                continue
+                            samples.append((pe, pn, ph, 2.5 * area_w))
                             road_hs.append(ph)
 
-            road_ref_h = (sum(road_hs) / len(road_hs)) if road_hs else None
+            road_ref_h = (sum(road_hs) / len(road_hs)) if road_hs else primary_road_h
 
             for t in (cat_data.get("trees") or []):
                 tc = t.get("trunk_twd97") or t.get("base_twd97") or t.get("center_twd97")
                 if isinstance(tc, list) and len(tc) >= 3:
                     te, tn, th = safe_float(tc[0]), safe_float(tc[1]), safe_float(tc[2])
                     if te is not None and tn is not None and th is not None:
-                        if road_ref_h is None or abs(th - road_ref_h) <= 3.0:
-                            samples.append((te, tn, th, 1.2))
+                        # Only include tree bases near street grade (prevents sunken park basin trees from dragging street pipes down)
+                        if road_ref_h is None or abs(th - road_ref_h) <= 0.85:
+                            samples.append((te, tn, th, 0.8))
 
-            # Only include wall base points if no roads were detected or if the wall base is within 2.0m of road grade
-            # (prevents upper-story building facades or deep basement diaphragm walls from distorting street grade)
+            # Only include wall base points if no roads were detected or if the wall base is within 1.2m of road grade
             for w in (cat_data.get("walls") or []):
                 b_poly = w.get("base_polyline_twd97") or []
                 for pt in b_poly[::max(1, len(b_poly) // 8)]:
                     if isinstance(pt, list) and len(pt) >= 3:
                         we, wn, wh = safe_float(pt[0]), safe_float(pt[1]), safe_float(pt[2])
                         if we is not None and wn is not None and wh is not None:
-                            if road_ref_h is None or abs(wh - road_ref_h) <= 2.0:
-                                samples.append((we, wn, wh, 0.6))
+                            if road_ref_h is None or abs(wh - road_ref_h) <= 1.2:
+                                samples.append((we, wn, wh, 0.5))
 
             if not road_hs:
                 for wb in (cat_data.get("water_bodies") or []):
@@ -909,11 +935,11 @@ class PublicUtilitiesGISMixin:
         # Anchor Taipei City ground elevation with official 3dgis.reac.taipei get3dz.ashx bare-earth API
         taipei_gov_z = _query_taipei_3d_elevation(ce, cn)
         if taipei_gov_z is not None:
-            if not samples:
-                samples.append((ce, cn, taipei_gov_z, 8.0))
-            else:
-                # Add high-confidence official bare-earth TWVD2001 elevation anchor at scan center
-                samples.append((ce, cn, taipei_gov_z, 2.5))
+            samples.append((ce, cn, taipei_gov_z, 8.0 if not samples else 3.5))
+            for dx_gov, dy_gov in ((120.0, 0.0), (-120.0, 0.0), (0.0, 120.0), (0.0, -120.0)):
+                gz_card = _query_taipei_3d_elevation(ce + dx_gov, cn + dy_gov)
+                if gz_card is not None:
+                    samples.append((ce + dx_gov, cn + dy_gov, gz_card, 3.0))
 
         if samples:
             w_tot = sum(s[3] for s in samples)
@@ -928,7 +954,7 @@ class PublicUtilitiesGISMixin:
             zh_sum = 0.0
             for se, sn, sh, sw in samples:
                 d2 = (e_pt - se) ** 2 + (n_pt - sn) ** 2
-                w = sw / (d2 + 16.0)
+                w = sw / (d2 + 25.0)
                 w_sum += w
                 zh_sum += w * sh
             return round(zh_sum / w_sum, 3) if w_sum > 1e-9 else base_ground_z
@@ -971,7 +997,7 @@ class PublicUtilitiesGISMixin:
                 elif "lishan" in sid_low:
                     ce_s, cn_s, ch_s = 308121.469, 2774980.811, 7.315
                 elif "qihu" in sid_low:
-                    ce_s, cn_s, ch_s = 300550.716, 2780975.538, 10.405
+                    ce_s, cn_s, ch_s = 300550.716, 2780975.538, 11.74
                 elif "quchi" in sid_low:
                     ce_s, cn_s, ch_s = 304891.922, 2757029.500, 43.201
                 elif "rosepark" in sid_low or "rose_park" in sid_low:
@@ -3352,7 +3378,7 @@ class PublicUtilitiesGISMixin:
             if length_m < 1.0:
                 return None
 
-            min_d = 0.35 if is_open_channel else round(h_m + 0.50, 2)
+            min_d = 0.35 if is_open_channel else (round(h_m + 0.20, 2) if ftype == "box_culvert" else round(h_m + 0.50, 2))
             d1 = round(max(min_d, start_d), 2)
             d2 = round(max(min_d, end_d), 2)
 
@@ -3564,9 +3590,9 @@ class PublicUtilitiesGISMixin:
                     d_start = 0.45
                     d_end = 0.50
                 else:
-                    h_m = 1.0 if wtype in ("river", "stream", "canal") else 0.85
-                    d_start = 1.40
-                    d_end = 1.50
+                    h_m = 0.85 if wtype == "river" else 0.65
+                    d_start = 1.15 if wtype == "river" else 0.85
+                    d_end = 1.20 if wtype == "river" else 0.90
                 feat = build_3d_pipe_feature(
                     fid=f"osm_waterway_{wid}",
                     layer_id="storm",

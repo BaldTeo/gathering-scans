@@ -3935,8 +3935,8 @@
       const panelEl = document.getElementById("studioSidePanel");
       const isPanelOpen = Boolean(panelEl && !panelEl.classList.contains("hidden") && panelEl.classList.contains("active"));
       const panelTool = panelEl ? (panelEl.getAttribute("data-active-tool") || "") : "";
-      if (typeof window.isStudioGroup1Tool === "function" && window.isStudioGroup1Tool(STATE.activeTool) && isPanelOpen) {
-        setActiveStudioTool(panelTool || (STATE.multiAlign?.active ? "align_merge" : "orbit"), { keepSidePanel: true });
+      if (typeof window.isStudioGroup1Tool === "function" && window.isStudioGroup1Tool(STATE.activeTool)) {
+        setActiveStudioTool((isPanelOpen && panelTool) ? panelTool : (STATE.multiAlign?.active ? "align_merge" : "orbit"), { keepSidePanel: true });
         if (typeof syncStudioMobileToolHud === "function") syncStudioMobileToolHud();
         showToast(tr("已結束量測工具 (Esc)", "Exited measurement tool (Esc)"));
         return true;
@@ -4008,13 +4008,15 @@
       if (btn.id === "btnClearMeasurements" || btn.id === "btnMeasureClear") {
         const panelEl = document.getElementById("studioSidePanel");
         const isPanelOpen = Boolean(panelEl && !panelEl.classList.contains("hidden") && panelEl.classList.contains("active"));
-        clearMeasurements({ onlyGroup1: isPanelOpen });
-        if (!isPanelOpen && studioThree && studioThree.contourGroup) {
+        const keepRightOverlays =
+          isPanelOpen || Boolean(STATE.categorizeOverlayVisible) || Boolean(window.UTILS_STATE?.threeGroup?.visible);
+        clearMeasurements({ onlyGroup1: keepRightOverlays });
+        if (!keepRightOverlays && studioThree && studioThree.contourGroup) {
           while (studioThree.contourGroup.children.length > 0) {
             studioThree.contourGroup.remove(studioThree.contourGroup.children[0]);
           }
         }
-        showToast(isPanelOpen ? tr("已清除 3D 量測標記（保留右側面板圖層）", "Cleared 3D measurements (side panel layers preserved)") : "Cleared 3D measurements & overlays");
+        showToast(keepRightOverlays ? tr("已清除 3D 量測標記（保留右側面板圖層）", "Cleared 3D measurements (side panel layers preserved)") : "Cleared 3D measurements & overlays");
         return;
       }
 

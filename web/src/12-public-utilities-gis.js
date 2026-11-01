@@ -332,21 +332,23 @@
     const roots = getStudioModelRoots(studioThree);
     if (!roots.length) return;
 
-    // Hook TilesRenderer 'load-model' once so newly streamed 3D tiles automatically inherit X-ray translucency
+    // Hook TilesRenderer 'load-model' once so newly streamed 3D tiles automatically inherit X-ray translucency and refresh ground elevation grid
     if (studioThree.tilesRenderer && !studioThree.tilesRenderer.__gsUtilXrayLoadBound) {
       studioThree.tilesRenderer.__gsUtilXrayLoadBound = true;
+      let _tileLoadRefreshTimer = null;
       studioThree.tilesRenderer.addEventListener("load-model", () => {
         if (hasVisibleUtilities3D() && UTILS_STATE.groundXrayPct > 1) {
           applyUtilitiesGroundXray(UTILS_STATE.groundXrayPct);
         }
-        if (
-          hasVisibleUtilities3D() &&
-          UTILS_STATE.groundGridCache &&
-          UTILS_STATE.groundGridCache.meshCount === 0 &&
-          Array.isArray(UTILS_STATE.features) &&
-          UTILS_STATE.features.length > 0
-        ) {
-          renderUtilities3D();
+        if (hasVisibleUtilities3D() && Array.isArray(UTILS_STATE.features) && UTILS_STATE.features.length > 0) {
+          const curMeshes = collectStudioGroundMeshes(window.studioThree);
+          if (!UTILS_STATE.groundGridCache || UTILS_STATE.groundGridCache.meshCount !== curMeshes.length) {
+            if (_tileLoadRefreshTimer) clearTimeout(_tileLoadRefreshTimer);
+            _tileLoadRefreshTimer = setTimeout(() => {
+              _tileLoadRefreshTimer = null;
+              if (hasVisibleUtilities3D()) renderUtilities3D();
+            }, 180);
+          }
         }
       });
     }
@@ -1493,7 +1495,11 @@
   function createCanopyRejectingGroundSampler(payload, originTwd) {
     const meshes = typeof getStudioRaycastMeshes === "function" ? getStudioRaycastMeshes() : [];
     const currentScanId = String((typeof STATE !== "undefined" && STATE.activeScanId) || "");
-    const catData = typeof STATE !== "undefined" ? STATE.lastCategorizeResult || STATE.categorizeData : null;
+    const rawCatData = typeof STATE !== "undefined" ? STATE.lastCategorizeResult || STATE.categorizeData : null;
+    const catData =
+      rawCatData && (!rawCatData.scan_id || !currentScanId || String(rawCatData.scan_id) === currentScanId)
+        ? rawCatData
+        : null;
     const catCount =
       catData
         ? (Array.isArray(catData.roads) ? catData.roads.length : 0) +
@@ -1511,7 +1517,7 @@
 
     const cellSize = 2.0;
     const cellMinY = new Map(); // "gx_gz" -> lowest local Y in 2m cell
-    const roadAnchorPts = []; // [{ x, z, y }] verified road & tree-base ground anchors
+    const roadAnchorPts = []; // [{ x, z, y }] verified street road anchors
     const roadSamplesY = [];
     const waterSamplesY = [];
     const allMeshYs = [];
@@ -1531,19 +1537,58 @@
       }
     }
 
+    function readRoadLocalY(r) {
+      if (Array.isArray(r.center_twd97) && r.center_twd97.length >= 3 && Number.isFinite(Number(r.center_twd97[2]))) {
+        return Number(r.center_twd97[2]) - originTwd.h;
+      }
+      if (Array.isArray(r.center_local) && r.center_local.length >= 3 && Number.isFinite(Number(r.center_local[1]))) {
+        return Number(r.center_local[1]);
+      }
+      if (Number.isFinite(r.elevation_local_y)) return Number(r.elevation_local_y);
+      if (Number.isFinite(r.elevation_twd97_z)) return Number(r.elevation_twd97_z) - originTwd.h;
+      return NaN;
+    }
+
     // 1. Ingest categorized roads, tree trunk bases, and water bodies (from STATE.lastCategorizeResult)
+    let primaryRoadY = NaN;
     if (catData) {
-      if (Array.isArray(catData.roads)) {
+      if (Array.isArray(catData.roads) && catData.roads.length > 0) {
+        let maxRoadArea = 0;
         catData.roads.forEach((r) => {
-          const ry = Number.isFinite(r.elevation_local_y)
-            ? Number(r.elevation_local_y)
-            : Number.isFinite(r.elevation_twd97_z)
-            ? Number(r.elevation_twd97_z) - originTwd.h
-            : NaN;
+          const a = Number(r?.planar_area_m2) || 0;
+          if (a > maxRoadArea) maxRoadArea = a;
+        });
+        const primaryRoadYs = [];
+        catData.roads.forEach((r) => {
+          const a = Number(r?.planar_area_m2) || 100;
+          const ry = readRoadLocalY(r);
+          if (Number.isFinite(ry) && a >= 0.2 * maxRoadArea) {
+            primaryRoadYs.push(ry);
+          }
+        });
+        if (primaryRoadYs.length > 0) {
+          primaryRoadY = primaryRoadYs.reduce((acc, v) => acc + v, 0) / primaryRoadYs.length;
+        }
+
+        catData.roads.forEach((r) => {
+          const rArea = Number(r?.planar_area_m2) || 100;
+          const ry = readRoadLocalY(r);
+          // Exclude minor sunken park footpaths (< 20% of primary street area sitting > 1.0m below street grade)
+          const isSunkenFootpath =
+            Number.isFinite(primaryRoadY) &&
+            rArea < 0.2 * maxRoadArea &&
+            Number.isFinite(ry) &&
+            primaryRoadY - ry > 1.0;
+
           if (Number.isFinite(ry)) {
-            roadSamplesY.push(ry);
+            if (!isSunkenFootpath) roadSamplesY.push(ry);
             if (Array.isArray(r.center_twd97) && r.center_twd97.length >= 2) {
-              addGroundSample(Number(r.center_twd97[0]) - originTwd.e, originTwd.n - Number(r.center_twd97[1]), ry, true);
+              addGroundSample(
+                Number(r.center_twd97[0]) - originTwd.e,
+                originTwd.n - Number(r.center_twd97[1]),
+                ry,
+                !isSunkenFootpath
+              );
             }
           }
           if (Array.isArray(r.boundary_twd97)) {
@@ -1551,9 +1596,11 @@
             for (let i = 0; i < r.boundary_twd97.length; i += stride) {
               const pt = r.boundary_twd97[i];
               if (Array.isArray(pt) && pt.length >= 3) {
-                addGroundSample(Number(pt[0]) - originTwd.e, originTwd.n - Number(pt[1]), Number(pt[2]) - originTwd.h, true);
+                const py = Number(pt[2]) - originTwd.h;
+                const isStreetPt = !isSunkenFootpath && (!Number.isFinite(primaryRoadY) || primaryRoadY - py <= 1.2);
+                addGroundSample(Number(pt[0]) - originTwd.e, originTwd.n - Number(pt[1]), py, isStreetPt);
               } else if (Array.isArray(pt) && pt.length >= 2 && Number.isFinite(ry)) {
-                addGroundSample(Number(pt[0]) - originTwd.e, originTwd.n - Number(pt[1]), ry, true);
+                addGroundSample(Number(pt[0]) - originTwd.e, originTwd.n - Number(pt[1]), ry, !isSunkenFootpath);
               }
             }
           }
@@ -1561,22 +1608,34 @@
       }
       if (Array.isArray(catData.trees)) {
         catData.trees.forEach((trObj) => {
-          const tLoc = trObj.trunk_local || trObj.base_local;
-          if (Array.isArray(tLoc) && tLoc.length >= 3) {
-            addGroundSample(Number(tLoc[0]), Number(tLoc[2]), Number(tLoc[1]), true);
-          } else if (Array.isArray(trObj.trunk_twd97) && trObj.trunk_twd97.length >= 3) {
-            addGroundSample(
-              Number(trObj.trunk_twd97[0]) - originTwd.e,
-              originTwd.n - Number(trObj.trunk_twd97[1]),
-              Number(trObj.trunk_twd97[2]) - originTwd.h,
-              true
-            );
+          let tx = NaN, ty = NaN, tz = NaN;
+          if (Array.isArray(trObj.trunk_twd97) && trObj.trunk_twd97.length >= 3) {
+            tx = Number(trObj.trunk_twd97[0]) - originTwd.e;
+            ty = Number(trObj.trunk_twd97[2]) - originTwd.h;
+            tz = originTwd.n - Number(trObj.trunk_twd97[1]);
+          } else {
+            const tLoc = trObj.trunk_local || trObj.base_local;
+            if (Array.isArray(tLoc) && tLoc.length >= 3) {
+              tx = Number(tLoc[0]);
+              ty = Number(tLoc[1]);
+              tz = Number(tLoc[2]);
+            }
+          }
+          if (Number.isFinite(tx) && Number.isFinite(ty) && Number.isFinite(tz)) {
+            const isNearStreetGrade = !Number.isFinite(primaryRoadY) || Math.abs(ty - primaryRoadY) <= 0.85;
+            addGroundSample(tx, tz, ty, isNearStreetGrade);
           }
         });
       }
       if (Array.isArray(catData.water_bodies)) {
         catData.water_bodies.forEach((wb) => {
-          const wy = Number.isFinite(wb.elevation_local_y)
+          const wy = Number.isFinite(Number(wb.water_level_twvd2001_m))
+            ? Number(wb.water_level_twvd2001_m) - originTwd.h
+            : Array.isArray(wb.center_twd97) && wb.center_twd97.length >= 3 && Number.isFinite(Number(wb.center_twd97[2]))
+            ? Number(wb.center_twd97[2]) - originTwd.h
+            : Array.isArray(wb.center_local) && wb.center_local.length >= 3 && Number.isFinite(Number(wb.center_local[1]))
+            ? Number(wb.center_local[1])
+            : Number.isFinite(wb.elevation_local_y)
             ? Number(wb.elevation_local_y)
             : Number.isFinite(wb.elevation_twd97_z)
             ? Number(wb.elevation_twd97_z) - originTwd.h
@@ -1629,7 +1688,9 @@
     );
     if (roadSamplesY.length > 0) {
       const sortedRoad = roadSamplesY.slice().sort((a, b) => a - b);
-      roadRefY = sortedRoad[Math.floor(sortedRoad.length * 0.45)];
+      roadRefY = sortedRoad[Math.floor(sortedRoad.length * 0.5)];
+    } else if (Number.isFinite(primaryRoadY)) {
+      roadRefY = primaryRoadY;
     } else if (Number.isFinite(centerGroundH) && centerGroundH > -100) {
       roadRefY = centerGroundH - originTwd.h;
     }
@@ -1637,7 +1698,7 @@
     // If no explicit categorized road anchors yet, promote cells near roadRefY as road anchors (excluding deep river gorges)
     if (roadAnchorPts.length < 8 && cellMinY.size > 0) {
       cellMinY.forEach((ly, key) => {
-        if (ly >= roadRefY - 1.5 && ly <= roadRefY + 2.5 && roadAnchorPts.length < 500) {
+        if (ly >= roadRefY - 1.2 && ly <= roadRefY + 2.5 && roadAnchorPts.length < 500) {
           const parts = key.split("_");
           roadAnchorPts.push({
             x: (Number(parts[0]) + 0.5) * cellSize,
@@ -1651,42 +1712,43 @@
     const waterRefY =
       waterSamplesY.length > 0
         ? Math.max(minScanY + 0.15, waterSamplesY.reduce((a, b) => a + b, 0) / waterSamplesY.length)
-        : Math.max(minScanY + 0.15, roadRefY - 2.6);
+        : Math.max(minScanY + 0.15, roadRefY - 1.4);
 
     function estimateLocalRoadY(lx, lz, fallbackGroundH) {
       let anchorY = NaN;
+      let minD2 = Infinity;
       if (roadAnchorPts.length > 0) {
         let wSum = 0.0;
         let wySum = 0.0;
-        let nearestY = roadRefY;
-        let minD2 = Infinity;
         for (let i = 0; i < roadAnchorPts.length; i++) {
           const p = roadAnchorPts[i];
           const d2 = (p.x - lx) * (p.x - lx) + (p.z - lz) * (p.z - lz);
           if (d2 < minD2) {
             minD2 = d2;
-            nearestY = p.y;
           }
-          if (d2 <= 2500.0) {
-            const w = 1.0 / (d2 + 9.0);
+          if (d2 <= 4225.0) {
+            const w = 1.0 / (d2 + 12.0);
             wSum += w;
             wySum += w * p.y;
           }
         }
-        anchorY = wSum > 0 ? wySum / wSum : nearestY;
+        if (wSum > 0) {
+          anchorY = wySum / wSum;
+        }
       }
 
       const fbH = Number(fallbackGroundH);
       const hasValidFb = Number.isFinite(fbH) && fbH > -100;
       const fbLocalY = hasValidFb ? fbH - originTwd.h : NaN;
+      const safeFbY = Number.isFinite(fbLocalY) ? Math.max(roadRefY - 1.2, fbLocalY) : NaN;
 
-      if (Number.isFinite(anchorY) && Number.isFinite(fbLocalY)) {
-        // Guard against legacy cached stream-bed fallbackGroundH on road utilities
-        const safeFbY = Math.max(roadRefY - 1.2, fbLocalY);
-        return 0.65 * anchorY + 0.35 * safeFbY;
+      if (Number.isFinite(anchorY) && Number.isFinite(safeFbY)) {
+        const distM = Math.sqrt(minD2);
+        const anchorAlpha = Math.max(0.25, Math.min(0.85, 1.0 - Math.max(0.0, distM - 12.0) / 55.0));
+        return anchorAlpha * anchorY + (1.0 - anchorAlpha) * safeFbY;
       }
       if (Number.isFinite(anchorY)) return anchorY;
-      if (Number.isFinite(fbLocalY)) return Math.max(roadRefY - 1.2, fbLocalY);
+      if (Number.isFinite(safeFbY)) return safeFbY;
       return roadRefY;
     }
 
@@ -1694,9 +1756,10 @@
       const isOpenChannel = Boolean(opts && opts.isOpenChannel);
       const gx = Math.floor(lx / cellSize);
       const gz = Math.floor(lz / cellSize);
+      const localRoadY = estimateLocalRoadY(lx, lz, fallbackGroundH);
 
       if (isOpenChannel) {
-        // Open surface stream/river channel: sample local stream bed, but never drop below the 3D scan's stream bed (minScanY + 0.2m)
+        // Open surface stream/river channel: follow bare-earth channel/park grade smoothly without artificial downward cliffs
         let minStreamY = Infinity;
         for (let dx = -1; dx <= 1; dx++) {
           for (let dz = -1; dz <= 1; dz++) {
@@ -1705,15 +1768,21 @@
           }
         }
         if (Number.isFinite(minStreamY)) {
-          return Math.max(minScanY + 0.2, Math.min(waterRefY + 1.2, minStreamY));
+          let hoodFloorY = minStreamY;
+          for (let dx = -4; dx <= 4; dx++) {
+            for (let dz = -4; dz <= 4; dz++) {
+              const val = cellMinY.get(`${gx + dx}_${gz + dz}`);
+              if (val !== undefined && val < hoodFloorY) hoodFloorY = val;
+            }
+          }
+          const canopyRejectedStreamY = Math.min(minStreamY, hoodFloorY + 1.4);
+          return Math.max(Math.max(minScanY + 0.25, localRoadY - 2.3), Math.min(localRoadY + 1.2, canopyRejectedStreamY));
         }
-        return waterRefY;
+        return Math.max(localRoadY - 0.85, waterRefY);
       }
 
-      const localRoadY = estimateLocalRoadY(lx, lz, fallbackGroundH);
-
-      // Check immediate 4-connected neighborhood in 2m grid; clamp to [localRoadY - 0.65, localRoadY + 1.80]
-      // so road/bridge pipes never plunge into adjacent river gorges (e.g. QiHu Park 磺港溪) or float into tree canopies!
+      // Check immediate 4-connected neighborhood in 2m grid; reject isolated tree canopies using 10m bare-earth floor
+      // while allowing real hillside roads (up to localRoadY + 6.5m) and preventing bridge pipes from plunging into river gorges
       const offsets = [
         [0, 0],
         [-1, 0],
@@ -1729,7 +1798,15 @@
         }
       }
       if (Number.isFinite(bestCellY)) {
-        return Math.max(localRoadY - 0.65, Math.min(localRoadY + 1.8, bestCellY));
+        let hoodMinY = bestCellY;
+        for (let dx = -4; dx <= 4; dx += 2) {
+          for (let dz = -4; dz <= 4; dz += 2) {
+            const val = cellMinY.get(`${gx + dx}_${gz + dz}`);
+            if (val !== undefined && val < hoodMinY) hoodMinY = val;
+          }
+        }
+        const bareEarthCellY = Math.min(bestCellY, hoodMinY + 1.8);
+        return Math.max(localRoadY - 0.85, Math.min(localRoadY + 6.5, bareEarthCellY));
       }
 
       return localRoadY;
@@ -2618,9 +2695,13 @@
         });
 
         if (bestPt) {
-          pushV(bestPt, "utilities", -1, false);
           if (bestV1) pushV(bestV1, "utilities", -1, false);
           if (bestV2) pushV(bestV2, "utilities", -1, false);
+          const nearV1 = bestV1 && bestPt.distanceToSquared(bestV1) <= 0.45;
+          const nearV2 = bestV2 && bestPt.distanceToSquared(bestV2) <= 0.45;
+          if (!nearV1 && !nearV2) {
+            pushV(bestPt, "utilities", -1, false);
+          }
         }
       }
     }
@@ -2629,18 +2710,23 @@
     if (typeof STATE !== "undefined" && STATE.categorizeOverlayVisible && STATE.lastCategorizeResult) {
       const cat = STATE.lastCategorizeResult;
       const originTwd = typeof localToTwd97 === "function" ? localToTwd97({ x: 0, y: 0, z: 0 }) : { e: 0, n: 0, h: 0 };
-      if (STATE.categorizeLayerToggles?.trees !== false && Array.isArray(cat.trees)) {
+      const treesVis = STATE.categorizeFilters?.trees !== false && STATE.categorizeLayerToggles?.trees !== false;
+      const wallsVis = STATE.categorizeFilters?.walls !== false && STATE.categorizeLayerToggles?.walls !== false;
+
+      if (treesVis && Array.isArray(cat.trees)) {
         cat.trees.forEach((trObj) => {
           let tx = NaN, ty = NaN, tz = NaN;
-          const tLoc = trObj.trunk_local || trObj.base_local;
-          if (Array.isArray(tLoc) && tLoc.length >= 3) {
-            tx = Number(tLoc[0]);
-            ty = Number(tLoc[1]);
-            tz = Number(tLoc[2]);
-          } else if (Array.isArray(trObj.trunk_twd97) && trObj.trunk_twd97.length >= 3) {
+          if (Array.isArray(trObj.trunk_twd97) && trObj.trunk_twd97.length >= 3) {
             tx = Number(trObj.trunk_twd97[0]) - originTwd.e;
             ty = Number(trObj.trunk_twd97[2]) - originTwd.h;
             tz = originTwd.n - Number(trObj.trunk_twd97[1]);
+          } else {
+            const tLoc = trObj.trunk_local || trObj.base_local;
+            if (Array.isArray(tLoc) && tLoc.length >= 3) {
+              tx = Number(tLoc[0]);
+              ty = Number(tLoc[1]);
+              tz = Number(tLoc[2]);
+            }
           }
           if (Number.isFinite(tx) && Number.isFinite(ty) && Number.isFinite(tz)) {
             const hM = Math.max(1.8, Number(trObj.height_m) || 4.0);
@@ -2650,8 +2736,38 @@
           }
         });
       }
-      if (STATE.categorizeLayerToggles?.walls !== false && Array.isArray(cat.walls)) {
+      if (wallsVis && Array.isArray(cat.walls)) {
         cat.walls.forEach((wObj) => {
+          const pushTwdPoly = (poly) => {
+            if (!Array.isArray(poly)) return;
+            for (let i = 0; i < poly.length; i++) {
+              const p = poly[i];
+              if (Array.isArray(p) && p.length >= 3) {
+                pushV(
+                  new THREE.Vector3(Number(p[0]) - originTwd.e, Number(p[2]) - originTwd.h, originTwd.n - Number(p[1])),
+                  "categorize",
+                  -1,
+                  false
+                );
+              }
+            }
+          };
+          const pushLocPoly = (poly) => {
+            if (!Array.isArray(poly)) return;
+            for (let i = 0; i < poly.length; i++) {
+              const p = poly[i];
+              if (Array.isArray(p) && p.length >= 3) {
+                pushV(new THREE.Vector3(Number(p[0]), Number(p[1]), Number(p[2])), "categorize", -1, false);
+              }
+            }
+          };
+          if (Array.isArray(wObj.base_polyline_twd97) || Array.isArray(wObj.top_polyline_twd97)) {
+            pushTwdPoly(wObj.base_polyline_twd97);
+            pushTwdPoly(wObj.top_polyline_twd97);
+          } else {
+            pushLocPoly(wObj.base_polyline_local);
+            pushLocPoly(wObj.top_polyline_local);
+          }
           if (Array.isArray(wObj.start_local) && wObj.start_local.length >= 3) {
             pushV(new THREE.Vector3(Number(wObj.start_local[0]), Number(wObj.start_local[1]), Number(wObj.start_local[2])), "categorize", -1, false);
           }
@@ -2662,6 +2778,123 @@
       }
     }
   }
+
+  /**
+   * Computes an exact 3D Laser cross-section/span when the user aims the Group 1 Laser tool
+   * at a visible 3D Public Utility pipe/culvert/manhole or a 3D Categorized Tree.
+   */
+  function computeLaserSpanForOverlayHit(rawPt) {
+    if (!rawPt || !window.THREE) return null;
+    const originTwd = typeof localToTwd97 === "function" ? localToTwd97({ x: 0, y: 0, z: 0 }) : { e: 0, n: 0, h: 0 };
+
+    // 1. Check visible 3D Categorized Trees
+    if (
+      typeof STATE !== "undefined" &&
+      STATE.categorizeOverlayVisible &&
+      STATE.categorizeFilters?.trees !== false &&
+      STATE.lastCategorizeResult &&
+      Array.isArray(STATE.lastCategorizeResult.trees)
+    ) {
+      for (let i = 0; i < STATE.lastCategorizeResult.trees.length; i++) {
+        const trObj = STATE.lastCategorizeResult.trees[i];
+        let tx = NaN, ty = NaN, tz = NaN;
+        if (Array.isArray(trObj.trunk_twd97) && trObj.trunk_twd97.length >= 3) {
+          tx = Number(trObj.trunk_twd97[0]) - originTwd.e;
+          ty = Number(trObj.trunk_twd97[2]) - originTwd.h;
+          tz = originTwd.n - Number(trObj.trunk_twd97[1]);
+        } else {
+          const tLoc = trObj.trunk_local || trObj.base_local;
+          if (Array.isArray(tLoc) && tLoc.length >= 3) {
+            tx = Number(tLoc[0]);
+            ty = Number(tLoc[1]);
+            tz = Number(tLoc[2]);
+          }
+        }
+        if (!Number.isFinite(tx) || !Number.isFinite(ty) || !Number.isFinite(tz)) continue;
+        const hM = Math.max(1.8, Number(trObj.height_m) || 4.0);
+        const crownDia = Math.max(1.2, Number(trObj.crown_diameter_m) || Number(trObj.canopy_diameter_m) || hM * 0.65);
+        const hDist = Math.hypot(rawPt.x - tx, rawPt.z - tz);
+        if (hDist <= Math.max(0.9, crownDia * 0.6) && rawPt.y >= ty - 0.5 && rawPt.y <= ty + hM + 0.8) {
+          const halfR = 0.5 * crownDia;
+          const midY = ty + Math.min(1.3, hM * 0.45);
+          return {
+            kind: "road",
+            originPt: new THREE.Vector3(tx, ty, tz),
+            pA: new THREE.Vector3(tx - halfR, midY, tz),
+            pB: new THREE.Vector3(tx + halfR, midY, tz),
+            width: crownDia,
+            orthoLength: crownDia,
+            orthoPA: new THREE.Vector3(tx, midY, tz - halfR),
+            orthoPB: new THREE.Vector3(tx, midY, tz + halfR),
+            ceilHeight: hM,
+            ceilPt: new THREE.Vector3(tx, ty + hM, tz),
+            crossPt: new THREE.Vector3(tx, ty, tz),
+            crossSlopePct: 0,
+          };
+        }
+      }
+    }
+
+    // 2. Check visible 3D Public Utilities
+    if (UTILS_STATE.threeGroup && UTILS_STATE.threeGroup.visible && UTILS_STATE.pipeMeshMap && UTILS_STATE.pipeMeshMap.size > 0) {
+      let bestEntry = null;
+      let bestDistSq = Infinity;
+      let bestProj = null;
+
+      UTILS_STATE.pipeMeshMap.forEach((entry) => {
+        const lyr = UTILITY_LAYERS[entry.layer];
+        if (!lyr || lyr.visible === false || !entry.v1 || !entry.v2) return;
+        const v1 = entry.v1;
+        const v2 = entry.v2;
+        const sx = v2.x - v1.x, sy = v2.y - v1.y, sz = v2.z - v1.z;
+        const lenSq = sx * sx + sy * sy + sz * sz;
+        let t = lenSq > 1e-6 ? ((rawPt.x - v1.x) * sx + (rawPt.y - v1.y) * sy + (rawPt.z - v1.z) * sz) / lenSq : 0.0;
+        t = Math.max(0.0, Math.min(1.0, t));
+        const px = v1.x + t * sx, py = v1.y + t * sy, pz = v1.z + t * sz;
+        const dSq = (rawPt.x - px) * (rawPt.x - px) + (rawPt.y - py) * (rawPt.y - py) + (rawPt.z - pz) * (rawPt.z - pz);
+        const tol = Math.max(0.85, (entry.radiusM || 0.35) * 2.5);
+        if (dSq <= tol * tol && dSq < bestDistSq) {
+          bestDistSq = dSq;
+          bestEntry = entry;
+          bestProj = new THREE.Vector3(px, py, pz);
+        }
+      });
+
+      if (bestEntry && bestProj) {
+        const feat = bestEntry.feature || {};
+        const v1 = bestEntry.v1;
+        const v2 = bestEntry.v2;
+        const segLen = Math.max(0.2, v1.distanceTo(v2));
+        const wM = Math.max(0.2, Number(feat.width_m) || (Number(feat.diameter_mm) || 300) / 1000.0);
+        const dx = v2.x - v1.x;
+        const dz = v2.z - v1.z;
+        const hLen = Math.hypot(dx, dz);
+        const nx = hLen > 1e-4 ? -dz / hLen : 1.0;
+        const nz = hLen > 1e-4 ? dx / hLen : 0.0;
+        const halfW = 0.5 * wM;
+        const c3d = feat.__computed3D || {};
+        const groundH = Number(c3d.startGroundH ?? c3d.rimH ?? feat.start_ground_h ?? feat.rim_h ?? NaN);
+        const groundY = Number.isFinite(groundH) ? groundH - originTwd.h : bestProj.y + (Number(feat.depth_m) || 1.5);
+        const depthToGround = Math.max(0.2, groundY - bestProj.y);
+        return {
+          kind: "road",
+          originPt: bestProj.clone(),
+          pA: new THREE.Vector3(bestProj.x - nx * halfW, bestProj.y, bestProj.z - nz * halfW),
+          pB: new THREE.Vector3(bestProj.x + nx * halfW, bestProj.y, bestProj.z + nz * halfW),
+          width: wM,
+          orthoLength: segLen,
+          orthoPA: v1.clone(),
+          orthoPB: v2.clone(),
+          ceilHeight: depthToGround,
+          ceilPt: new THREE.Vector3(bestProj.x, groundY, bestProj.z),
+          crossPt: bestProj.clone(),
+          crossSlopePct: (Math.abs(v2.y - v1.y) / Math.max(0.1, hLen)) * 100,
+        };
+      }
+    }
+    return null;
+  }
+  window.computeLaserSpanForOverlayHit = computeLaserSpanForOverlayHit;
 
   // Bind pointerdown & pointermove in Studio to select and hover-inspect 3D utility elements
   let _lastHoverPickMs = 0;
