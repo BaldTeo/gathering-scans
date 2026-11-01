@@ -20,7 +20,7 @@
  *    - Active Road Excavations (道路挖掘 — Magenta #ec4899)
  *    - Open-Trench As-Built Traced Pipes (竣工實測 — Emerald #14b8a6)
  * 3. High-FPS Batched 3D Subsurface Visualization in Three.js:
- *    - Fast single-pass bare-earth 2D elevation grid sampler (< 3ms on large valley meshes like QiHu Park)
+ *    - Fast single-pass bare-earth 2D elevation grid sampler (< 3ms on large valley meshes)
  *    - Batched BufferGeometry per utility layer (~20 draw calls total for 15,000+ features, zero RAF lag)
  *    - Zero-roll horizontal orthonormal basis (R, U, F) for rectangular box culverts (fixes 45-deg diagonal roll)
  *    - Opaque polygonOffset subsurface meshes + adaptive camera near-plane (zero zoomed-out Z-fighting flicker)
@@ -713,17 +713,31 @@
         : "";
 
     const tpeStatus = UTILS_STATE.taipei8UtilityStatus;
+    const isTpe3dWhitelisted = Boolean(tpeStatus && tpeStatus.whitelisted);
+    const isTpePublicActive = Boolean(
+      tpeStatus && !isTpe3dWhitelisted && (tpeStatus.public_portal_active || (UTILS_STATE.features && UTILS_STATE.features.length > 0))
+    );
     const tpeBannerHtml =
       tpeStatus && tpeStatus.integrated
         ? `<div style="margin-top:7px;padding:6px 8px;border-radius:6px;font-size:10px;line-height:1.45;background:${
-            tpeStatus.whitelisted ? "rgba(16,185,129,0.10)" : "rgba(56,189,248,0.09)"
-          };border:1px solid ${tpeStatus.whitelisted ? "rgba(16,185,129,0.32)" : "rgba(56,189,248,0.28)"};color:var(--ui-text-secondary);">
+            isTpe3dWhitelisted || isTpePublicActive ? "rgba(16,185,129,0.10)" : "rgba(56,189,248,0.09)"
+          };border:1px solid ${
+            isTpe3dWhitelisted || isTpePublicActive ? "rgba(16,185,129,0.32)" : "rgba(56,189,248,0.28)"
+          };color:var(--ui-text-secondary);">
             <div style="display:flex;align-items:center;justify-content:space-between;gap:4px;font-weight:700;color:${
-              tpeStatus.whitelisted ? "#34d399" : "#38bdf8"
+              isTpe3dWhitelisted || isTpePublicActive ? "#34d399" : "#38bdf8"
             };margin-bottom:2px;">
-              <span>${SVG.INFO} ${t("臺北市道管中心 3D 八大管線 API (801–808)", "Taipei 3D 8-Utilities API (801–808)")}</span>
+              <span>${SVG.INFO} ${
+                isTpePublicActive
+                  ? t("臺北市道管中心八大管線 GIS (801–808)", "Taipei 8-Utilities GIS (801–808)")
+                  : t("臺北市道管中心 3D 八大管線 API (801–808)", "Taipei 3D 8-Utilities API (801–808)")
+              }</span>
               <span style="font-size:9px;padding:1px 5px;border-radius:3px;background:rgba(15,23,42,0.35);">${
-                tpeStatus.whitelisted ? t("已授權連線", "AUTHORIZED") : t("功能已就緒 / 待IP白名單", "READY / AWAITING IP")
+                isTpe3dWhitelisted
+                  ? t("3D API 已授權", "3D API AUTHORIZED")
+                  : isTpePublicActive
+                  ? t("公開市民圖資 (3D API 待IP白名單)", "PUBLIC PORTAL (3D API AWAITING IP)")
+                  : t("功能已就緒 / 待IP白名單", "READY / AWAITING IP")
               }</span>
             </div>
             <div>${escapeHtml(t(tpeStatus.message_zh || "", tpeStatus.message_en || ""))}</div>
@@ -1490,7 +1504,7 @@
   /**
    * Builds a blazing-fast (< 3ms) bare-earth 2D spatial elevation grid from the scan's mesh vertices
    * and categorized road/tree-base points. Replaces slow per-vertex `THREE.Raycaster.intersectObjects`
-   * so large sloped scans like QiHu Park (4,277+ features) render in < 35ms with zero main-thread freeze.
+   * so large sloped scans (4,000+ features) render in < 35ms with zero main-thread freeze.
    */
   function createCanopyRejectingGroundSampler(payload, originTwd) {
     const meshes = typeof getStudioRaycastMeshes === "function" ? getStudioRaycastMeshes() : [];
@@ -1878,9 +1892,9 @@
   /**
    * Builds and renders survey-accurate, high-FPS batched 3D subsurface pipelines, box culverts,
    * manholes, flush road manhole covers, and surface alignment traces.
-   * - Eliminates QiHu Park lag by merging each layer into 1 Mesh + 1 LineSegments (~20 draw calls total).
+   * - Eliminates large-mesh lag by merging each layer into 1 Mesh + 1 LineSegments (~20 draw calls total).
    * - Eliminates zoomed-out flickering by using opaque polygonOffset materials + adaptive camera near-plane.
-   * - Eliminates 45-degree rotated box culverts in Rose Park via `computeZeroRollBasis`.
+   * - Eliminates 45-degree rotated box culverts across diagonal alignments via `computeZeroRollBasis`.
    */
   function renderUtilities3D(payload = null) {
     clearUtilitiesVisuals3D();
@@ -2366,7 +2380,7 @@
   }
 
   /**
-   * Interactive 3D ray-to-segment picker for selecting/hovering utility features in Studio (< 0.15ms in QiHu Park!).
+   * Interactive 3D ray-to-segment picker for selecting/hovering utility features in Studio (< 0.15ms).
    * Uses allocation-free scalar 3D ray-to-segment distance math over `UTILS_STATE.pipeMeshMap`, with fallback to
    * `mesh.userData.triToFeature[hit.faceIndex]` when requested.
    */
@@ -2388,7 +2402,7 @@
     mouse.set(((screenX - rect.left) / rect.width) * 2 - 1, -((screenY - rect.top) / rect.height) * 2 + 1);
     rc.setFromCamera(mouse, studioThree.camera);
 
-    // Fast allocation-free 3D world-ray-to-segment distance check (< 0.15ms for 5,000+ segments in QiHu Park)
+    // Fast allocation-free 3D world-ray-to-segment distance check (< 0.15ms for 5,000+ segments)
     if (UTILS_STATE.pipeMeshMap && UTILS_STATE.pipeMeshMap.size > 0 && !opts.forceTriangleRaycast) {
       const ro = rc.ray.origin;
       const rd = rc.ray.direction;

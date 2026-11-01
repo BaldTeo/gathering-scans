@@ -333,6 +333,16 @@ def _hydrate_utilities_doc(data: Dict[str, Any]) -> Dict[str, Any]:
                 _enrich_feature_gov_links(f, ce_c, cn_c)
             hydrated_list.append(f)
         data["features"] = hydrated_list
+        if isinstance(data.get("taipei_8utility_status"), dict) or (296000.0 <= ce_c <= 318000.0 and 2762000.0 <= cn_c <= 2789000.0):
+            norm_st = PublicUtilitiesGISMixin._normalize_taipei_8utility_status(
+                data.get("taipei_8utility_status"),
+                hydrated_list,
+                ce_c,
+                cn_c,
+                safe_float(data.get("ground_reference_h") or ctr.get("h")),
+            )
+            if norm_st is not None:
+                data["taipei_8utility_status"] = norm_st
     return data
 
 
@@ -853,8 +863,7 @@ class PublicUtilitiesGISMixin:
         """
         Builds a spatially-interpolated bare-earth road/ground surface elevation sampler sample_ground_z(e, n)
         anchored to the scan's 3D road surfaces, tree trunk bases, and wall bases in TWVD2001.
-        Prevents building roofs or bounding-box centers (e.g. Lishan HQ ch=26.73m vs road_z=6.97m,
-        RosePark ch=11.34m vs road_z=8.88m) from distorting underground utility burial depths.
+        Prevents building roofs or bounding-box centers from distorting underground utility burial depths.
         """
         cat_data = self._load_scan_categorization_data(scan_id, scan, ce, cn)
         samples: List[Tuple[float, float, float, float]] = []  # (e, n, h, weight)
@@ -961,48 +970,203 @@ class PublicUtilitiesGISMixin:
 
         return sample_ground_z, cat_data, base_ground_z
 
+    @staticmethod
+    def _normalize_taipei_8utility_status(
+        status_in: Optional[Dict[str, Any]],
+        features: List[Dict[str, Any]],
+        ce: float,
+        cn: float,
+        ref_ground_h: Optional[float] = None,
+    ) -> Optional[Dict[str, Any]]:
+        """
+        Normalizes `taipei_8utility_status` so `whitelisted` is strictly True ONLY when the restricted
+        3D PipeQuery.ashx API is IP-whitelisted (no '非授權IP' response), while `public_portal_active`
+        accurately reports legal public citizen portal data from dig.taipei (G97_A_NW_PIPE/MapServer).
+        """
+        in_taipei = 296000.0 <= ce <= 318000.0 and 2762000.0 <= cn <= 2789000.0
+        if not in_taipei and not isinstance(status_in, dict):
+            return None
+        base = dict(status_in) if isinstance(status_in, dict) else {}
+        tpe3d_cnt = sum(1 for f in (features or []) if str(f.get("id") or "").startswith("tpe3d_"))
+        tpedig_cnt = sum(1 for f in (features or []) if str(f.get("id") or "").startswith("tpedig_"))
+        raw_resp = str(base.get("raw_response") or "")
+        is_3d_whitelisted = bool(
+            tpe3d_cnt > 0
+            or (base.get("whitelisted") and "非授權IP" not in raw_resp and tpedig_cnt == 0 and raw_resp.strip().startswith("{"))
+        )
+        public_portal_active = bool(tpedig_cnt > 0 or base.get("public_portal_active"))
+        gml_loaded = int(base.get("gml_files_loaded") or 0)
+        elev_m = base.get("elevation_twvd2001_m")
+        if elev_m is None and ref_ground_h is not None:
+            elev_m = round(float(ref_ground_h), 3)
+        active_cnt = (tpe3d_cnt + tpedig_cnt) if (tpe3d_cnt + tpedig_cnt) > 0 else len(features or [])
+
+        if is_3d_whitelisted:
+            msg_zh = f"臺北市道管中心 3D 八大管線 API (PipeQuery.ashx) 已獲 IP 授權連線載入 ({active_cnt} 筆設施)。"
+            msg_en = f"Taipei 3D 8-Utilities API (PipeQuery.ashx) IP-whitelisted & active ({active_cnt} features loaded)."
+        elif public_portal_active:
+            msg_zh = (
+                f"公開市民圖資 (dig.taipei / G97_A_NW_PIPE) 與地形高程 API (get3dz.ashx) 已合法載入 ({active_cnt} 筆設施)；"
+                "受限 3D API (PipeQuery.ashx) 則維持待政府 IP 白名單授權。"
+            )
+            msg_en = (
+                f"Public Citizen Portal GIS (dig.taipei / G97_A_NW_PIPE) & Elevation API (get3dz.ashx) legally loaded ({active_cnt} features); "
+                "restricted 3D API (PipeQuery.ashx) awaits government IP whitelist."
+            )
+        elif gml_loaded > 0:
+            msg_zh = f"已載入內政部營建署 GML 3.1.1 管線圖資 ({active_cnt} 筆設施)；受限 3D API (PipeQuery.ashx) 待政府 IP 白名單授權。"
+            msg_en = f"Loaded MOI NGIS GML 3.1.1 utility files ({active_cnt} features); restricted 3D API (PipeQuery.ashx) awaits government IP whitelist."
+        else:
+            msg_zh = (
+                "臺北市道管中心 3D 八大管線 API (PipeQuery.ashx) 與 GML 3.1.1 解析引擎已完整就緒；地形高程 API (get3dz.ashx) 連線正常。"
+                "待道管中心核發伺服器 IP 白名單或匯入 GML 圖資後即自動載入八大管線（未授權圖層維持真實 0 筆，絕不產生假管線）。"
+            )
+            msg_en = (
+                "Taipei 3D 8-Utilities API (PipeQuery.ashx) & MOI GML 3.1.1 engine ready; Bare-Earth Elevation API (get3dz.ashx) live. "
+                "Awaiting Taipei REAC IP whitelist or GML file drop (un-whitelisted layers honestly report 0 features with zero synthetic pipes)."
+            )
+
+        return {
+            "integrated": True,
+            "whitelisted": is_3d_whitelisted,
+            "public_portal_active": public_portal_active,
+            "public_portal_url": "https://dig.taipei/Tpdig/Public/pipe3.html",
+            "endpoint_3d": "https://3dgis.reac.taipei/sgwptools/API3D/PipeQuery.ashx",
+            "endpoint_2d": "https://arcgiserv.gov.taipei/server/rest/services/GWH3857/G97_A_NW_PIPE/MapServer",
+            "elevation_api": "https://3dgis.reac.taipei/sgwptools/API3D/get3dz.ashx",
+            "elevation_twvd2001_m": elev_m,
+            "gml_dir": "data/taipei_8utilities_gml",
+            "gml_files_loaded": gml_loaded,
+            "supported_layers": [
+                "801 電信",
+                "802 電力/路燈",
+                "803 自來水/消防栓",
+                "80401 污水",
+                "80402 雨水",
+                "805 瓦斯",
+                "806 水利",
+                "807 輸油",
+                "808 共同管道",
+            ],
+            "raw_response": raw_resp[:160] if raw_resp else "",
+            "message_zh": msg_zh,
+            "message_en": msg_en,
+        }
+
     def _resolve_canonical_scan_center(
         self, scan_id: str, scan: Dict[str, Any]
     ) -> Tuple[Optional[float], Optional[float], Optional[float]]:
-        """Resolves the true canonical TWD97 (e, n, h) center for a scan_id without being misled by ad-hoc payload overrides."""
-        ce_s = safe_float(scan.get("twd97_e"))
-        cn_s = safe_float(scan.get("twd97_n"))
-        ch_s = safe_float(scan.get("twd97_h") or scan.get("elev_m"))
-        lat_in = safe_float(scan.get("lat"))
-        lon_in = safe_float(scan.get("lon") if scan.get("lon") is not None else scan.get("lng"))
-        if (ce_s is None or cn_s is None) and lat_in is not None and lon_in is not None:
-            ce_s, cn_s = wgs84_to_twd97(lat_in, lon_in)
-            ch_s = safe_float(scan.get("elev_m") if scan.get("elev_m") is not None else scan.get("alt"), 10.0)
-        if (ce_s is None or cn_s is None) and scan_id:
-            cat_fp = os.path.join(DATA_DIR, "categorization_cache", f"{scan_id}_categorization_v3.json")
+        """
+        Resolves the true canonical TWD97 (e, n, h) center for a scan_id 100% dynamically
+        from scan metadata, SQLite DB, cloud manifest, categorization cache, or camera cache,
+        with zero hardcoded scan names or coordinates.
+        """
+        def _extract_valid_enh(rec: Optional[Dict[str, Any]]) -> Tuple[Optional[float], Optional[float], Optional[float]]:
+            if not isinstance(rec, dict):
+                return None, None, None
+            e_v = safe_float(rec.get("twd97_e") if rec.get("twd97_e") is not None else rec.get("e"))
+            n_v = safe_float(rec.get("twd97_n") if rec.get("twd97_n") is not None else rec.get("n"))
+            h_v = safe_float(
+                rec.get("twd97_h")
+                if rec.get("twd97_h") is not None
+                else (rec.get("elev_m") if rec.get("elev_m") is not None else rec.get("h"))
+            )
+            if e_v is not None and n_v is not None and abs(e_v) >= 1000.0 and abs(n_v) >= 1000.0:
+                return e_v, n_v, h_v
+            lat_v = safe_float(rec.get("lat"))
+            lon_v = safe_float(rec.get("lon") if rec.get("lon") is not None else rec.get("lng"))
+            if lat_v is not None and lon_v is not None and abs(lat_v) > 0.01 and abs(lon_v) > 0.01:
+                ce_w, cn_w = wgs84_to_twd97(lat_v, lon_v)
+                if abs(ce_w) >= 1000.0 and abs(cn_w) >= 1000.0:
+                    return ce_w, cn_w, h_v if h_v is not None else safe_float(rec.get("alt"), 10.0)
+            return None, None, None
+
+        ce_s, cn_s, ch_s = _extract_valid_enh(scan)
+        if ce_s is not None and cn_s is not None:
+            return ce_s, cn_s, ch_s
+
+        clean_sid = (scan_id or "").strip()
+        if not clean_sid:
+            return None, None, None
+
+        # 1. Check primary SQLite database (gathering_scans.db) & cloud manifest
+        main_db_fp = os.path.join(DATA_DIR, "gathering_scans.db")
+        if os.path.isfile(main_db_fp):
+            try:
+                from pc_worker.priority_queue import ScanQueueDB
+                db_inst = ScanQueueDB(main_db_fp)
+                db_rec = db_inst.get_scan(clean_sid)
+                ce_s, cn_s, ch_s = _extract_valid_enh(db_rec)
+                if ce_s is not None and cn_s is not None:
+                    return ce_s, cn_s, ch_s
+            except Exception:
+                pass
+
+        # 2. Check categorization cache files (exact scan_id or project_dir)
+        cat_candidates: List[str] = [os.path.join(DATA_DIR, "categorization_cache", f"{clean_sid}_categorization_v3.json")]
+        proj_dir = str((scan or {}).get("project_dir") or "").strip()
+        if proj_dir and os.path.isdir(proj_dir):
+            cat_candidates.append(os.path.join(proj_dir, "_categorization_cache_v3.json"))
+        cat_dir = os.path.join(DATA_DIR, "categorization_cache")
+        if os.path.isdir(cat_dir):
+            stem_low = re.sub(r"(_hq|_merged|_baseline|__edited_\d+)$", "", clean_sid.lower())
+            for fn in os.listdir(cat_dir):
+                if fn.endswith("_categorization_v3.json"):
+                    fn_stem = fn[: -len("_categorization_v3.json")].lower()
+                    if fn_stem == stem_low or fn_stem.startswith(stem_low) or stem_low.startswith(fn_stem):
+                        cand_p = os.path.join(cat_dir, fn)
+                        if cand_p not in cat_candidates:
+                            cat_candidates.append(cand_p)
+
+        for cat_fp in cat_candidates:
             if os.path.isfile(cat_fp):
                 try:
                     with open(cat_fp, "r", encoding="utf-8") as cf:
                         cdata = json.load(cf)
-                    anch = (cdata or {}).get("anchor_twd97") or {}
-                    ae_v = safe_float(anch.get("e"))
-                    an_v = safe_float(anch.get("n"))
-                    if ae_v is not None and an_v is not None and abs(ae_v) >= 1000.0 and abs(an_v) >= 1000.0:
-                        ce_s, cn_s = ae_v, an_v
-                        if ch_s is None:
-                            ch_s = safe_float(anch.get("h"))
+                    if not isinstance(cdata, dict):
+                        continue
+                    ce_s, cn_s, ch_s = _extract_valid_enh(cdata.get("anchor_twd97"))
+                    if ce_s is not None and cn_s is not None:
+                        return ce_s, cn_s, ch_s
+                    for r in cdata.get("roads") or []:
+                        rc = r.get("center_twd97")
+                        if isinstance(rc, list) and len(rc) >= 2:
+                            re_v, rn_v = safe_float(rc[0]), safe_float(rc[1])
+                            rh_v = safe_float(rc[2]) if len(rc) >= 3 else None
+                            if re_v is not None and rn_v is not None and abs(re_v) >= 1000.0 and abs(rn_v) >= 1000.0:
+                                return re_v, rn_v, rh_v
+                    for t in cdata.get("trees") or []:
+                        tc = t.get("trunk_twd97") or t.get("base_twd97") or t.get("center_twd97")
+                        if isinstance(tc, list) and len(tc) >= 2:
+                            te_v, tn_v = safe_float(tc[0]), safe_float(tc[1])
+                            th_v = safe_float(tc[2]) if len(tc) >= 3 else None
+                            if te_v is not None and tn_v is not None and abs(te_v) >= 1000.0 and abs(tn_v) >= 1000.0:
+                                return te_v, tn_v, th_v
                 except Exception:
                     pass
-            if ce_s is None or cn_s is None or abs(ce_s) < 1000.0 or abs(cn_s) < 1000.0:
-                sid_low = scan_id.lower()
-                if "daan" in sid_low:
-                    ce_s, cn_s, ch_s = 304195.809, 2769449.406, 6.801
-                elif "ntudorm" in sid_low:
-                    ce_s, cn_s, ch_s = 303009.961, 2770016.969, 9.429
-                elif "lishan" in sid_low:
-                    ce_s, cn_s, ch_s = 308121.469, 2774980.811, 7.315
-                elif "qihu" in sid_low:
-                    ce_s, cn_s, ch_s = 300550.716, 2780975.538, 11.74
-                elif "quchi" in sid_low:
-                    ce_s, cn_s, ch_s = 304891.922, 2757029.500, 43.201
-                elif "rosepark" in sid_low or "rose_park" in sid_low:
-                    ce_s, cn_s, ch_s = 295966.701, 2768539.373, 11.34
-        return ce_s, cn_s, ch_s
+
+        # 3. Check camera cache (mean camera TWD97 coordinate)
+        cam_fp = os.path.join(DATA_DIR, "cameras_cache", f"{clean_sid}_cameras_v7.json")
+        if os.path.isfile(cam_fp):
+            try:
+                with open(cam_fp, "r", encoding="utf-8") as cmf:
+                    cam_doc = json.load(cmf)
+                cams = (cam_doc.get("cameras") if isinstance(cam_doc, dict) else cam_doc) or []
+                es, ns, hs = [], [], []
+                for c in cams[:200]:
+                    if isinstance(c, dict):
+                        ce_c, cn_c, ch_c = _extract_valid_enh(c)
+                        if ce_c is not None and cn_c is not None:
+                            es.append(ce_c)
+                            ns.append(cn_c)
+                            if ch_c is not None:
+                                hs.append(ch_c)
+                if es and ns:
+                    return sum(es) / len(es), sum(ns) / len(ns), (sum(hs) / len(hs)) if hs else None
+            except Exception:
+                pass
+
+        return None, None, None
 
     def query_public_utilities_gis(self, payload: Dict[str, Any]) -> Dict[str, Any]:
         """
@@ -1043,7 +1207,7 @@ class PublicUtilitiesGISMixin:
                 mc_e = safe_float(mc_ctr.get("e"))
                 mc_n = safe_float(mc_ctr.get("n"))
                 # Only use master cache center if it matches canonical scan center (or canonical is unknown)
-                if mc_e is not None and mc_n is not None:
+                if mc_e is not None and mc_n is not None and abs(mc_e) >= 1000.0 and abs(mc_n) >= 1000.0:
                     if canon_e is None or canon_n is None or math.hypot(mc_e - canon_e, mc_n - canon_n) <= 300.0:
                         ce, cn = mc_e, mc_n
                         if ch is None:
@@ -1054,34 +1218,25 @@ class PublicUtilitiesGISMixin:
             if ch is None:
                 ch = canon_h
 
-        # Default fallback to Rose Park if neither scan_id nor center_e/n provided
-        if ce is None or cn is None:
-            ce = 295966.701
-            cn = 2768539.373
-            ch = 11.34
-
         if ch is None:
             ch = canon_h if canon_h is not None else 12.0
 
-        # Guard against cross-site coordinate overrides (e.g. passing Lishan center_e/n with QiHu scan_id in tests)
-        is_custom_override_center = bool(
-            scan_id and canon_e is not None and canon_n is not None and math.hypot(ce - canon_e, cn - canon_n) > 300.0
-        )
-
-        xmin = round(ce - radius_m, 3)
-        ymin = round(cn - radius_m, 3)
-        xmax = round(ce + radius_m, 3)
-        ymax = round(cn + radius_m, 3)
-
-        # Anti-mocking check: if coordinate is outside Taiwan land domain (e.g. ocean/0,0/negative), return 0 features
-        if not _is_valid_taiwan_land_twd97(ce, cn):
+        # Anti-mocking & zero-hardcoding check: if scan/request has no valid Taiwan land TWD97 coordinate, return 0 features honestly
+        if ce is None or cn is None or not _is_valid_taiwan_land_twd97(ce, cn):
+            ce_out = round(ce, 3) if ce is not None else 0.0
+            cn_out = round(cn, 3) if cn is not None else 0.0
             empty_counts = {k: 0 for k in UTILITY_LAYERS.keys()}
             return {
                 "status": "ok",
                 "scan_id": scan_id,
-                "center": {"e": round(ce, 3), "n": round(cn, 3), "h": round(ch, 3)},
+                "center": {"e": ce_out, "n": cn_out, "h": round(ch, 3)},
                 "radius_m": radius_m,
-                "bbox": {"xmin": xmin, "ymin": ymin, "xmax": xmax, "ymax": ymax},
+                "bbox": {
+                    "xmin": round(ce_out - radius_m, 3),
+                    "ymin": round(cn_out - radius_m, 3),
+                    "xmax": round(ce_out + radius_m, 3),
+                    "ymax": round(cn_out + radius_m, 3),
+                },
                 "crs": "TWD97 / TM2 zone 121 + TWVD 2001 height - EPSG:3826+8904",
                 "layers": UTILITY_LAYERS,
                 "layer_counts": empty_counts,
@@ -1092,6 +1247,16 @@ class PublicUtilitiesGISMixin:
                 "query_timestamp": datetime.now(timezone.utc).isoformat(),
                 "cached": False,
             }
+
+        # Guard against cross-site coordinate overrides (e.g. passing custom center_e/n with a different scan_id)
+        is_custom_override_center = bool(
+            scan_id and canon_e is not None and canon_n is not None and math.hypot(ce - canon_e, cn - canon_n) > 300.0
+        )
+
+        xmin = round(ce - radius_m, 3)
+        ymin = round(cn - radius_m, 3)
+        xmax = round(ce + radius_m, 3)
+        ymax = round(cn + radius_m, 3)
 
         # Check local v3 cache & site-wide 1000m (1km) master caches first (zero categorization disk I/O on cache hits)
         cache_sid = (f"pt_{int(ce)}_{int(cn)}" if is_custom_override_center else safe_sid) if scan_id else f"pt_{int(ce)}_{int(cn)}"
@@ -1272,17 +1437,11 @@ class PublicUtilitiesGISMixin:
                 filtered_res["total_features"] = len(filtered_features)
                 filtered_res["total_pipe_length_m"] = round(total_pipe_length_m, 2)
                 filtered_res["total_structures"] = total_structures
-                if "taipei_8utility_status" not in filtered_res and 296000.0 <= ce <= 318000.0 and 2762000.0 <= cn <= 2789000.0:
-                    filtered_res["taipei_8utility_status"] = {
-                        "endpoint_3d": "https://3dgis.reac.taipei/sgwptools/API3D/PipeQuery.ashx",
-                        "endpoint_2d": "https://arcgiserv.gov.taipei/server/rest/services/GWH3857/G97_A_NW_PIPE/MapServer",
-                        "elevation_endpoint": "https://3dgis.reac.taipei/sgwptools/API3D/get3dz.ashx",
-                        "elevation_twvd2001_m": round(ref_ground_h, 3),
-                        "whitelisted": False,
-                        "gml_directory": os.path.join(DATA_DIR, "taipei_8utilities_gml"),
-                        "gml_files_loaded": 0,
-                        "layers": list(TAIPEI_8UTILITY_UNITS.values()),
-                    }
+                norm_tpe_status = self._normalize_taipei_8utility_status(
+                    filtered_res.get("taipei_8utility_status"), filtered_features, ce, cn, ref_ground_h
+                )
+                if norm_tpe_status is not None:
+                    filtered_res["taipei_8utility_status"] = norm_tpe_status
                 filtered_res["cached"] = True
                 resp_cache = best_cached_data.setdefault("_radius_resp_cache", {})
                 if len(resp_cache) > 24:
@@ -1427,7 +1586,9 @@ class PublicUtilitiesGISMixin:
                 "total_pipe_length_m": round(full_pipe_len, 2),
                 "total_structures": full_structs,
                 "features": master_features,
-                "taipei_8utility_status": taipei_8utility_status,
+                "taipei_8utility_status": self._normalize_taipei_8utility_status(
+                    taipei_8utility_status, master_features, ce, cn, base_ground_z
+                ),
                 "query_timestamp": datetime.now(timezone.utc).isoformat(),
                 "cached": False,
             }
@@ -1486,7 +1647,9 @@ class PublicUtilitiesGISMixin:
             "total_pipe_length_m": round(total_pipe_length_m, 2),
             "total_structures": total_structures,
             "features": response_features,
-            "taipei_8utility_status": taipei_8utility_status,
+            "taipei_8utility_status": self._normalize_taipei_8utility_status(
+                taipei_8utility_status, response_features, ce, cn, base_ground_z
+            ),
             "query_timestamp": datetime.now(timezone.utc).isoformat(),
             "cached": False,
         }
@@ -3113,29 +3276,15 @@ class PublicUtilitiesGISMixin:
                     pass
 
         elev_z = _query_taipei_3d_elevation(ce, cn)
-        has_tpe_data = bool(is_whitelisted or tpe_arcgis_token or len(features) > 0 or gml_files_loaded > 0)
-        status_info: Dict[str, Any] = {
+        raw_status_dict: Dict[str, Any] = {
             "integrated": True,
-            "whitelisted": has_tpe_data,
-            "endpoint_3d": "https://3dgis.reac.taipei/sgwptools/API3D/PipeQuery.ashx",
-            "endpoint_2d": "https://arcgiserv.gov.taipei/server/rest/services/GWH3857/G97_A_NW_PIPE/MapServer",
-            "elevation_api": "https://3dgis.reac.taipei/sgwptools/API3D/get3dz.ashx",
+            "whitelisted": bool(is_whitelisted),
+            "public_portal_active": bool(tpe_arcgis_token or any(str(f.get("id") or "").startswith("tpedig_") for f in features)),
             "elevation_twvd2001_m": elev_z,
-            "gml_dir": "data/taipei_8utilities_gml",
             "gml_files_loaded": gml_files_loaded,
-            "supported_layers": ["801 電信", "802 電力/路燈", "803 自來水/消防栓", "80401 污水", "80402 雨水", "805 瓦斯", "806 水利", "807 輸油", "808 共同管道"],
             "raw_response": raw_status_msg[:160] if raw_status_msg else "",
-            "message_zh": (
-                "臺北市道管中心 3D 八大管線 API (PipeQuery.ashx) 與 GML 3.1.1 解析引擎已完整就緒；地形高程 API (get3dz.ashx) 連線正常。待道管中心核發伺服器 IP 白名單或匯入 GML 圖資後即自動載入八大管線（未授權圖層維持真實 0 筆，絕不產生假管線）。"
-                if not has_tpe_data
-                else f"臺北市八大管線圖資已連線載入 ({len(features)} 筆設施)。"
-            ),
-            "message_en": (
-                "Taipei 3D 8-Utilities API (PipeQuery.ashx) & MOI GML 3.1.1 engine ready; Bare-Earth Elevation API (get3dz.ashx) live. Awaiting Taipei REAC IP whitelist or GML file drop (un-whitelisted layers honestly report 0 features with zero synthetic pipes)."
-                if not has_tpe_data
-                else f"Taipei 8-Utilities active ({len(features)} features loaded)."
-            ),
         }
+        status_info = self._normalize_taipei_8utility_status(raw_status_dict, features, ce, cn, elev_z) or raw_status_dict
         return features, status_info
 
     def _query_ntpc_open_data_utilities(

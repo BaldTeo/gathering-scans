@@ -3493,8 +3493,52 @@ class GatheringScansTestSuite(unittest.TestCase):
         self.assertIn("studioThree.photoTargetGroup", js03)
         self.assertIn('cname.startsWith("GS_")', js03)
 
+    def test_75_project_agnostic_utilities_and_taipei_public_portal_status(self):
+        """
+        Verify:
+        1. Zero hardcoded scan coordinates or scan-specific site names in public_utilities_gis.py and 12-public-utilities-gis.js.
+        2. Taipei 8-Utilities status accurately reports `whitelisted: False` and `public_portal_active: True`
+           when PipeQuery.ashx returns '非授權IP' while legal public citizen portal data (dig.taipei / G97_A_NW_PIPE) is loaded.
+        3. Un-georeferenced or unknown scans return 0 features honestly without falling back to hardcoded coordinates.
+        """
+        py_fp = os.path.join(BASE_DIR, "pc_worker", "surveying", "public_utilities_gis.py")
+        js_fp = os.path.join(BASE_DIR, "web", "src", "12-public-utilities-gis.js")
+        with open(py_fp, "r", encoding="utf-8") as f:
+            py_src = f.read()
+        with open(js_fp, "r", encoding="utf-8") as f:
+            js_src = f.read()
+
+        for forbidden_coord in ("295966.701", "2768539.373", "304195.809", "2769449.406", "303009.961", "308121.469", "300550.716"):
+            self.assertNotIn(forbidden_coord, py_src, f"Hardcoded scan coordinate {forbidden_coord} found in public_utilities_gis.py")
+            self.assertNotIn(forbidden_coord, js_src, f"Hardcoded scan coordinate {forbidden_coord} found in 12-public-utilities-gis.js")
+
+        for forbidden_name in ("daan", "ntudorm", "lishan", "qihu", "quchi", "rosepark", "rose_park"):
+            self.assertNotIn(forbidden_name, py_src.lower(), f"Hardcoded scan name {forbidden_name} found in public_utilities_gis.py")
+            self.assertNotIn(forbidden_name, js_src.lower(), f"Hardcoded scan name {forbidden_name} found in 12-public-utilities-gis.js")
+
+        self.assertIn("PUBLIC PORTAL (3D API AWAITING IP)", js_src)
+        self.assertIn("3D API AUTHORIZED", js_src)
+
+        survey = SurveyingEngine(self.db)
+        daan_res = survey.query_public_utilities_gis({"scan_id": "edited_daan_cleared_292061", "radius_m": 250.0})
+        self.assertEqual(daan_res.get("status"), "ok")
+        self.assertGreater(daan_res.get("total_features", 0), 500)
+        tpe_st = daan_res.get("taipei_8utility_status") or {}
+        tpedig_cnt = sum(1 for f in daan_res.get("features", []) if str(f.get("id") or "").startswith("tpedig_"))
+        self.assertFalse(tpe_st.get("whitelisted"), "PipeQuery.ashx is not IP-whitelisted and must not report whitelisted=True")
+        self.assertTrue(tpe_st.get("public_portal_active"), "Public citizen portal (dig.taipei / G97_A_NW_PIPE) must report public_portal_active=True")
+        self.assertIn("Public Citizen Portal GIS", tpe_st.get("message_en", ""))
+        self.assertIn(f"({tpedig_cnt} features)", tpe_st.get("message_en", ""))
+
+        # Un-georeferenced scan (jishi_gauss at 0,0,0) and unknown scan must return 0 features (no Rose Park fallback)
+        un_geo_res = survey.query_public_utilities_gis({"scan_id": "jishi_gauss", "radius_m": 250.0})
+        self.assertEqual(un_geo_res.get("total_features"), 0)
+        unknown_res = survey.query_public_utilities_gis({"scan_id": "nonexistent_unlocated_scan_xyz", "radius_m": 250.0})
+        self.assertEqual(unknown_res.get("total_features"), 0)
+
 
 if __name__ == "__main__":
     unittest.main()
+
 
 
