@@ -1629,9 +1629,13 @@ class CategorizationIoMixin:
         for vps_dir in (
             "/host_docker/gathering_scans/data/categorization_cache",
             "/host_opt/gathering_scans/data/categorization_cache",
+            "/docker/gathering_scans/data/categorization_cache",
+            "/opt/gathering_scans/data/categorization_cache",
         ):
             if os.path.isdir(os.path.dirname(vps_dir)):
-                paths.append(os.path.join(vps_dir, f"{safe_id}_categorization_v3.json"))
+                p_vps = os.path.join(vps_dir, f"{safe_id}_categorization_v3.json")
+                if p_vps not in paths:
+                    paths.append(p_vps)
         return paths
 
     def _ensure_categorization_deliverables_exist(self, result: Dict[str, Any]) -> None:

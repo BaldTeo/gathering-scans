@@ -1517,7 +1517,7 @@ class CategorizationHeuristicsMixin:
                         or (r4_ts > 0.30 and ((med_ts_rb < 0.042 and med_ts_exg < 0.030) or r2_ts > 0.25))
                     ):
                         continue
-                    # Rule 2: Never Achromatic Grey/Silver Metal Lamp Post or Concrete Column (e.g. Qihu R3 posts & T20/T14)
+                    # Rule 2: Never Achromatic Grey/Silver Metal Lamp Post or Concrete Column
                     if (not has_dense_green_crown or n_trunk_steep >= 65) and (
                         med_ts_sat < 0.118 and med_ts_rb < 0.038 and med_ts_exg < 0.0245
                     ):
@@ -1541,7 +1541,7 @@ class CategorizationHeuristicsMixin:
                 if not has_valid_green_crown:
                     continue
 
-                # Rule 4: Reject Wide Low Bollards / Bases (e.g. RosePark T28)
+                # Rule 4: Reject Wide Low Bollards / Bases
                 base_low_m = (dt_26 <= 1.05) & (z_rel_26 >= 0.20) & (z_rel_26 <= 0.85)
                 if np.count_nonzero(base_low_m) >= 12:
                     b_idx = idx_arr26[base_low_m]
@@ -1673,6 +1673,18 @@ class CategorizationHeuristicsMixin:
                 n_mid_trunk = int(np.count_nonzero(mid_trunk_m))
                 if n_ts_tight < 8 or n_low_trunk < 3 or n_mid_trunk < 3:
                     continue
+                # Reject overhanging lateral branches / low canopy lobes over open flat ground or synthetic turf courts where 0.20..0.92m has zero steep trunk triangles
+                vlow_trunk_m = (dt_fin <= 0.58) & (z_rel_fin >= 0.20) & (z_rel_fin <= 0.92) & (nz_abs[idx_arr26] < 0.50)
+                n_vlow_trunk = int(np.count_nonzero(vlow_trunk_m))
+                if n_vlow_trunk == 0:
+                    gnd_flat_m = (dt_fin <= 0.90) & (z_rel_fin >= -0.25) & (z_rel_fin <= 0.30) & (nz_abs[idx_arr26] >= 0.80)
+                    n_gnd_flat = int(np.count_nonzero(gnd_flat_m))
+                    med_gnd_exg = float(np.median(exg[idx_arr26[gnd_flat_m]])) if n_gnd_flat > 0 else 0.0
+                    near_existing_trunk = any(
+                        math.hypot(trunk_e - k["trunk_twd97"][0], trunk_n - k["trunk_twd97"][1]) <= 3.50 for k in trees_list
+                    )
+                    if (n_gnd_flat >= 10 and med_gnd_exg >= 0.045) or near_existing_trunk:
+                        continue
                 # Verify 3D chlorophyll crown above centered trunk and reject porch columns, building facade pillars & painted basketball hoop poles
                 dt_cr = dt_fin
                 cr_fin_m = (dt_cr <= 1.85) & (z_rel_fin >= 1.80) & (z_rel_fin <= tree_h + 1.50)
@@ -1759,7 +1771,7 @@ class CategorizationHeuristicsMixin:
                     up_fin_m = (dt_fin <= 0.48) & (z_rel_fin >= 1.00) & (z_rel_fin <= 1.85) & (nz_abs[idx_arr26] < 0.45) & ((rb_diff[idx_arr26] >= 0.038) | (exg[idx_arr26] >= 0.032))
                     if r_p85_bf > 0.72 and med_bf_sat < 0.155 and med_bf_nz > 0.38 and int(np.count_nonzero(up_fin_m)) < 14:
                         continue
-                # Reject small non-Pratt structures on paved plazas / concrete bases (e.g. Qihu R3 T43 & T45)
+                # Reject small non-Pratt structures on paved plazas / concrete bases
                 if tree_h < 4.2:
                     in_road_12 = bool(road_near_12m_grid[tj_chk, ti_chk])
                     base04_m = (dt_fin <= 0.85) & (z_rel_fin >= 0.0) & (z_rel_fin <= 0.45)
@@ -1854,6 +1866,31 @@ class CategorizationHeuristicsMixin:
             if len(trees_list) >= int(round(145 * area_scale)):
                 break
         trees_list.sort(key=lambda x: (x["height_m"], x["dbh_cm"]), reverse=True)
+        if all_xy_tree is not None and len(trees_list) >= 2:
+            filtered_trees_list: List[Dict[str, Any]] = []
+            for t_cand in trees_list:
+                te_c, tn_c, tg_c = t_cand["trunk_twd97"]
+                th_c = float(t_cand["height_m"])
+                if th_c >= 8.5 and any(
+                    math.hypot(te_c - k["trunk_twd97"][0], tn_c - k["trunk_twd97"][1]) <= 3.00 for k in filtered_trees_list
+                ):
+                    near_idx_c = all_xy_tree.query_ball_point([te_c, tn_c], r=1.25)
+                    if near_idx_c:
+                        ia_c = np.asarray(near_idx_c, dtype=np.int32)
+                        cc_c = centroids[ia_c]
+                        dt_c = np.hypot(cc_c[:, 0] - te_c, cc_c[:, 1] - tn_c)
+                        zr_c = cc_c[:, 2] - tg_c
+                        m48_c = (dt_c <= 0.48) & (zr_c >= 0.35) & (zr_c <= 1.85) & (nz_abs[ia_c] < 0.48)
+                        gm_c = (dt_c <= 1.20) & (zr_c >= -0.25) & (zr_c <= 0.35) & (nz_abs[ia_c] >= 0.80)
+                        if (
+                            np.count_nonzero(m48_c) >= 20
+                            and float(np.median(exg[ia_c[m48_c]])) < 0.0
+                            and np.count_nonzero(gm_c) >= 600
+                            and float(np.median(exg[ia_c[gm_c]])) >= 0.05
+                        ):
+                            continue
+                filtered_trees_list.append(t_cand)
+            trees_list = filtered_trees_list
         for idx_t, t_obj in enumerate(trees_list, 1):
             t_obj["id"] = f"T{idx_t}"
             t_obj["orig_id"] = f"T{idx_t}"
@@ -1879,13 +1916,13 @@ class CategorizationHeuristicsMixin:
             cmask = r_item.pop("comp_mask")
             if r_item["mean_width_m"] > 22.0:
                 continue
-            # Reject narrow wall-base/fence-footing artifacts (e.g. Qihu R4 18.12m2 / 1.2m W along bottom construction fence)
+            # Reject narrow wall-base/fence-footing artifacts along construction fences
             if r_item["mean_width_m"] < 1.55 and r_item["planar_area_m2"] < 28.0:
                 continue
             med_rb = float(np.median(ortho_rb_diff[cmask]))
             med_sat = float(np.median(ortho_sat[cmask]))
             med_lum = float(np.median(ortho_lum[cmask]))
-            # Reject brown bare-soil excavation pits AND bright/bluish waterproofing tarps inside fenced pits (e.g. R4/R6 in QiHu)
+            # Reject brown bare-soil excavation pits AND bright/bluish waterproofing tarps inside fenced pits
             if med_rb > 0.064 or med_rb < -0.015 or med_lum > 0.65:
                 continue
             c_js, c_is = np.nonzero(cmask)
@@ -1905,7 +1942,7 @@ class CategorizationHeuristicsMixin:
                 tri_med_rb = float(np.median(rb_diff[in_comp_tri]))
                 tri_med_sat = float(np.median(sat[in_comp_tri]))
                 tri_med_lum = float(np.median(lum[in_comp_tri]))
-                # Reject shaded brown dirt/mulch beds under tree groves (e.g. RosePark R2/R5) while preserving bright pebble-wash park plazas (QiHu R2)
+                # Reject shaded brown dirt/mulch beds under tree groves while preserving bright pebble-wash park plazas
                 if (tri_med_rb >= 0.050 and tri_med_lum <= 0.575) or (tri_med_rb > 0.062 and tri_med_sat > 0.160):
                     continue
                 if r_item["planar_area_m2"] > 450.0 and tri_med_rb > 0.048 and tri_med_sat > 0.145:

@@ -1589,7 +1589,6 @@ class CloudAndTunnelHandlerMixin:
                 resp_headers = resp_meta.get("headers") or {}
                 chunked_v2 = bool(resp_meta.get("chunked_v2", False))
 
-                self.send_response(status_code)
                 skip_hdrs = {
                     "server",
                     "date",
@@ -1603,10 +1602,13 @@ class CloudAndTunnelHandlerMixin:
                 filtered_hdrs: Dict[str, str] = {}
                 for hk, hv in resp_headers.items():
                     if hk.lower() not in skip_hdrs:
-                        self.send_header(hk, hv)
                         filtered_hdrs[hk] = hv
-                self.end_headers()
-                headers_sent = True
+                if not is_categorize_req:
+                    self.send_response(status_code)
+                    for hk, hv in filtered_hdrs.items():
+                        self.send_header(hk, hv)
+                    self.end_headers()
+                    headers_sent = True
 
                 buf_for_cache = bytearray() if ((cacheable or is_comment_photo_upload or is_categorize_req) and status_code == 200) else None
                 client_Write_ok = True
@@ -1630,7 +1632,7 @@ class CloudAndTunnelHandlerMixin:
                                 buf_for_cache.extend(chunk)
                             else:
                                 buf_for_cache = None
-                        if client_Write_ok:
+                        if not is_categorize_req and client_Write_ok:
                             try:
                                 self.wfile.write(chunk)
                             except (BrokenPipeError, ConnectionResetError):
@@ -1654,12 +1656,26 @@ class CloudAndTunnelHandlerMixin:
                                 buf_for_cache.extend(chunk)
                             else:
                                 buf_for_cache = None
-                        try:
-                            self.wfile.write(chunk)
-                        except (BrokenPipeError, ConnectionResetError):
-                            break
+                        if not is_categorize_req:
+                            try:
+                                self.wfile.write(chunk)
+                            except (BrokenPipeError, ConnectionResetError):
+                                break
                     done_evt.in_use = False
                     done_evt.set()
+
+                if is_categorize_req:
+                    if not (stream_clean and status_code == 200 and buf_for_cache is not None and len(buf_for_cache) > 2):
+                        break
+                    self.send_response(status_code)
+                    for hk, hv in filtered_hdrs.items():
+                        self.send_header(hk, hv)
+                    self.end_headers()
+                    headers_sent = True
+                    try:
+                        self.wfile.write(bytes(buf_for_cache))
+                    except (BrokenPipeError, ConnectionResetError):
+                        pass
 
                 if buf_for_cache is not None and stream_clean:
                     if is_comment_photo_upload and body:
@@ -1751,6 +1767,19 @@ class CloudAndTunnelHandlerMixin:
                 if is_long_post and sent_payload:
                     break
                 continue
+
+        if is_categorize_req:
+            try:
+                req_d_fb = json.loads(body.decode("utf-8")) if body else {}
+                req_sid_fb = str(req_d_fb.get("scan_id") or "").strip()
+                if req_sid_fb:
+                    saved_cat_fb = SURVEY.get_saved_categorization(req_sid_fb)
+                    if isinstance(saved_cat_fb, dict) and saved_cat_fb.get("status") == "ok":
+                        self.send_json(saved_cat_fb)
+                        return True
+            except Exception:
+                pass
+            return False
 
         # 4. Serve from in-memory fallback cache if available during momentary tunnel reconnect
         if self.path in _VPS_RAM_FALLBACK_CACHE:
