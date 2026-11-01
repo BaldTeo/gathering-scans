@@ -2387,6 +2387,7 @@
       activeObj.resolutionCm = Number(QA_STATE.flatnessCache.resolutionCm || QA_STATE.flatnessResolutionCm || 15);
       activeObj.cache = QA_STATE.flatnessCache;
       activeObj.metrics = metrics;
+      activeObj.result = metrics;
       renderSavedFlatnessObjectsMenu();
     }
 
@@ -2498,6 +2499,7 @@
         savedObj.showPass3D = Boolean(QA_STATE.flatnessShowPass3D);
         savedObj.cache = cache;
         savedObj.metrics = metrics;
+        savedObj.result = metrics;
         savedObj.name = `${savedObj.code} ${surfaceTitleZh} (${cache.totalAreaM2} m²)`;
       } else {
         const seqNum = objs.length + 1;
@@ -2518,6 +2520,7 @@
           showPass3D: Boolean(QA_STATE.flatnessShowPass3D),
           cache,
           metrics,
+          result: metrics,
           createdAt: new Date().toISOString(),
         };
         objs.push(savedObj);

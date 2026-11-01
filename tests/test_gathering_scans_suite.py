@@ -3762,9 +3762,62 @@ class GatheringScansTestSuite(unittest.TestCase):
         self.assertIn("function insertPolygonEdgeVertex(", js04)
         self.assertIn("function restoreDoubleClickPreState(", js04)
 
+    def test_78_multi_object_flatness_max_tile_quality_and_formal_report(self):
+        """
+        Verify all 6 flatness tool requirements:
+        1. Saved flatness objects menu (#flatnessSavedObjectsMenuWrap / #flatnessSavedObjectsList)
+           only rendered/shown when flatness tool is active, supporting multiple flatness regions
+           with independent settings (planeMode, toleranceMm, volumeMode, resolutionCm).
+        2. Multi-object report export includes ALL saved flatness objects, a site-wide top-down
+           overview screenshot (figOverviewDataUrl) with Plumb Wall callout leader arrows (──►),
+           and per-object 3D perspective + orthographic deviation screenshots.
+        3. Restrained formal engineering report styling with verified Traditional Chinese text
+           and clickable standard links (PCCES 09611/09220/03310/02742, ASTM E1155, NLSC).
+        4. Option to show/hide material calculations in the report (flatnessReportIncludeMaterial: false
+           by default, #chkFlatnessReportIncludeMaterial, and body.hide-material).
+        5. Guarantee analysis runs on MAX 3D tile quality (ensureMaxQualityTilesForFlatnessBoxAsync)
+           even if tiles were unloaded or STATE.scanLodMode === 'rough'.
+        6. Slider (#rngFlatnessResolutionCm) and manual input (#inpFlatnessResolutionCm) control
+           over uniform square tile/grid resolution (du = dv = cellSize).
+        """
+        with open(os.path.join(BASE_DIR, "web", "src", "10-construction-qa-and-stakeout.js"), "r", encoding="utf-8") as f:
+            js10 = f.read()
+
+        for token in (
+            "flatnessResolutionCm: 15",
+            "flatnessReportIncludeMaterial: false",
+            "flatnessObjectsByScan:",
+            "getFlatnessObjectsForActiveScan",
+            "renderSavedFlatnessObjectsMenu",
+            "selectFlatnessObject",
+            "deleteFlatnessObject",
+            "toggleFlatnessObjectVisibility",
+            "startNewFlatnessObjectDraft",
+            'id="flatnessSavedObjectsMenuWrap"',
+            'id="flatnessSavedObjectsList"',
+            'id="btnNewFlatnessObject"',
+            'id="rngFlatnessResolutionCm"',
+            'id="inpFlatnessResolutionCm"',
+            'id="chkFlatnessReportIncludeMaterial"',
+            "ensureMaxQualityTilesForFlatnessBoxAsync",
+            "doesTileNodeIntersectBox",
+            "const du = cellSize;",
+            "const dv = cellSize;",
+            "figOverviewDataUrl",
+            "[牆面垂直度檢驗]",
+            "hide-material",
+            'id="chkReportToggleMaterial"',
+            "https://pcces.pcc.gov.tw/",
+            "https://www.astm.org/e1155-20.html",
+            "https://www.nlsc.gov.tw/",
+            "工程施工品質自主檢查與三維點雲表面平整度檢驗報告",
+        ):
+            self.assertIn(token, js10, f"Missing {token} in 10-construction-qa-and-stakeout.js")
+
 
 if __name__ == "__main__":
     unittest.main()
+
 
 
 
