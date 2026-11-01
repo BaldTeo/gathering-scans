@@ -84,9 +84,12 @@
     const baseMeanY = Number.isFinite(mat.userData._baseMeanY) ? mat.userData._baseMeanY : 0.0;
     const baseGridN = Number.isFinite(mat.userData._baseGridN) ? mat.userData._baseGridN : 96.0;
 
+    const xrayScale = Number.isFinite(mat.userData.__utilXrayScale) ? mat.userData.__utilXrayScale : 1.0;
+    const effB = b * xrayScale;
+
     if (!mat.userData.PassUniforms) {
       mat.userData.PassUniforms = {
-        uBrightness: { value: b },
+        uBrightness: { value: effB },
         uElevationHeatmap: { value: heatmapFlag },
         uElevMin: { value: elevMin },
         uElevMax: { value: elevMax },
@@ -97,7 +100,7 @@
         uBaseGridN: { value: baseGridN },
       };
     } else {
-      if (mat.userData.PassUniforms.uBrightness) mat.userData.PassUniforms.uBrightness.value = b;
+      if (mat.userData.PassUniforms.uBrightness) mat.userData.PassUniforms.uBrightness.value = effB;
       if (mat.userData.PassUniforms.uElevationHeatmap) mat.userData.PassUniforms.uElevationHeatmap.value = heatmapFlag;
       if (mat.userData.PassUniforms.uElevMin) mat.userData.PassUniforms.uElevMin.value = elevMin;
       if (mat.userData.PassUniforms.uElevMax) mat.userData.PassUniforms.uElevMax.value = elevMax;
@@ -246,6 +249,7 @@
       lbl.textContent = `${b.toFixed(1)}x`;
     }
     if (!studioThree) return;
+    studioThree._lastAppliedBrightness = b;
     [studioThree.modelPivot, studioThree.fallbackGroup].forEach((grp) => {
       if (!grp) return;
       grp.traverse((child) => {
@@ -269,7 +273,12 @@
     if (!domEl || domEl._surfaceZoomBound) return;
     domEl._surfaceZoomBound = true;
     const ray = new THREE.Raycaster();
+    ray.firstHitOnly = true;
     const ndc = new THREE.Vector2();
+    let lastRayMs = 0;
+    let lastSurfDist = NaN;
+    const lastCamPos = new THREE.Vector3();
+    const lastViewDir = new THREE.Vector3();
     const collectTargetMeshes = (v) => {
       const list = [];
       const roots = [v?.modelPivot, v?.multiAlignGroup, v?.fallbackGroup, v?.left?.modelPivot, v?.right?.modelPivot];
@@ -307,7 +316,10 @@
         const ctrls = v?.controls;
         if (!cam || !ctrls || !ctrls.enabled || ctrls.enableZoom === false) return;
         if (opts.isStudio && (STATE.fpMode?.active || STATE.activeView !== "studio")) return;
-        if (e.deltaY >= 0) return; // Zoom-out works normally
+        if (e.deltaY >= 0) {
+          lastRayMs = 0;
+          return; // Zoom-out works normally
+        }
 
         const viewDir = new THREE.Vector3().subVectors(ctrls.target, cam.position);
         const curTargetDist = viewDir.length();
@@ -317,54 +329,67 @@
           cam.getWorldDirection(viewDir);
         }
 
-        const meshes = collectTargetMeshes(v);
-        if (!meshes.length) return;
-        ray.set(cam.position, viewDir);
-        let hits = ray.intersectObjects(meshes, false);
-        let surfDist = hits.length ? hits[0].distance : null;
+        const now = performance.now();
+        let surfDist = NaN;
+        if (now - lastRayMs < 95 && Number.isFinite(lastSurfDist) && lastViewDir.dot(viewDir) > 0.998) {
+          const camDelta = new THREE.Vector3().subVectors(cam.position, lastCamPos).dot(viewDir);
+          const est = lastSurfDist - camDelta;
+          if (est > 0.04) surfDist = est;
+        }
 
         if (!Number.isFinite(surfDist)) {
-          const rect = domEl.getBoundingClientRect();
-          if (rect.width > 0 && rect.height > 0) {
-            ndc.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
-            ndc.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
-            if (Number.isFinite(ndc.x) && Math.abs(ndc.x) <= 1.05 && Math.abs(ndc.y) <= 1.05) {
-              ray.setFromCamera(ndc, cam);
-              const cursorHits = ray.intersectObjects(meshes, false);
-              if (cursorHits.length) {
-                const proj = new THREE.Vector3().subVectors(cursorHits[0].point, cam.position).dot(viewDir);
-                if (proj > 0.1) surfDist = proj;
+          const meshes = collectTargetMeshes(v);
+          if (!meshes.length) return;
+          ray.far = Math.min(600, Math.max(80, curTargetDist * 3.0));
+          ray.set(cam.position, viewDir);
+          const hits = ray.intersectObjects(meshes, false);
+          surfDist = hits.length ? hits[0].distance : NaN;
+
+          if (!Number.isFinite(surfDist)) {
+            const rect = domEl.getBoundingClientRect();
+            if (rect.width > 0 && rect.height > 0) {
+              ndc.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
+              ndc.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
+              if (Number.isFinite(ndc.x) && Math.abs(ndc.x) <= 1.05 && Math.abs(ndc.y) <= 1.05) {
+                ray.setFromCamera(ndc, cam);
+                const cursorHits = ray.intersectObjects(meshes, false);
+                if (cursorHits.length) {
+                  const proj = new THREE.Vector3().subVectors(cursorHits[0].point, cam.position).dot(viewDir);
+                  if (proj > 0.1) surfDist = proj;
+                }
               }
             }
           }
-        }
-        if (!Number.isFinite(surfDist)) {
-          // Off-mesh fallback: intersect camera view ray with scan ground plane so high mid-air targets never stall
-          const groundY = Number.isFinite(v?.grid?.position?.y) ? v.grid.position.y : -7.0;
-          if (viewDir.y < -0.04 && cam.position.y > groundY + 0.2) {
-            const tGround = (groundY - cam.position.y) / viewDir.y;
-            if (tGround > 0.1 && tGround < 400) {
-              surfDist = tGround;
+          if (!Number.isFinite(surfDist)) {
+            const groundY = Number.isFinite(v?.grid?.position?.y) ? v.grid.position.y : -7.0;
+            if (viewDir.y < -0.04 && cam.position.y > groundY + 0.2) {
+              const tGround = (groundY - cam.position.y) / viewDir.y;
+              if (tGround > 0.1 && tGround < 400) surfDist = tGround;
             }
+          }
+          if (Number.isFinite(surfDist)) {
+            lastRayMs = now;
+            lastSurfDist = surfDist;
+            lastCamPos.copy(cam.position);
+            lastViewDir.copy(viewDir);
           }
         }
         if (!Number.isFinite(surfDist)) return;
 
-        // Prevent subsurface punch-through when already within 18 cm of the surface (zero rotation!)
-        if (surfDist <= 0.18) {
+        const minSurfDist = Boolean(window.UTILS_STATE && window.UTILS_STATE.active) ? 0.05 : 0.18;
+        if (surfDist <= minSurfDist) {
           e.stopImmediatePropagation();
           e.preventDefault();
           return;
         }
 
-        // Move camera and target strictly along the existing look axis `viewDir` so the camera NEVER rotates when zooming!
         const savedQuat = cam.quaternion.clone();
-        const stepAdvance = Math.min(surfDist - 0.15, Math.max(0.18, surfDist * 0.085));
+        const stepAdvance = Math.min(surfDist - minSurfDist, Math.max(0.14, surfDist * 0.085));
         if (stepAdvance > 0) {
           cam.position.addScaledVector(viewDir, stepAdvance);
         }
-        const remDist = Math.max(0.14, surfDist - Math.max(0, stepAdvance));
-        ctrls.target.copy(cam.position).addScaledVector(viewDir, Math.max(0.12, remDist * 0.88));
+        const remDist = Math.max(minSurfDist, surfDist - Math.max(0, stepAdvance));
+        ctrls.target.copy(cam.position).addScaledVector(viewDir, Math.max(0.1, remDist * 0.88));
         cam.quaternion.copy(savedQuat);
         syncExtraCams(v);
       },
@@ -1270,22 +1295,15 @@
       if (studioThree.tilesRenderer && studioThree.modelPivot.visible) {
         studioThree.tilesRenderer.update();
         syncTilesLoaderProgress(studioThree, "studio");
-        studioThree.tilesRenderer.group.traverse((child) => {
-          if (child.isMesh && child.material) {
-            const mats = Array.isArray(child.material) ? child.material : [child.material];
-            mats.forEach((m) => {
-              if (m && m.metalness > 0) {
-                m.metalness = 0.0;
-                m.roughness = 1.0;
-                m.side = THREE.DoubleSide;
-                m.needsUpdate = true;
-              }
-              if (m && m.userData?._lastBrightness !== STATE.scanBrightness) {
-                applyBrightnessToMaterial(m, STATE.scanBrightness);
-              }
-            });
-          }
-        });
+        if (studioThree._lastAppliedBrightness !== STATE.scanBrightness) {
+          studioThree._lastAppliedBrightness = STATE.scanBrightness;
+          studioThree.tilesRenderer.group.traverse((child) => {
+            if (child.isMesh && child.material) {
+              const mats = Array.isArray(child.material) ? child.material : [child.material];
+              mats.forEach((m) => m && applyBrightnessToMaterial(m, STATE.scanBrightness));
+            }
+          });
+        }
       }
       if (typeof updateGaussianSplatForContext === "function") updateGaussianSplatForContext(studioThree, "studio");
       if (STATE.multiAlign.active && studioThree.multiAlignGroup.visible) {
@@ -1835,6 +1853,20 @@
         tr.update();
       });
 
+      tr.addEventListener("tile-visibility-change", (ev) => {
+        if (studioThree.tilesRenderer !== tr || !ev || !ev.visible || !ev.scene) return;
+        ev.scene.traverse((c) => {
+          if (c.isMesh && c.material) {
+            const mats = Array.isArray(c.material) ? c.material : [c.material];
+            mats.forEach((m) => {
+              if (m && m.colorWrite !== false && m.userData?._lastBrightness !== STATE.scanBrightness) {
+                applyBrightnessToMaterial(m, STATE.scanBrightness);
+              }
+            });
+          }
+        });
+      });
+
       tr.addEventListener("load-model", (ev) => {
         if (studioThree.tilesRenderer !== tr) return;
         if (ev && ev.scene) {
@@ -1868,15 +1900,12 @@
               });
             }
           });
-          studioThree.camera.updateMatrixWorld();
-          tr.update();
           if (typeof applyStagedEditsToStudioMeshes === "function" && hasStagedMeshEditsForActiveScan()) {
             applyStagedEditsToStudioMeshes(false);
           }
           if (typeof scheduleScanGoogleMapCoverageUpdate === "function") {
             scheduleScanGoogleMapCoverageUpdate(studioThree, scan, 90);
           }
-          studioThree.renderer.render(studioThree.scene, studioThree.camera);
           syncTilesLoaderProgress(studioThree, "studio");
           if (
             (Array.isArray(STATE.lassoStrokes) && STATE.lassoStrokes.length > 0) ||

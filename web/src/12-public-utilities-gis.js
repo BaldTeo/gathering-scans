@@ -93,6 +93,8 @@
     loadingTimer: null,
     threeGroup: null,
     layerMeshes: [], // Merged per-layer THREE.Mesh objects with userData.triToFeature for O(1) raycast picking
+    xrayMeshes: [], // Subsurface depth-fail (THREE.GreaterDepth) X-Ray meshes sharing mergedGeo
+    lineMeshes: [], // Per-layer vertical depth leader LineSegments
     pipeMeshMap: new Map(), // featId_seg -> { mesh, layer, feature, v1, v2, dist, dir }
     groundGridCache: { scanId: null, originH: NaN, groundRefH: NaN, catCount: 0, sampler: null },
   };
@@ -295,10 +297,12 @@
       const cam = studioThree.camera;
       const target = studioThree.controls && studioThree.controls.target ? studioThree.controls.target : new THREE.Vector3(0, 0, 0);
       const dist = cam.position.distanceTo(target);
-      const desiredNear = hasVisibleUtilities3D()
-        ? Math.max(0.05, Math.min(4.5, dist * 0.008))
-        : 0.03;
-      if (Math.abs(cam.near - desiredNear) > desiredNear * 0.12) {
+      // Cap near plane to <= 0.25m when zoomed out and 0.03m when zoomed in or closed so foreground 3D tiles are never clipped
+      const desiredNear =
+        Boolean(UTILS_STATE.active) && hasVisibleUtilities3D() && dist > 35.0
+          ? Math.max(0.03, Math.min(0.25, dist * 0.0018))
+          : 0.03;
+      if (Math.abs(cam.near - desiredNear) > 0.008) {
         cam.near = desiredNear;
         cam.updateProjectionMatrix();
       }
@@ -320,11 +324,93 @@
   }
 
   /**
-   * Applies or restores Ground Surface X-Ray Translucency on the 3D scan mesh (`studioThree.modelPivot`)
-   * so buried 3D pipes and manhole shafts beneath the road are physically visible with true depth perception
-   * and zero Z-fighting when zoomed out.
+   * Iterates over every 3D scan tile material, including both attached scene roots (`studioThree.modelPivot`)
+   * AND detached/cached LOD tiles sitting in `studioThree.tilesRenderer.lruCache.itemSet`, so zooming in/out
+   * and closing Utilities mode never leaves cached tiles in a stale material state.
    */
-  function applyUtilitiesGroundXray(xrayPct) {
+  function forEachStudioTileMaterial(studioThree, callback, scopeRoot = null) {
+    if (!studioThree || typeof callback !== "function") return;
+    const visitedMats = new Set();
+    const visitMaterial = (mat) => {
+      if (!mat || visitedMats.has(mat)) return;
+      visitedMats.add(mat);
+      if (mat.colorWrite === false) return; // Skip hidden Gaussian splat proxy meshes
+      callback(mat);
+    };
+    const visitObjectTree = (rootObj) => {
+      if (!rootObj || typeof rootObj.traverse !== "function") return;
+      rootObj.traverse((child) => {
+        if (!child || !child.isMesh || !child.material) return;
+        if (child.userData && (child.userData.isUtilityFeature || child.userData.isUtilityXray)) return;
+        const mats = Array.isArray(child.material) ? child.material : [child.material];
+        for (let i = 0; i < mats.length; i++) {
+          visitMaterial(mats[i]);
+        }
+      });
+    };
+
+    if (scopeRoot) {
+      visitObjectTree(scopeRoot);
+      return;
+    }
+
+    const roots = getStudioModelRoots(studioThree);
+    for (let i = 0; i < roots.length; i++) {
+      visitObjectTree(roots[i]);
+    }
+
+    const tr = studioThree.tilesRenderer;
+    if (tr) {
+      if (typeof tr.forEachLoadedModel === "function") {
+        tr.forEachLoadedModel((scene) => visitObjectTree(scene));
+      }
+      const itemMap = tr.lruCache && tr.lruCache.itemSet;
+      if (itemMap && typeof itemMap.forEach === "function") {
+        itemMap.forEach((_, tile) => {
+          const ed = tile && tile.engineData;
+          if (!ed) return;
+          if (ed.scene) visitObjectTree(ed.scene);
+          if (Array.isArray(ed.materials)) {
+            for (let i = 0; i < ed.materials.length; i++) {
+              visitMaterial(ed.materials[i]);
+            }
+          }
+        });
+      }
+    }
+  }
+
+  function syncSubsurfaceXrayOverlayMeshes(pct) {
+    const showXrayOverlay = hasVisibleUtilities3D() && pct > 1;
+    const xrayAlpha = showXrayOverlay ? Math.max(0.14, Math.min(0.88, Number(((pct / 100.0) * 1.05).toFixed(2)))) : 0.0;
+    if (Array.isArray(UTILS_STATE.xrayMeshes)) {
+      for (let i = 0; i < UTILS_STATE.xrayMeshes.length; i++) {
+        const xm = UTILS_STATE.xrayMeshes[i];
+        if (!xm) continue;
+        const lid = xm.userData && xm.userData.layerId;
+        const lyrVis = Boolean(lid && UTILITY_LAYERS[lid] && UTILITY_LAYERS[lid].visible !== false);
+        xm.visible = lyrVis && showXrayOverlay;
+        if (xm.material) {
+          xm.material.opacity = xrayAlpha;
+        }
+      }
+    }
+    if (Array.isArray(UTILS_STATE.lineMeshes)) {
+      for (let i = 0; i < UTILS_STATE.lineMeshes.length; i++) {
+        const lm = UTILS_STATE.lineMeshes[i];
+        if (!lm || !lm.material) continue;
+        lm.material.depthTest = !showXrayOverlay;
+        lm.material.opacity = showXrayOverlay ? Math.max(0.32, xrayAlpha * 0.78) : 0.55;
+      }
+    }
+  }
+
+  /**
+   * Applies or restores Ground Surface X-Ray Translucency on `studioThree.modelPivot` and subsurface X-Ray meshes
+   * so buried 3D pipes and manhole shafts beneath the road are physically visible with true depth perception,
+   * while keeping 3D photogrammetry tiles in the opaque depth-tested WebGL pass (zero self-occlusion holes when zooming in).
+   */
+  function applyUtilitiesGroundXray(xrayPct, scopeRoot = null) {
     const pct = Math.max(0, Math.min(80, Number(xrayPct) || 0));
     UTILS_STATE.groundXrayPct = pct;
     const targetOpacity = Number((1.0 - pct / 100.0).toFixed(2));
@@ -334,16 +420,23 @@
     const roots = getStudioModelRoots(studioThree);
     if (!roots.length) return;
 
-    // Hook TilesRenderer 'load-model' once so newly streamed 3D tiles automatically inherit X-ray translucency while Utilities menu is open
+    // Hook TilesRenderer 'load-model' & 'tile-visibility-change' once so newly streamed or cached 3D tiles stay synced
     if (studioThree.tilesRenderer && !studioThree.tilesRenderer.__gsUtilXrayLoadBound) {
       studioThree.tilesRenderer.__gsUtilXrayLoadBound = true;
-      studioThree.tilesRenderer.addEventListener("load-model", () => {
+      const onTileSceneReady = (ev) => {
+        const tileScene = ev && ev.scene ? ev.scene : null;
         if (UTILS_STATE.active && UTILS_STATE.groundXrayPct > 1) {
-          applyUtilitiesGroundXray(UTILS_STATE.groundXrayPct);
-        } else if (!UTILS_STATE.active) {
-          restoreUtilitiesGroundOpacity();
+          applyUtilitiesGroundXray(UTILS_STATE.groundXrayPct, tileScene);
+        } else if (tileScene) {
+          restoreUtilitiesGroundOpacity(tileScene);
         }
-        if (hasVisibleUtilities3D() && Array.isArray(UTILS_STATE.features) && UTILS_STATE.features.length > 0) {
+        if (
+          ev &&
+          ev.type === "load-model" &&
+          hasVisibleUtilities3D() &&
+          Array.isArray(UTILS_STATE.features) &&
+          UTILS_STATE.features.length > 0
+        ) {
           const curOrigin = resolveUtilitiesOriginTwd97();
           if (
             Number.isFinite(curOrigin.h) &&
@@ -353,82 +446,97 @@
             renderUtilities3D();
           }
         }
+      };
+      studioThree.tilesRenderer.addEventListener("load-model", onTileSceneReady);
+      studioThree.tilesRenderer.addEventListener("tile-visibility-change", (ev) => {
+        if (ev && ev.visible && ev.scene) {
+          onTileSceneReady(ev);
+        }
       });
     }
 
     const isTranslucent = Boolean(UTILS_STATE.active) && hasVisibleUtilities3D() && pct > 1;
-    roots.forEach((rootGroup) => {
-      rootGroup.traverse((child) => {
-        if (!child || !child.isMesh || !child.material) return;
-        const mats = Array.isArray(child.material) ? child.material : [child.material];
-        mats.forEach((mat) => {
-          if (!mat) return;
-          if (!mat.userData) mat.userData = {};
-          if (!mat.userData.__origUtilXrayState) {
-            mat.userData.__origUtilXrayState = {
-              transparent: Boolean(mat.transparent),
-              opacity: typeof mat.opacity === "number" ? mat.opacity : 1.0,
-              depthWrite: mat.depthWrite !== undefined ? Boolean(mat.depthWrite) : true,
-            };
-          }
-          const orig = mat.userData.__origUtilXrayState;
-          if (isTranslucent) {
-            // Setting transparent=true moves terrain tiles to WebGL Pass 2 (after opaque pipes in Pass 1),
-            // while keeping depthWrite=true so terrain tiles sort properly against themselves without flicker.
-            mat.transparent = true;
-            mat.opacity = Math.min(orig.opacity, targetOpacity);
-            mat.depthWrite = orig.depthWrite;
-          } else {
-            mat.transparent = orig.transparent;
-            mat.opacity = orig.opacity;
-            mat.depthWrite = orig.depthWrite;
-          }
-          mat.needsUpdate = true;
-        });
-      });
-    });
+    syncSubsurfaceXrayOverlayMeshes(pct);
 
-    ensureAdaptiveCameraNearPlane();
-    if (typeof studioThree.render === "function") {
-      studioThree.render();
-    } else if (studioThree.renderer && studioThree.camera && studioThree.scene) {
-      studioThree.renderer.render(studioThree.scene, studioThree.camera);
+    const baseBright = Math.max(0.1, Math.min(4.0, Number(typeof STATE !== "undefined" ? STATE.scanBrightness : 1.0) || 1.0));
+    const xrayBrightScale = isTranslucent ? Math.max(0.62, Number((1.0 - (pct / 100.0) * 0.38).toFixed(3))) : 1.0;
+
+    forEachStudioTileMaterial(
+      studioThree,
+      (mat) => {
+        if (!mat.userData) mat.userData = {};
+        if (!mat.userData.__origUtilXrayState) {
+          mat.userData.__origUtilXrayState = {
+            transparent: false,
+            opacity: 1.0,
+            depthWrite: true,
+          };
+        }
+        const orig = mat.userData.__origUtilXrayState;
+        const needShaderRebuild = mat.transparent !== orig.transparent || mat.depthWrite !== orig.depthWrite;
+        // Always keep 3D scan tiles in WebGL Pass 1 (opaque + depthWrite) so close-up zooming never suffers from triangle sorting holes
+        mat.transparent = orig.transparent;
+        mat.opacity = orig.opacity;
+        mat.depthWrite = orig.depthWrite;
+        mat.userData.__utilXrayScale = xrayBrightScale;
+        if (mat.userData.PassUniforms && mat.userData.PassUniforms.uBrightness) {
+          mat.userData.PassUniforms.uBrightness.value = baseBright * xrayBrightScale;
+        }
+        if (needShaderRebuild) {
+          mat.needsUpdate = true;
+        }
+      },
+      scopeRoot
+    );
+
+    if (!scopeRoot) {
+      ensureAdaptiveCameraNearPlane();
+      if (typeof studioThree.render === "function") {
+        studioThree.render();
+      } else if (studioThree.renderer && studioThree.camera && studioThree.scene) {
+        studioThree.renderer.render(studioThree.scene, studioThree.camera);
+      }
     }
   }
 
   /**
-   * Restores the 3D scan model opacity to 100% (1.0) / 0% X-Ray filter whenever the Utilities menu is closed.
+   * Restores the 3D scan model opacity & brightness to 100% (1.0) across all active and cached 3D tiles whenever Utilities is closed.
    */
-  function restoreUtilitiesGroundOpacity() {
+  function restoreUtilitiesGroundOpacity(scopeRoot = null) {
     const studioThree = window.studioThree;
     const roots = getStudioModelRoots(studioThree);
     if (!roots.length) return;
-    roots.forEach((rootGroup) => {
-      rootGroup.traverse((child) => {
-        if (!child || !child.isMesh || !child.material) return;
-        const mats = Array.isArray(child.material) ? child.material : [child.material];
-        mats.forEach((mat) => {
-          if (!mat) return;
-          if (mat.userData && mat.userData.__origUtilXrayState) {
-            const orig = mat.userData.__origUtilXrayState;
-            mat.transparent = orig.transparent;
-            mat.opacity = orig.opacity;
-            mat.depthWrite = orig.depthWrite;
-            mat.needsUpdate = true;
-          } else if (mat.transparent && typeof mat.opacity === "number" && mat.opacity > 0.05 && mat.opacity < 1.0) {
-            mat.transparent = false;
-            mat.opacity = 1.0;
-            mat.depthWrite = true;
-            mat.needsUpdate = true;
-          }
-        });
-      });
-    });
-    ensureAdaptiveCameraNearPlane();
-    if (typeof studioThree.render === "function") {
-      studioThree.render();
-    } else if (studioThree.renderer && studioThree.camera && studioThree.scene) {
-      studioThree.renderer.render(studioThree.scene, studioThree.camera);
+
+    syncSubsurfaceXrayOverlayMeshes(UTILS_STATE.groundXrayPct);
+    const baseBright = Math.max(0.1, Math.min(4.0, Number(typeof STATE !== "undefined" ? STATE.scanBrightness : 1.0) || 1.0));
+
+    forEachStudioTileMaterial(
+      studioThree,
+      (mat) => {
+        if (!mat.userData) mat.userData = {};
+        const orig = mat.userData.__origUtilXrayState || { transparent: false, opacity: 1.0, depthWrite: true };
+        const needShaderRebuild = mat.transparent !== orig.transparent || mat.depthWrite !== orig.depthWrite;
+        mat.transparent = orig.transparent;
+        mat.opacity = orig.opacity;
+        mat.depthWrite = orig.depthWrite;
+        mat.userData.__utilXrayScale = 1.0;
+        if (mat.userData.PassUniforms && mat.userData.PassUniforms.uBrightness) {
+          mat.userData.PassUniforms.uBrightness.value = baseBright;
+        }
+        if (needShaderRebuild) {
+          mat.needsUpdate = true;
+        }
+      },
+      scopeRoot
+    );
+
+    if (!scopeRoot) {
+      ensureAdaptiveCameraNearPlane();
+      if (typeof studioThree.render === "function") {
+        studioThree.render();
+      } else if (studioThree.renderer && studioThree.camera && studioThree.scene) {
+        studioThree.renderer.render(studioThree.scene, studioThree.camera);
+      }
     }
   }
 
@@ -1530,6 +1638,8 @@
     }
     UTILS_STATE.threeGroup = null;
     UTILS_STATE.layerMeshes = [];
+    UTILS_STATE.xrayMeshes = [];
+    UTILS_STATE.lineMeshes = [];
     UTILS_STATE.pipeMeshMap.clear();
   }
 
@@ -2229,25 +2339,53 @@
         group.add(layerMesh);
         UTILS_STATE.layerMeshes.push(layerMesh);
         layerMeshById[layerId] = layerMesh;
+
+        // Companion depth-fail (THREE.GreaterDepth) subsurface X-Ray mesh sharing mergedGeo (0 extra vertex memory!)
+        // Renders buried utilities through 100% opaque 3D scan tiles without moving terrain tiles to the transparent pass.
+        const showXrayNow = hasVisibleUtilities3D() && Number(UTILS_STATE.groundXrayPct) > 1;
+        const initXrayAlpha = showXrayNow
+          ? Math.max(0.14, Math.min(0.88, Number(((Number(UTILS_STATE.groundXrayPct) / 100.0) * 1.05).toFixed(2))))
+          : 0.0;
+        const xrayMat = new THREE.MeshBasicMaterial({
+          color: new THREE.Color(ldef.color),
+          transparent: true,
+          opacity: initXrayAlpha,
+          depthTest: true,
+          depthWrite: false,
+          depthFunc: THREE.GreaterDepth,
+        });
+        const xrayMesh = new THREE.Mesh(mergedGeo, xrayMat);
+        xrayMesh.name = `UtilitiesLayerXray_${layerId}`;
+        xrayMesh.renderOrder = 18 + layerIdx;
+        xrayMesh.userData = {
+          isUtilityXray: true,
+          layerId: layerId,
+        };
+        xrayMesh.visible = isLayerVis && showXrayNow;
+        group.add(xrayMesh);
+        UTILS_STATE.xrayMeshes.push(xrayMesh);
       }
 
       if (bucket.linePositions.length >= 6) {
         const lineGeo = new THREE.BufferGeometry();
         lineGeo.setAttribute("position", new THREE.Float32BufferAttribute(bucket.linePositions, 3));
+        const showXrayNow = hasVisibleUtilities3D() && Number(UTILS_STATE.groundXrayPct) > 1;
         const lineMat = new THREE.LineBasicMaterial({
           color: new THREE.Color(ldef.color),
           transparent: true,
-          opacity: 0.55,
-          depthTest: true,
+          opacity: showXrayNow ? 0.45 : 0.55,
+          depthTest: !showXrayNow,
           depthWrite: false,
         });
         const lineSegs = new THREE.LineSegments(lineGeo, lineMat);
         lineSegs.name = `UtilitiesLayerLines_${layerId}`;
+        lineSegs.renderOrder = 17 + layerIdx;
         lineSegs.userData = {
           layerId: layerId,
         };
         lineSegs.visible = isLayerVis;
         group.add(lineSegs);
+        UTILS_STATE.lineMeshes.push(lineSegs);
       }
     });
 
@@ -2300,13 +2438,15 @@
     if (!UTILS_STATE.threeGroup) return;
     UTILS_STATE.threeGroup.visible = anyLayerVisible;
 
+    const showXrayNow = hasVisibleUtilities3D() && Number(UTILS_STATE.groundXrayPct) > 1;
     UTILS_STATE.threeGroup.traverse((child) => {
       if (child === UTILS_STATE.threeGroup) {
         child.visible = anyLayerVisible;
         return;
       }
       const lyr = child.userData && child.userData.layerId ? UTILITY_LAYERS[child.userData.layerId] : null;
-      child.visible = anyLayerVisible && Boolean(lyr && lyr.visible === true);
+      const isLyrVis = anyLayerVisible && Boolean(lyr && lyr.visible === true);
+      child.visible = child.userData && child.userData.isUtilityXray ? isLyrVis && showXrayNow : isLyrVis;
     });
 
     if (!anyLayerVisible) {

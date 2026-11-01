@@ -1886,20 +1886,20 @@
       tr._maxActiveTiles = isIOS || isPhone ? 120 : isMobOrTab ? 140 : isPreview ? 180 : 600;
     } else {
       // Auto mode: NO depth cap (maxDepth = Infinity) so close-up zooming refines all the way to leaf tiles,
-      // while capping active in-frustum tiles (_maxActiveTiles) and culling out-of-frustum tiles.
+      // while capping active in-frustum leaf tiles (_maxActiveTiles) and culling out-of-frustum tiles.
       tr.maxDepth = Infinity;
       if (isIOS || isPhone) {
         tr._maxActiveTiles = 85;
-        tr.errorTarget = 8.0;
-      } else if (isMobOrTab) {
-        tr._maxActiveTiles = 100;
         tr.errorTarget = 7.0;
-      } else if (isEmbed || isPreview || isCompareOrAlign) {
-        tr._maxActiveTiles = 120;
+      } else if (isMobOrTab) {
+        tr._maxActiveTiles = 110;
         tr.errorTarget = 6.0;
-      } else {
-        tr._maxActiveTiles = 160;
+      } else if (isEmbed || isPreview || isCompareOrAlign) {
+        tr._maxActiveTiles = 135;
         tr.errorTarget = 5.0;
+      } else {
+        tr._maxActiveTiles = 200;
+        tr.errorTarget = 3.5;
       }
     }
 
@@ -1921,33 +1921,33 @@
     }
     if (tr.lruCache) {
       if (lodMode === "rough") {
-        tr.lruCache.minSize = 16;
-        tr.lruCache.maxSize = 32;
+        tr.lruCache.minSize = 24;
+        tr.lruCache.maxSize = 48;
         tr.lruCache.minBytesSize = 48 * 1024 * 1024;
         tr.lruCache.maxBytesSize = 96 * 1024 * 1024;
       } else if (lodMode === "max" && !isEmbed) {
-        tr.lruCache.minSize = isMobOrTab ? 140 : isPreview ? 180 : 400;
-        tr.lruCache.maxSize = isMobOrTab ? 180 : isPreview ? 240 : 800;
+        tr.lruCache.minSize = isMobOrTab ? 220 : isPreview ? 280 : 800;
+        tr.lruCache.maxSize = isMobOrTab ? 320 : isPreview ? 420 : 1200;
         tr.lruCache.minBytesSize = (isMobOrTab ? 256 : isPreview ? 384 : 768) * 1024 * 1024;
         tr.lruCache.maxBytesSize = (isMobOrTab ? 512 : isPreview ? 768 : 1536) * 1024 * 1024;
       } else if (isIOS || isPhone) {
-        tr.lruCache.minSize = 85;
-        tr.lruCache.maxSize = 120;
+        tr.lruCache.minSize = 140;
+        tr.lruCache.maxSize = 220;
         tr.lruCache.minBytesSize = 256 * 1024 * 1024;
         tr.lruCache.maxBytesSize = 512 * 1024 * 1024;
       } else if (isMobOrTab) {
-        tr.lruCache.minSize = 100;
-        tr.lruCache.maxSize = 140;
+        tr.lruCache.minSize = 175;
+        tr.lruCache.maxSize = 260;
         tr.lruCache.minBytesSize = 320 * 1024 * 1024;
         tr.lruCache.maxBytesSize = 640 * 1024 * 1024;
       } else if (isEmbed || isPreview || isCompareOrAlign) {
-        tr.lruCache.minSize = 120;
-        tr.lruCache.maxSize = 165;
+        tr.lruCache.minSize = 210;
+        tr.lruCache.maxSize = 310;
         tr.lruCache.minBytesSize = 384 * 1024 * 1024;
         tr.lruCache.maxBytesSize = 768 * 1024 * 1024;
       } else {
-        tr.lruCache.minSize = 160;
-        tr.lruCache.maxSize = 220;
+        tr.lruCache.minSize = 320;
+        tr.lruCache.maxSize = 480;
         tr.lruCache.minBytesSize = 512 * 1024 * 1024;
         tr.lruCache.maxBytesSize = 1024 * 1024 * 1024;
       }
