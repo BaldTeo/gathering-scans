@@ -2886,6 +2886,44 @@
         });
       }
     }
+
+    // 3. Snap & drag for Curved / Bent Extruded Surface control pins (S1..Sn and E1)
+    if (
+      typeof STATE !== "undefined" &&
+      (STATE.activeTool === "flatness" || Boolean(st?.overlayGroup?.getObjectByName?.("GS_SurfaceQA_Overlay"))) &&
+      window.QA_STATE &&
+      window.QA_STATE.flatnessPlaneMode === "curved_extruded"
+    ) {
+      if (Array.isArray(STATE.flatnessSplinePoints)) {
+        STATE.flatnessSplinePoints.forEach((pt, idx) => {
+          if (pt && Number.isFinite(pt.x) && Number.isFinite(pt.y) && Number.isFinite(pt.z)) {
+            pushV(pt, {
+              source: "flatnessSplinePoints",
+              measId: "__flatness_spline__",
+              measType: "flatness",
+              pointIndex: idx,
+              label: `Spline S${idx + 1}`,
+              editable: true,
+            });
+          }
+        });
+      }
+      if (
+        STATE.flatnessExtrusionHandle &&
+        Number.isFinite(STATE.flatnessExtrusionHandle.x) &&
+        Number.isFinite(STATE.flatnessExtrusionHandle.y) &&
+        Number.isFinite(STATE.flatnessExtrusionHandle.z)
+      ) {
+        pushV(STATE.flatnessExtrusionHandle, {
+          source: "flatnessExtrusionHandle",
+          measId: "__flatness_extrude__",
+          measType: "flatness",
+          pointIndex: 0,
+          label: "Extrude E1",
+          editable: true,
+        });
+      }
+    }
   }
 
   /**

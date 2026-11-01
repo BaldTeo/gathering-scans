@@ -78,6 +78,15 @@
     surfaceQaLastResult: null,
     isPickingFlatnessPoint: false,
     flatnessPlaneMode: "best_fit_3d",
+    flatnessCurveType: "spline",
+    flatnessExtrudeDirMode: "auto",
+    flatnessCurvedOffsetMode: "auto_center",
+    flatnessExtrudeDepthM: 1.8,
+    curvedPickStage: "",
+    curvedSplinePoints: [],
+    curvedExtrudeTargetPt: null,
+    curvedHasExplicitSpline: false,
+    curvedHoverPt: null,
     flatnessToleranceMm: 3.0,
     flatnessVolumeMode: "threshold",
     flatnessDisplayMode: "tiles",
@@ -812,7 +821,10 @@
       }
       const rawSpanU = Math.max(0.2, rawMaxU - rawMinU);
       const rawSpanV = Math.max(0.2, rawMaxV - rawMinV);
-      const normalMargin = Math.min(1.5, Math.max(0.32, maxPolyAbsN + 0.30));
+      const isCurvedMode = planeMode === "curved_extruded";
+      const normalMargin = isCurvedMode
+        ? Math.min(3.5, Math.max(0.85, maxPolyAbsN + Math.max(rawSpanU, rawSpanV) * 0.42))
+        : Math.min(1.5, Math.max(0.32, maxPolyAbsN + 0.30));
       minX -= normalMargin; maxX += normalMargin;
       minY -= normalMargin; maxY += normalMargin;
       minZ -= normalMargin; maxZ += normalMargin;
@@ -1008,8 +1020,9 @@
             // Prefer the surface layer closest to the user-clicked polygon plane (|signedN| smallest),
             // rejecting overhanging bushes/eaves or back-wall layers > 0.14m away from the active surface
             if (cellCount[idx] > 0) {
+              const layerTol = isCurvedMode ? 0.28 : 0.14;
               const prevBestAbs = Math.abs(cellFrontN[idx]);
-              if (absN < prevBestAbs - 0.14) {
+              if (absN < prevBestAbs - layerTol) {
                 cellSumX[idx] = lx;
                 cellSumY[idx] = ly;
                 cellSumZ[idx] = lz;
@@ -1017,7 +1030,7 @@
                 cellFrontN[idx] = signedN;
                 return;
               }
-              if (absN > prevBestAbs + 0.14) {
+              if (absN > prevBestAbs + layerTol) {
                 return;
               }
               if (absN < prevBestAbs) cellFrontN[idx] = signedN;
@@ -1126,7 +1139,7 @@
                 const tnLen = Math.hypot(tnx, tny, tnz);
                 if (tnLen > 1e-6) {
                   const cosAngle = Math.abs(tnx * n0.x + tny * n0.y + tnz * n0.z) / tnLen;
-                  if (cosAngle < 0.35) continue;
+                  if (cosAngle < (isCurvedMode ? 0.14 : 0.35)) continue;
                 }
 
                 const dxA = vA.x - c0.x, dyA = vA.y - c0.y, dzA = vA.z - c0.z;
@@ -1281,6 +1294,9 @@
                     x: cellSumX[idx] * inv,
                     y: cellSumY[idx] * inv,
                     z: cellSumZ[idx] * inv,
+                    rawX: cellSumX[idx] * inv,
+                    rawY: cellSumY[idx] * inv,
+                    rawZ: cellSumZ[idx] * inv,
                     w: cellAreaM2,
                   });
                 }
@@ -1313,9 +1329,63 @@
                     x: wx / wTot,
                     y: wy / wTot,
                     z: wz / wTot,
+                    rawX: wx / wTot,
+                    rawY: wy / wTot,
+                    rawZ: wz / wTot,
                     w: cellAreaM2,
                   });
                 }
+              }
+            }
+
+            const polygonArea2DM2 = computePolygonArea2D(polyUV);
+            const effectiveCellAreaM2 = sampledCells.length > 0 && polygonArea2DM2 > 0
+              ? polygonArea2DM2 / sampledCells.length
+              : cellAreaM2;
+
+            // 4th Mode: Curved / Bent Extruded Spline Surface evaluation
+            if (isCurvedMode && window.__GS_CURVED_QA && typeof window.__GS_CURVED_QA.evaluateCurvedCacheFromCells === "function") {
+              const curvedRes = window.__GS_CURVED_QA.evaluateCurvedCacheFromCells(sampledCells, polyPts, {
+                curveType: QA_STATE.flatnessCurveType || "spline",
+                extrudeDirMode: QA_STATE.flatnessExtrudeDirMode || "auto",
+                offsetMode: QA_STATE.flatnessCurvedOffsetMode || "auto_center",
+                extrudeDepthM: QA_STATE.flatnessExtrudeDepthM || 1.8,
+                splinePts: QA_STATE.curvedSplinePoints,
+                extrudeTargetPt: QA_STATE.curvedExtrudeTargetPt,
+                hasExplicitSpline: Boolean(QA_STATE.curvedHasExplicitSpline && Array.isArray(QA_STATE.curvedSplinePoints) && QA_STATE.curvedSplinePoints.length >= 2),
+                useE1Depth: QA_STATE.flatnessExtrudeDirMode === "custom_e1",
+              });
+              if (curvedRes && curvedRes.curvedMeta) {
+                QA_STATE.curvedSplinePoints = curvedRes.curvedMeta.splinePts.map((p) => ({ x: p.x, y: p.y, z: p.z }));
+                QA_STATE.curvedExtrudeTargetPt = curvedRes.curvedMeta.extrudeHandlePt ? { ...curvedRes.curvedMeta.extrudeHandlePt } : null;
+                QA_STATE.flatnessExtrudeDepthM = Number(curvedRes.curvedMeta.extrudeDepthM) || QA_STATE.flatnessExtrudeDepthM;
+                syncCurvedSplineHandlesToStudioState(curvedRes.curvedMeta);
+                if (typeof onProgress === "function") onProgress(100);
+                resolve({
+                  scanId: (window.STATE && window.STATE.activeScanId) || "scan",
+                  polyPts: polyPts.map((p) => ({ x: p.x, y: p.y, z: p.z })),
+                  polyUV,
+                  plane: curvedRes.plane,
+                  curvedMeta: curvedRes.curvedMeta,
+                  cells: sampledCells,
+                  du,
+                  dv,
+                  resolutionCm: Number((du * 100.0).toFixed(1)),
+                  requestedResolutionCm: reqResCm,
+                  maxQualityLeafTilesLoaded: maxTileInfo ? maxTileInfo.leafCount : 0,
+                  maxQualityTileDepth: maxTileInfo ? maxTileInfo.maxDepth : 0,
+                  cellAreaM2: effectiveCellAreaM2,
+                  totalAreaM2: Number((sampledCells.length * effectiveCellAreaM2).toFixed(2)),
+                  rmsMm: curvedRes.rmsMm,
+                  meanAbsMm: curvedRes.meanAbsMm,
+                  ffFlatness: curvedRes.ffFlatness,
+                  flLevelness: curvedRes.flLevelness,
+                  maxHigh: curvedRes.maxHigh,
+                  maxLow: curvedRes.maxLow,
+                  spanU: rawSpanU,
+                  spanV: rawSpanV,
+                });
+                return;
               }
             }
 
@@ -1361,6 +1431,7 @@
               cell.devMm = devMm;
               cell.planeU = cell.u;
               cell.planeV = cell.v;
+              delete cell.normX;
               // Exact regular local (u, v) grid center on the best-fit plane (eliminates random triangle-centroid jitter)
               cell.planeX = planeOrigX + cell.u * fu.x + cell.v * fv.x;
               cell.planeY = planeOrigY + cell.u * fu.y + cell.v * fv.y;
@@ -1394,11 +1465,6 @@
             const ffVal = Number(Math.min(120.0, Math.max(8.0, 115.0 / Math.max(1.1, rmsCurvMm))).toFixed(1));
             const flVal = Number(Math.min(100.0, Math.max(6.0, 95.0 / Math.max(1.2, rmsMm))).toFixed(1));
 
-            const polygonArea2DM2 = computePolygonArea2D(polyUV);
-            const effectiveCellAreaM2 = sampledCells.length > 0 && polygonArea2DM2 > 0
-              ? polygonArea2DM2 / sampledCells.length
-              : cellAreaM2;
-
             if (typeof onProgress === "function") onProgress(100);
 
             resolve({
@@ -1430,6 +1496,28 @@
         })
         .catch(reject);
     });
+  }
+
+  function syncCurvedSplineHandlesToStudioState(curvedMeta) {
+    if (!window.STATE) return;
+    const THREE = window.THREE;
+    if (curvedMeta && Array.isArray(curvedMeta.splinePts)) {
+      window.STATE.flatnessSplinePoints = curvedMeta.splinePts.map((p) =>
+        THREE ? new THREE.Vector3(Number(p.x) || 0, Number(p.y) || 0, Number(p.z) || 0) : { x: Number(p.x) || 0, y: Number(p.y) || 0, z: Number(p.z) || 0 }
+      );
+      window.STATE.flatnessExtrusionHandle = curvedMeta.extrudeHandlePt
+        ? THREE
+          ? new THREE.Vector3(
+              Number(curvedMeta.extrudeHandlePt.x) || 0,
+              Number(curvedMeta.extrudeHandlePt.y) || 0,
+              Number(curvedMeta.extrudeHandlePt.z) || 0
+            )
+          : { ...curvedMeta.extrudeHandlePt }
+        : null;
+    } else {
+      window.STATE.flatnessSplinePoints = [];
+      window.STATE.flatnessExtrusionHandle = null;
+    }
   }
 
   /**
@@ -1497,6 +1585,7 @@
     return {
       scan_id: cache.scanId,
       reference_mode: cache.plane.planeMode,
+      curved_meta: cache.curvedMeta || null,
       tolerance_mm: tolMm,
       resolution_cm: cache.resolutionCm || Number(((cache.du || 0.15) * 100.0).toFixed(1)),
       volume_mode: volMode,
@@ -1625,6 +1714,24 @@
       const line = new THREE.Line(lineGeom, lineMat);
       line.renderOrder = 997;
       surfaceQa3DGroup.add(line);
+    }
+
+    if (
+      QA_STATE.flatnessPlaneMode === "curved_extruded" &&
+      window.__GS_CURVED_QA &&
+      typeof window.__GS_CURVED_QA.buildCurvedDraftPreviewThreeGroup === "function" &&
+      (QA_STATE.curvedPickStage || (Array.isArray(QA_STATE.curvedSplinePoints) && QA_STATE.curvedSplinePoints.length > 0 && !QA_STATE.flatnessCache))
+    ) {
+      const draftGrp = window.__GS_CURVED_QA.buildCurvedDraftPreviewThreeGroup({
+        splinePts: QA_STATE.curvedSplinePoints,
+        hoverPt: QA_STATE.curvedHoverPt,
+        pickStage: QA_STATE.curvedPickStage,
+        curveType: QA_STATE.flatnessCurveType,
+        extrudeDirMode: QA_STATE.flatnessExtrudeDirMode,
+        extrudeDepthM: QA_STATE.flatnessExtrudeDepthM,
+        extrudeTargetPt: QA_STATE.curvedExtrudeTargetPt,
+      });
+      if (draftGrp) surfaceQa3DGroup.add(draftGrp);
     }
 
     if (window.studioThree.overlayGroup) {
@@ -1758,19 +1865,29 @@
     }
 
     const basisMat = new THREE.Matrix4().makeBasis(fu, fv, fn);
-    const planeGeo = new THREE.PlaneGeometry((cache.spanU || 2) * 1.02, (cache.spanV || 2) * 1.02, 8, 8);
-    const planeMat = new THREE.MeshBasicMaterial({
-      color: isPlumbWall ? 0xfbbf24 : 0x22d3ee,
-      wireframe: true,
-      transparent: true,
-      opacity: isActive ? 0.42 : 0.24,
-      depthTest: false,
-    });
-    const planeMesh = new THREE.Mesh(planeGeo, planeMat);
-    planeMesh.applyMatrix4(basisMat);
-    planeMesh.position.copy(fc);
-    planeMesh.renderOrder = 994;
-    grp.add(planeMesh);
+    if (
+      plane.planeMode === "curved_extruded" &&
+      cache.curvedMeta &&
+      window.__GS_CURVED_QA &&
+      typeof window.__GS_CURVED_QA.buildCurvedReferenceSurfaceThreeGroup === "function"
+    ) {
+      const curvedGrp = window.__GS_CURVED_QA.buildCurvedReferenceSurfaceThreeGroup(cache, { isActive });
+      if (curvedGrp) grp.add(curvedGrp);
+    } else {
+      const planeGeo = new THREE.PlaneGeometry((cache.spanU || 2) * 1.02, (cache.spanV || 2) * 1.02, 8, 8);
+      const planeMat = new THREE.MeshBasicMaterial({
+        color: isPlumbWall ? 0xfbbf24 : 0x22d3ee,
+        wireframe: true,
+        transparent: true,
+        opacity: isActive ? 0.42 : 0.24,
+        depthTest: false,
+      });
+      const planeMesh = new THREE.Mesh(planeGeo, planeMat);
+      planeMesh.applyMatrix4(basisMat);
+      planeMesh.position.copy(fc);
+      planeMesh.renderOrder = 994;
+      grp.add(planeMesh);
+    }
 
     if (objLabel) {
       const subTxt = `${metrics?.pass_rate_pct ?? 0}% (±${metrics?.tolerance_mm ?? 3}mm)`;
@@ -1802,6 +1919,9 @@
       const dummyMat = new THREE.Matrix4();
       const scaleMat = new THREE.Matrix4();
       const posVec = new THREE.Vector3();
+      const cellTan = new THREE.Vector3();
+      const cellExt = new THREE.Vector3();
+      const cellNorm = new THREE.Vector3();
       const col = new THREE.Color();
 
       for (let i = 0; i < activeCells.length; i++) {
@@ -1809,16 +1929,30 @@
         const absMm = Math.abs(c.devMm);
         const ratio = Math.min(3.5, absMm / tolMm);
         const sign = c.devM >= 0 ? 1.0 : -1.0;
+        const hasLocalBasis = Number.isFinite(c.normX) && Number.isFinite(c.tanX) && Number.isFinite(c.extX);
 
         if (displayMode === "points") {
           const offsetM = Math.max(0.015, Math.min(0.14, Math.abs(c.devM) + 0.01));
-          posVec.set(c.planeX, c.planeY, c.planeZ).addScaledVector(fn, sign * offsetM);
+          if (hasLocalBasis) {
+            cellNorm.set(c.normX, c.normY, c.normZ);
+            posVec.set(c.planeX, c.planeY, c.planeZ).addScaledVector(cellNorm, sign * offsetM);
+          } else {
+            posVec.set(c.planeX, c.planeY, c.planeZ).addScaledVector(fn, sign * offsetM);
+          }
           dummyMat.identity();
           dummyMat.setPosition(posVec);
         } else {
           const prismThickM = Math.max(0.014, Math.min(0.14, Math.abs(c.devM) * 0.65 + 0.01));
-          posVec.set(c.planeX, c.planeY, c.planeZ).addScaledVector(fn, sign * prismThickM * 0.5);
-          dummyMat.copy(basisMat);
+          if (hasLocalBasis) {
+            cellTan.set(c.tanX, c.tanY, c.tanZ);
+            cellExt.set(c.extX, c.extY, c.extZ);
+            cellNorm.set(c.normX, c.normY, c.normZ);
+            posVec.set(c.planeX, c.planeY, c.planeZ).addScaledVector(cellNorm, sign * prismThickM * 0.5);
+            dummyMat.makeBasis(cellTan, cellExt, cellNorm);
+          } else {
+            posVec.set(c.planeX, c.planeY, c.planeZ).addScaledVector(fn, sign * prismThickM * 0.5);
+            dummyMat.copy(basisMat);
+          }
           scaleMat.makeScale(1.0, 1.0, prismThickM);
           dummyMat.multiply(scaleMat);
           dummyMat.setPosition(posVec);
@@ -1873,7 +2007,11 @@
       return;
     }
 
-    const modeNameZh = (m, slopeDeg) => {
+    const modeNameZh = (m, slopeDeg, cMeta) => {
+      if (m === "curved_extruded") {
+        const rTxt = cMeta && Number.isFinite(cMeta.curvatureRadiusM) && cMeta.curvatureRadiusM < 999 ? ` R=${Number(cMeta.curvatureRadiusM).toFixed(1)}m` : "";
+        return `${t("弧形曲面", "Curved Surface")}${rTxt}`;
+      }
       if (m === "vertical_plumb" || Number(slopeDeg) > 55) return t("鉛直牆面", "Plumb Wall");
       if (m === "horizontal") return t("水平地坪", "Horizontal");
       return t("最佳擬合", "Best-Fit");
@@ -1901,7 +2039,7 @@
               </span>
               <div style="min-width:0;flex:1;">
                 <div style="font-size:10.5px;font-weight:700;color:var(--ui-text-primary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">
-                  ${obj.name || `${modeNameZh(obj.planeMode, p.slopeDeg)} (${m.total_area_m2 || 0} m²)`}
+                  ${obj.name || `${modeNameZh(obj.planeMode, p.slopeDeg, obj.curvedMeta || obj.cache?.curvedMeta)} (${m.total_area_m2 || 0} m²)`}
                 </div>
                 <div style="font-size:9.5px;color:var(--ui-text-muted);font-family:monospace;">
                   ±${Number(obj.toleranceMm || 3).toFixed(1)}mm · ${resCm}cm · <span style="color:${passColor};font-weight:700;">${passPct}%</span>
@@ -1960,6 +2098,19 @@
     QA_STATE.flatnessResolutionCm = Number(obj.resolutionCm || obj.cache?.resolutionCm) || 15;
     QA_STATE.flatnessCache = obj.cache;
     QA_STATE.surfaceQaLastResult = obj.metrics;
+    const cMeta = obj.curvedMeta || obj.cache?.curvedMeta || null;
+    if (cMeta) {
+      QA_STATE.flatnessCurveType = cMeta.curveType || QA_STATE.flatnessCurveType || "auto";
+      QA_STATE.flatnessExtrudeDirMode = cMeta.extrudeDirMode || QA_STATE.flatnessExtrudeDirMode || "auto";
+      QA_STATE.flatnessCurvedOffsetMode = cMeta.offsetMode || QA_STATE.flatnessCurvedOffsetMode || "auto_center";
+      QA_STATE.flatnessExtrudeDepthM = Number(cMeta.extrudeDepthM) || QA_STATE.flatnessExtrudeDepthM || 2.5;
+      if (Array.isArray(cMeta.splinePts) && cMeta.splinePts.length >= 2) {
+        QA_STATE.curvedSplinePoints = cMeta.splinePts.map((p) => ({ x: Number(p.x) || 0, y: Number(p.y) || 0, z: Number(p.z) || 0 }));
+      }
+      QA_STATE.curvedExtrudeTargetPt = cMeta.extrudeHandlePt ? { ...cMeta.extrudeHandlePt } : null;
+      QA_STATE.curvedHasExplicitSpline = Boolean(obj.curvedHasExplicitSpline);
+    }
+    syncCurvedSplineHandlesToStudioState(cMeta);
 
     if (window.STATE && Array.isArray(obj.polyPts) && obj.polyPts.length >= 3) {
       const THREE = window.THREE;
@@ -1976,6 +2127,8 @@
       r.checked = match;
       r.closest(".gs-qa-mode-pill")?.classList.toggle("active", match);
     });
+    const curvedWrap = document.getElementById("flatnessCurvedConfigWrap");
+    if (curvedWrap) curvedWrap.style.display = QA_STATE.flatnessPlaneMode === "curved_extruded" ? "block" : "none";
     document.querySelectorAll('#surfaceQaContainer input[name="flatnessVolMode"]').forEach((r) => {
       const match = r.value === QA_STATE.flatnessVolumeMode;
       r.checked = match;
@@ -2077,6 +2230,11 @@
     QA_STATE.activeFlatnessObjectId = null;
     QA_STATE.flatnessCache = null;
     QA_STATE.surfaceQaLastResult = null;
+    QA_STATE.curvedSplinePoints = [];
+    QA_STATE.curvedExtrudeTargetPt = null;
+    QA_STATE.curvedHasExplicitSpline = false;
+    QA_STATE.curvedPickStage = "";
+    syncCurvedSplineHandlesToStudioState(null);
     if (window.STATE) {
       window.STATE.measurePoints = [];
       window.STATE.polygonLocked = false;
@@ -2214,12 +2372,12 @@
           </div>
         </div>
 
-        <!-- Step 2: Reference Plane Mode -->
+        <!-- Step 2: Reference Plane / Surface Mode (4 Options including Curved Extruded Surface) -->
         <div class="gs-qa-card">
           <div style="font-size:11px;font-weight:700;color:var(--ui-text-secondary);margin-bottom:4px;">
-            2. ${t("基準平面", "Reference Plane")}
+            2. ${t("基準平面 / 曲面", "Reference Surface")}
           </div>
-          <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:4px;">
+          <div style="display:grid;grid-template-columns:repeat(4, 1fr);gap:4px;">
             <label class="gs-qa-mode-pill ${planeMode === "best_fit_3d" ? "active" : ""}">
               <input type="radio" name="qaRefMode" value="best_fit_3d" ${planeMode === "best_fit_3d" ? "checked" : ""} style="display:none;" />
               <span>${t("最佳擬合", "Best-Fit")}</span>
@@ -2232,7 +2390,12 @@
               <input type="radio" name="qaRefMode" value="vertical_plumb" ${planeMode === "vertical_plumb" ? "checked" : ""} style="display:none;" />
               <span>${t("鉛直面", "Plumb Wall")}</span>
             </label>
+            <label class="gs-qa-mode-pill ${planeMode === "curved_extruded" ? "active" : ""}" title="${t("弧形牆面、圓弧翼牆或曲面坡道 (支援繪製 3D 弧線擠出或自動擬合多邊形曲面)", "Curved wall, circular wing wall, or transition ramp (3D profile spline extrusion or auto-fit)")}">
+              <input type="radio" name="qaRefMode" value="curved_extruded" ${planeMode === "curved_extruded" ? "checked" : ""} style="display:none;" />
+              <span>${t("弧形曲面", "Curved")}</span>
+            </label>
           </div>
+          ${window.__GS_CURVED_QA && typeof window.__GS_CURVED_QA.renderFlatnessCurvedConfigCardHtml === "function" ? window.__GS_CURVED_QA.renderFlatnessCurvedConfigCardHtml(QA_STATE, QA_STATE.flatnessCache, QA_SVGS, t) : ""}
         </div>
 
         <!-- Step 3: Taiwan PCC Regulation Presets, Tolerance Slider & Uniform Tile Resolution Slider/Input -->
@@ -2511,7 +2674,9 @@
       const objs = getFlatnessObjectsForActiveScan();
       let savedObj = isEditingActiveObject ? getActiveFlatnessObject() : null;
       const surfaceTitleZh =
-        planeMode === "vertical_plumb" || Number(cache.plane?.slopeDeg) > 55
+        planeMode === "curved_extruded"
+          ? "弧形曲面"
+          : planeMode === "vertical_plumb" || Number(cache.plane?.slopeDeg) > 55
           ? "鉛直牆面"
           : planeMode === "horizontal"
           ? "水平地坪"
@@ -2525,6 +2690,8 @@
         savedObj.resolutionCm = Number(cache.resolutionCm || resCm);
         savedObj.displayMode = QA_STATE.flatnessDisplayMode || "tiles";
         savedObj.showPass3D = Boolean(QA_STATE.flatnessShowPass3D);
+        savedObj.curvedMeta = cache.curvedMeta || null;
+        savedObj.curvedHasExplicitSpline = Boolean(QA_STATE.curvedHasExplicitSpline);
         savedObj.cache = cache;
         savedObj.metrics = metrics;
         savedObj.result = metrics;
@@ -2549,6 +2716,8 @@
           resolutionCm: Number(cache.resolutionCm || resCm),
           displayMode: QA_STATE.flatnessDisplayMode || "tiles",
           showPass3D: Boolean(QA_STATE.flatnessShowPass3D),
+          curvedMeta: cache.curvedMeta || null,
+          curvedHasExplicitSpline: Boolean(QA_STATE.curvedHasExplicitSpline),
           cache,
           metrics,
           result: metrics,
@@ -2583,6 +2752,12 @@
           `Saved ${savedObj.code} (${cache.totalAreaM2} m², ${cache.cells.length} cells @ ${cache.resolutionCm}cm) — drag pins or click 'New'`
         );
       }
+      const lblCurvedSt = document.getElementById("lblFlatnessCurvedStatus");
+      if (lblCurvedSt && cache.curvedMeta) {
+        const cm = cache.curvedMeta;
+        const rTxt = Number.isFinite(cm.curvatureRadiusM) && cm.curvatureRadiusM < 999 ? `R = ${cm.curvatureRadiusM.toFixed(2)} m` : t("樣條曲線", "Spline");
+        lblCurvedSt.textContent = `${rTxt} · ${t("弧長", "Arc")} ${cm.arcLengthM} m × ${t("擠出", "Ext")} ${cm.extrudeDepthM} m`;
+      }
       renderSavedFlatnessObjectsMenu();
       recomputeFlatnessMetricsAndVisuals();
       if (typeof syncStudioMobileToolHud === "function") syncStudioMobileToolHud();
@@ -2594,6 +2769,31 @@
       if (progWrap) progWrap.style.display = "none";
     }
   }
+
+  async function applyCurvedSplineExtrusionAnalysis(opts = {}) {
+    if (!window.__GS_CURVED_QA || typeof window.__GS_CURVED_QA.buildCurvedExtrudedSurfaceEvaluator !== "function") return;
+    if (!Array.isArray(QA_STATE.curvedSplinePoints) || QA_STATE.curvedSplinePoints.length < 2) {
+      if (typeof showToast === "function") {
+        showToast(t("請先在 3D 表面點擊至少 2 個弧線控制點 (建議 3+ 點)", "Click at least 2 spline points on the 3D surface (3+ recommended)"));
+      }
+      return;
+    }
+    QA_STATE.flatnessPlaneMode = "curved_extruded";
+    QA_STATE.curvedPickStage = "";
+    QA_STATE.curvedHasExplicitSpline = true;
+    const ev = window.__GS_CURVED_QA.buildCurvedExtrudedSurfaceEvaluator({
+      splinePts: QA_STATE.curvedSplinePoints,
+      curveType: QA_STATE.flatnessCurveType || "auto",
+      extrudeDirMode: QA_STATE.flatnessExtrudeDirMode || "auto",
+      extrudeDepthM: QA_STATE.flatnessExtrudeDepthM || 2.5,
+      extrudeTargetPt: QA_STATE.curvedExtrudeTargetPt || null,
+    });
+    if (!ev || !Array.isArray(ev.ribbonBoundaryPts3D) || ev.ribbonBoundaryPts3D.length < 4) return;
+    await lockFlatnessPolygonAndAnalyze(ev.ribbonBoundaryPts3D, {
+      updateActiveObject: Boolean(opts.updateActiveObject || QA_STATE.activeFlatnessObjectId),
+    });
+  }
+  window.applyCurvedSplineExtrusionAnalysis = applyCurvedSplineExtrusionAnalysis;
 
   function bindSurfaceQaEvents() {
     document.getElementById("btnNewFlatnessObject")?.addEventListener("click", () => {
@@ -2607,6 +2807,10 @@
         });
         e.target.closest(".gs-qa-mode-pill")?.classList.add("active");
         QA_STATE.flatnessPlaneMode = e.target.value;
+        const curvedWrap = document.getElementById("flatnessCurvedConfigWrap");
+        if (curvedWrap) {
+          curvedWrap.style.display = QA_STATE.flatnessPlaneMode === "curved_extruded" ? "block" : "none";
+        }
         const pts =
           window.STATE && Array.isArray(window.STATE.flatnessPolygonPoints) && window.STATE.flatnessPolygonPoints.length >= 3
             ? window.STATE.flatnessPolygonPoints
@@ -2615,8 +2819,129 @@
             : null;
         if (pts && pts.length >= 3) {
           lockFlatnessPolygonAndAnalyze(pts, { updateActiveObject: true });
+        } else {
+          refreshFlatnessDraftVisuals();
         }
       });
+    });
+
+    document.getElementById("btnDrawFlatnessSpline")?.addEventListener("click", () => {
+      QA_STATE.flatnessPlaneMode = "curved_extruded";
+      QA_STATE.curvedPickStage = "spline";
+      QA_STATE.curvedSplinePoints = [];
+      QA_STATE.curvedExtrudeTargetPt = null;
+      QA_STATE.curvedHasExplicitSpline = true;
+      QA_STATE.flatnessCache = null;
+      syncCurvedSplineHandlesToStudioState(null);
+      if (window.STATE) {
+        window.STATE.measurePoints = [];
+        window.STATE.polygonLocked = false;
+        window.STATE.flatnessPolygonLocked = false;
+        window.STATE.flatnessPolygonPoints = [];
+      }
+      document.getElementById("btnDrawFlatnessSpline")?.classList.add("primary");
+      document.getElementById("btnPickFlatnessExtrudePt")?.classList.remove("primary");
+      const lblSt = document.getElementById("lblFlatnessCurvedStatus");
+      if (lblSt) lblSt.textContent = t("請在 3D 表面依序點擊 3+ 個弧線控制點 (S1..Sn)，完成後點「套用分析」", "Click 3+ spline points (S1..Sn) on 3D surface, then click 'Apply'");
+      refreshFlatnessDraftVisuals();
+      if (typeof showToast === "function") {
+        showToast(t("繪製弧線模式：請沿弧形牆頂或曲面邊緣點擊 3+ 個控制點", "Spline mode: click 3+ points along the curved edge"));
+      }
+    });
+
+    document.getElementById("btnPickFlatnessExtrudePt")?.addEventListener("click", () => {
+      if (!Array.isArray(QA_STATE.curvedSplinePoints) || QA_STATE.curvedSplinePoints.length < 2) {
+        if (typeof showToast === "function") {
+          showToast(t("請先繪製至少 2 個弧線點，或先框選多邊形自動擬合曲面", "Draw at least 2 spline points or fit a polygon first"));
+        }
+        return;
+      }
+      QA_STATE.curvedPickStage = "extrude";
+      document.getElementById("btnPickFlatnessExtrudePt")?.classList.add("primary");
+      document.getElementById("btnDrawFlatnessSpline")?.classList.remove("primary");
+      const lblSt = document.getElementById("lblFlatnessCurvedStatus");
+      if (lblSt) lblSt.textContent = t("請於 3D 表面點擊擠出終點位置 (E1) 以設定曲面寬度/深度與方向", "Click extrusion target point (E1) on 3D surface to set depth & direction");
+      if (typeof showToast === "function") {
+        showToast(t("請於 3D 牆底或坡道另一側點擊擠出終點 E1", "Click extrusion target E1 on the opposite edge"));
+      }
+    });
+
+    document.getElementById("btnFinishFlatnessSpline")?.addEventListener("click", () => {
+      document.getElementById("btnDrawFlatnessSpline")?.classList.remove("primary");
+      document.getElementById("btnPickFlatnessExtrudePt")?.classList.remove("primary");
+      if (Array.isArray(QA_STATE.curvedSplinePoints) && QA_STATE.curvedSplinePoints.length >= 2) {
+        applyCurvedSplineExtrusionAnalysis({ updateActiveObject: Boolean(QA_STATE.activeFlatnessObjectId) });
+      } else if (window.STATE && Array.isArray(window.STATE.flatnessPolygonPoints) && window.STATE.flatnessPolygonPoints.length >= 3) {
+        lockFlatnessPolygonAndAnalyze(window.STATE.flatnessPolygonPoints, { updateActiveObject: true });
+      }
+    });
+
+    document.querySelectorAll('input[name="flatnessCurveType"]').forEach((radio) => {
+      radio.addEventListener("change", (e) => {
+        document.querySelectorAll('#surfaceQaContainer input[name="flatnessCurveType"]').forEach((r) => {
+          r.closest(".gs-qa-mode-pill")?.classList.remove("active");
+        });
+        e.target.closest(".gs-qa-mode-pill")?.classList.add("active");
+        QA_STATE.flatnessCurveType = e.target.value;
+        if (QA_STATE.curvedHasExplicitSpline && Array.isArray(QA_STATE.curvedSplinePoints) && QA_STATE.curvedSplinePoints.length >= 2) {
+          applyCurvedSplineExtrusionAnalysis({ updateActiveObject: true });
+        } else if (window.STATE && Array.isArray(window.STATE.flatnessPolygonPoints) && window.STATE.flatnessPolygonPoints.length >= 3) {
+          lockFlatnessPolygonAndAnalyze(window.STATE.flatnessPolygonPoints, { updateActiveObject: true });
+        }
+      });
+    });
+
+    document.querySelectorAll('input[name="flatnessCurvedOffsetMode"]').forEach((radio) => {
+      radio.addEventListener("change", (e) => {
+        document.querySelectorAll('#surfaceQaContainer input[name="flatnessCurvedOffsetMode"]').forEach((r) => {
+          r.closest(".gs-qa-mode-pill")?.classList.remove("active");
+        });
+        e.target.closest(".gs-qa-mode-pill")?.classList.add("active");
+        QA_STATE.flatnessCurvedOffsetMode = e.target.value;
+        if (QA_STATE.curvedHasExplicitSpline && Array.isArray(QA_STATE.curvedSplinePoints) && QA_STATE.curvedSplinePoints.length >= 2) {
+          applyCurvedSplineExtrusionAnalysis({ updateActiveObject: true });
+        } else if (window.STATE && Array.isArray(window.STATE.flatnessPolygonPoints) && window.STATE.flatnessPolygonPoints.length >= 3) {
+          lockFlatnessPolygonAndAnalyze(window.STATE.flatnessPolygonPoints, { updateActiveObject: true });
+        }
+      });
+    });
+
+    document.getElementById("selFlatnessExtrudeDir")?.addEventListener("change", (e) => {
+      QA_STATE.flatnessExtrudeDirMode = e.target.value || "auto";
+      if (QA_STATE.curvedHasExplicitSpline && Array.isArray(QA_STATE.curvedSplinePoints) && QA_STATE.curvedSplinePoints.length >= 2) {
+        applyCurvedSplineExtrusionAnalysis({ updateActiveObject: true });
+      } else if (window.STATE && Array.isArray(window.STATE.flatnessPolygonPoints) && window.STATE.flatnessPolygonPoints.length >= 3) {
+        lockFlatnessPolygonAndAnalyze(window.STATE.flatnessPolygonPoints, { updateActiveObject: true });
+      }
+    });
+
+    const rngExt = document.getElementById("rngFlatnessExtrudeDepthM");
+    const inpExt = document.getElementById("inpFlatnessExtrudeDepthM");
+    const lblExt = document.getElementById("lblFlatnessExtrudeDepthReadout");
+    let extTimer = null;
+    const triggerExtrudeDepthChange = (valM) => {
+      const cleanM = Math.max(0.2, Math.min(30, safeFloat(valM, 2.5)));
+      QA_STATE.flatnessExtrudeDepthM = cleanM;
+      QA_STATE.curvedExtrudeTargetPt = null;
+      if (lblExt) lblExt.textContent = `${cleanM.toFixed(2)} m`;
+      refreshFlatnessDraftVisuals();
+      if (extTimer) clearTimeout(extTimer);
+      extTimer = setTimeout(() => {
+        if (QA_STATE.curvedHasExplicitSpline && Array.isArray(QA_STATE.curvedSplinePoints) && QA_STATE.curvedSplinePoints.length >= 2) {
+          applyCurvedSplineExtrusionAnalysis({ updateActiveObject: true });
+        }
+      }, 120);
+    };
+    rngExt?.addEventListener("input", (e) => {
+      const v = Math.max(0.2, Math.min(15, safeFloat(e.target.value, 2.5)));
+      if (inpExt) inpExt.value = v.toFixed(2);
+      triggerExtrudeDepthChange(v);
+    });
+    inpExt?.addEventListener("change", (e) => {
+      const v = Math.max(0.2, Math.min(30, safeFloat(e.target.value, 2.5)));
+      if (inpExt) inpExt.value = v.toFixed(2);
+      if (rngExt) rngExt.value = String(Math.min(15, v));
+      triggerExtrudeDepthChange(v);
     });
 
     document.querySelectorAll('input[name="flatnessVolMode"]').forEach((radio) => {
@@ -2710,6 +3035,11 @@
     });
 
     document.getElementById("btnUndoFlatnessVertex")?.addEventListener("click", () => {
+      if (QA_STATE.curvedPickStage === "spline" && Array.isArray(QA_STATE.curvedSplinePoints) && QA_STATE.curvedSplinePoints.length > 0) {
+        QA_STATE.curvedSplinePoints.pop();
+        refreshFlatnessDraftVisuals();
+        return;
+      }
       if (window.STATE && Array.isArray(window.STATE.measurePoints) && window.STATE.measurePoints.length > 0) {
         window.STATE.measurePoints.pop();
         refreshFlatnessDraftVisuals();
@@ -2751,6 +3081,7 @@
     const maxLow = res.max_low || {};
     const astm = res.astm_e1155 || {};
     const plumb = res.plumb_tilt || {};
+    const cMeta = res.curved_meta || null;
     const netL = res.net_volume_liters || 0;
     const isNetFill = netL >= 0;
     const isFillOnly = res.volume_mode === "fill_only";
@@ -2835,6 +3166,7 @@
           <span style="color:var(--ui-text-muted);">${t("表面型態 / 坡度", "Surface / Slope")}:</span>
           <span style="font-weight:700;color:var(--ui-text-primary);">${t(plumb.surface_class_zh || "平面", plumb.surface_class_en || "Plane")} · ${plumb.slope_deg || 0}° (${plumb.tilt_ratio || "1:INF"})</span>
         </div>
+        ${cMeta ? `<div style="display:flex;justify-content:space-between;font-size:10.5px;margin-bottom:3px;"><span style="color:var(--ui-text-muted);">${t("曲率半徑 / 弧長×擠出", "Curvature R / Arc×Ext")}:</span><span style="font-weight:700;color:#22d3ee;">${Number.isFinite(cMeta.curvatureRadiusM) && cMeta.curvatureRadiusM < 999 ? `R = ${Number(cMeta.curvatureRadiusM).toFixed(2)} m` : t("樣條曲線", "Spline")} · ${cMeta.arcLengthM || 0}m × ${cMeta.extrudeDepthM || 0}m</span></div>` : ""}
         <div style="display:flex;justify-content:space-between;font-size:10.5px;margin-bottom:3px;">
           <span style="color:var(--ui-text-muted);">ASTM E1155 (F_F / F_L):</span>
           <span style="font-weight:700;color:var(--ui-text-primary);">F_F ${astm.ff_flatness || "—"} / F_L ${astm.fl_levelness || "—"}</span>
@@ -3179,7 +3511,10 @@
     const totalNetL = Number((totalLackingL - totalExcessL).toFixed(2));
 
     const summaryRowsHtml = objectSnapshots.map(({ obj, r, c }, idx) => {
-      const modeZh = r.reference_mode === "horizontal"
+      const cm = r.curved_meta || obj.curvedMeta || c.curvedMeta || null;
+      const modeZh = r.reference_mode === "curved_extruded"
+        ? `弧形擠出曲面 (${cm && Number.isFinite(cm.curvatureRadiusM) && cm.curvatureRadiusM < 999 ? `R=${Number(cm.curvatureRadiusM).toFixed(2)}m` : "樣條"} · ${cm ? `${cm.arcLengthM}×${cm.extrudeDepthM}m` : ""})`
+        : r.reference_mode === "horizontal"
         ? "水平高程面 (0° 標高)"
         : r.reference_mode === "vertical_plumb"
         ? "垂直牆面鉛垂面 (90°)"
@@ -3187,21 +3522,19 @@
       const isPass = Number(r.pass_rate_pct || 0) >= 85.0;
       const statusText = isPass ? "合格 (符合允收標準)" : Number(r.pass_rate_pct || 0) >= 70.0 ? "尚可 (局部待整修)" : "不合格 (須優先整修)";
       const statusColor = isPass ? "#15803d" : Number(r.pass_rate_pct || 0) >= 70.0 ? "#b45309" : "#b91c1c";
-      return `
-        <tr>
-          <td style="text-align:center;font-weight:700;">${obj.code || `F${idx + 1}`}</td>
-          <td><b>${obj.name || `檢驗區 #${idx + 1}`}</b><br/><span style="font-size:11px;color:#475569;">${modeZh} · 網格 ${r.resolution_cm || obj.resolutionCm || 15} cm</span></td>
-          <td style="text-align:right;font-variant-numeric:tabular-nums;">±${r.tolerance_mm} mm</td>
-          <td style="text-align:right;font-variant-numeric:tabular-nums;">${r.total_area_m2} m²</td>
-          <td style="text-align:right;font-variant-numeric:tabular-nums;font-weight:700;">${r.pass_rate_pct}%</td>
-          <td style="text-align:right;font-variant-numeric:tabular-nums;">${r.rms_dev_mm} mm</td>
-          <td style="text-align:right;font-variant-numeric:tabular-nums;color:#b91c1c;">+${r.max_high?.dev_mm || 0} / ${r.max_low?.dev_mm || 0} mm</td>
-          <td style="text-align:right;font-variant-numeric:tabular-nums;">${r.plumb_tilt?.slope_deg || 0}° (${r.plumb_tilt?.plumb_mm_per_m || 0} mm/m)</td>
-          <td class="mat-calc-col" style="text-align:right;font-variant-numeric:tabular-nums;">${r.excess_volume_liters} L / ${r.lacking_volume_liters} L</td>
-          <td class="mat-calc-col" style="text-align:right;font-variant-numeric:tabular-nums;">${r.est_mortar_bags_25kg || 0} 包</td>
-          <td style="color:${statusColor};font-weight:700;">${statusText}</td>
-        </tr>
-      `;
+      return `<tr>
+        <td style="text-align:center;font-weight:700;">${obj.code || `F${idx + 1}`}</td>
+        <td><b>${obj.name || `檢驗區 #${idx + 1}`}</b><br/><span style="font-size:11px;color:#475569;">${modeZh} · 網格 ${r.resolution_cm || obj.resolutionCm || 15} cm</span></td>
+        <td style="text-align:right;font-variant-numeric:tabular-nums;">±${r.tolerance_mm} mm</td>
+        <td style="text-align:right;font-variant-numeric:tabular-nums;">${r.total_area_m2} m²</td>
+        <td style="text-align:right;font-variant-numeric:tabular-nums;font-weight:700;">${r.pass_rate_pct}%</td>
+        <td style="text-align:right;font-variant-numeric:tabular-nums;">${r.rms_dev_mm} mm</td>
+        <td style="text-align:right;font-variant-numeric:tabular-nums;color:#b91c1c;">+${r.max_high?.dev_mm || 0} / ${r.max_low?.dev_mm || 0} mm</td>
+        <td style="text-align:right;font-variant-numeric:tabular-nums;">${r.plumb_tilt?.slope_deg || 0}° (${r.plumb_tilt?.plumb_mm_per_m || 0} mm/m)</td>
+        <td class="mat-calc-col" style="text-align:right;font-variant-numeric:tabular-nums;">${r.excess_volume_liters} L / ${r.lacking_volume_liters} L</td>
+        <td class="mat-calc-col" style="text-align:right;font-variant-numeric:tabular-nums;">${r.est_mortar_bags_25kg || 0} 包</td>
+        <td style="color:${statusColor};font-weight:700;">${statusText}</td>
+      </tr>`;
     }).join("");
 
     const detailSectionsHtml = objectSnapshots.map(({ obj, r, c, fig1DataUrl, fig2DataUrl }, idx) => {
@@ -3210,62 +3543,24 @@
       const plumb = r.plumb_tilt || {};
       const passArea = Number(Math.max(0, (r.total_area_m2 || 0) - (r.high_area_m2 || 0) - (r.low_area_m2 || 0))).toFixed(2);
       const isWall = obj.planeMode === "vertical_plumb" || Number(plumb.slope_deg) > 55;
-      return `
-        <div class="section-block">
-          <div class="section-header">
-            <span>檢驗分區明細 [${obj.code || `F${idx + 1}`}]：${obj.name || `檢驗區 #${idx + 1}`} ${isWall ? "（垂直牆面鉛垂檢驗區）" : ""}</span>
-            <span>依據規範：<a href="${spec.url}" target="_blank" rel="noopener noreferrer" style="color:#0369a1;text-decoration:underline;">${spec.clause} (PDF ↗)</a>（容許公差 ±${r.tolerance_mm} mm）</span>
-          </div>
-          <table>
-            <thead>
-              <tr>
-                <th style="width:24%;">檢驗分項</th>
-                <th style="width:16%;">涵蓋面積 (m² / 比例)</th>
-                <th style="width:16%;">極值 / 均方根偏差</th>
-                <th style="width:18%;">幾何與平整度指標</th>
-                <th class="mat-calc-col" style="width:14%;">超差體積 (L / m³)</th>
-                <th>工程處置與施工建議</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr>
-                <td><b>凸起超差區域 (&gt; +${r.tolerance_mm} mm)</b></td>
-                <td style="font-variant-numeric:tabular-nums;">${r.high_area_m2} m² (${r.high_area_pct}%)</td>
-                <td style="color:#b91c1c;font-weight:700;font-variant-numeric:tabular-nums;">最大凸起 +${r.max_high?.dev_mm || 0} mm</td>
-                <td>高程中位數 ${c.plane ? Number(c.plane.medH || 0).toFixed(3) : "—"} m</td>
-                <td class="mat-calc-col" style="font-variant-numeric:tabular-nums;"><b>${r.excess_volume_liters} L</b> (${r.excess_volume_m3} m³)</td>
-                <td>局部高點以無塵混凝土研磨機打磨或銑刨整平</td>
-              </tr>
-              <tr>
-                <td><b>凹陷超差區域 (&lt; -${r.tolerance_mm} mm)</b></td>
-                <td style="font-variant-numeric:tabular-nums;">${r.low_area_m2} m² (${r.low_area_pct}%)</td>
-                <td style="color:#1d4ed8;font-weight:700;font-variant-numeric:tabular-nums;">最大凹陷 ${r.max_low?.dev_mm || 0} mm</td>
-                <td>傾角 ${plumb.slope_deg || 0}° (${plumb.plumb_mm_per_m || 0} mm/m)</td>
-                <td class="mat-calc-col" style="font-variant-numeric:tabular-nums;"><b>${r.lacking_volume_liters} L</b> (${r.lacking_volume_m3} m³)</td>
-                <td>以無收縮水泥砂漿、環氧樹脂砂漿或自平泥填補整平<span class="mat-calc-block">（約 ${r.est_mortar_bags_25kg} 包 25kg 乾拌料）</span></td>
-              </tr>
-              <tr>
-                <td><b>合格允收範圍 (|偏差| &le; ${r.tolerance_mm} mm)</b></td>
-                <td style="font-variant-numeric:tabular-nums;">${passArea} m² (${r.pass_rate_pct}%)</td>
-                <td style="font-variant-numeric:tabular-nums;">RMS ${r.rms_dev_mm} mm (平均 ${r.mean_abs_dev_mm} mm)</td>
-                <td>ASTM E1155: F<sub>F</sub> ${astm.ff_flatness || "—"} / F<sub>L</sub> ${astm.fl_levelness || "—"}</td>
-                <td class="mat-calc-col" style="font-variant-numeric:tabular-nums;">0.00 L (0.0000 m³)</td>
-                <td>符合公共工程施工綱要規範容許公差標準</td>
-              </tr>
-            </tbody>
-          </table>
-          <div class="figs">
-            <div class="fig-card">
-              <img src="${fig1DataUrl}" alt="${obj.code} 3D Perspective View" />
-              <div class="fig-cap">圖 ${idx + 1}-A（${obj.code}）：三維點雲與擬合基準面透視檢視圖（網格解析度 ${r.resolution_cm || obj.resolutionCm || 15} cm × ${r.resolution_cm || obj.resolutionCm || 15} cm）</div>
-            </div>
-            <div class="fig-card">
-              <img src="${fig2DataUrl}" alt="${obj.code} Orthographic Deviation Map" />
-              <div class="fig-cap">圖 ${idx + 1}-B（${obj.code}）：基準面法線正射投影偏差分佈圖（含控制頂點 V1..Vn 與色階圖例）</div>
-            </div>
-          </div>
+      return `<div class="section-block">
+        <div class="section-header">
+          <span>檢驗分區明細 [${obj.code || `F${idx + 1}`}]：${obj.name || `檢驗區 #${idx + 1}`} ${isWall ? "（垂直牆面鉛垂檢驗區）" : ""}</span>
+          <span>依據規範：<a href="${spec.url}" target="_blank" rel="noopener noreferrer" style="color:#0369a1;text-decoration:underline;">${spec.clause} (PDF ↗)</a>（容許公差 ±${r.tolerance_mm} mm）</span>
         </div>
-      `;
+        <table>
+          <thead><tr><th style="width:24%;">檢驗分項</th><th style="width:16%;">涵蓋面積 (m² / 比例)</th><th style="width:16%;">極值 / 均方根偏差</th><th style="width:18%;">幾何與平整度指標</th><th class="mat-calc-col" style="width:14%;">超差體積 (L / m³)</th><th>工程處置與施工建議</th></tr></thead>
+          <tbody>
+            <tr><td><b>凸起超差區域 (&gt; +${r.tolerance_mm} mm)</b></td><td style="font-variant-numeric:tabular-nums;">${r.high_area_m2} m² (${r.high_area_pct}%)</td><td style="color:#b91c1c;font-weight:700;font-variant-numeric:tabular-nums;">最大凸起 +${r.max_high?.dev_mm || 0} mm</td><td>高程中位數 ${c.plane ? Number(c.plane.medH || 0).toFixed(3) : "—"} m</td><td class="mat-calc-col" style="font-variant-numeric:tabular-nums;"><b>${r.excess_volume_liters} L</b> (${r.excess_volume_m3} m³)</td><td>局部高點以無塵混凝土研磨機打磨或銑刨整平</td></tr>
+            <tr><td><b>凹陷超差區域 (&lt; -${r.tolerance_mm} mm)</b></td><td style="font-variant-numeric:tabular-nums;">${r.low_area_m2} m² (${r.low_area_pct}%)</td><td style="color:#1d4ed8;font-weight:700;font-variant-numeric:tabular-nums;">最大凹陷 ${r.max_low?.dev_mm || 0} mm</td><td>傾角 ${plumb.slope_deg || 0}° (${plumb.plumb_mm_per_m || 0} mm/m)</td><td class="mat-calc-col" style="font-variant-numeric:tabular-nums;"><b>${r.lacking_volume_liters} L</b> (${r.lacking_volume_m3} m³)</td><td>以無收縮水泥砂漿、環氧樹脂砂漿或自平泥填補整平<span class="mat-calc-block">（約 ${r.est_mortar_bags_25kg} 包 25kg 乾拌料）</span></td></tr>
+            <tr><td><b>合格允收範圍 (|偏差| &le; ${r.tolerance_mm} mm)</b></td><td style="font-variant-numeric:tabular-nums;">${passArea} m² (${r.pass_rate_pct}%)</td><td style="font-variant-numeric:tabular-nums;">RMS ${r.rms_dev_mm} mm (平均 ${r.mean_abs_dev_mm} mm)</td><td>ASTM E1155: F<sub>F</sub> ${astm.ff_flatness || "—"} / F<sub>L</sub> ${astm.fl_levelness || "—"}</td><td class="mat-calc-col" style="font-variant-numeric:tabular-nums;">0.00 L (0.0000 m³)</td><td>符合公共工程施工綱要規範容許公差標準</td></tr>
+          </tbody>
+        </table>
+        <div class="figs">
+          <div class="fig-card"><img src="${fig1DataUrl}" alt="${obj.code} 3D Perspective View" /><div class="fig-cap">圖 ${idx + 1}-A（${obj.code}）：三維點雲與擬合基準面透視檢視圖（網格解析度 ${r.resolution_cm || obj.resolutionCm || 15} cm × ${r.resolution_cm || obj.resolutionCm || 15} cm）</div></div>
+          <div class="fig-card"><img src="${fig2DataUrl}" alt="${obj.code} Orthographic Deviation Map" /><div class="fig-cap">圖 ${idx + 1}-B（${obj.code}）：基準面法線正射投影偏差分佈圖（含控制頂點 V1..Vn 與色階圖例）</div></div>
+        </div>
+      </div>`;
     }).join("");
 
     const reportHtml = `<!DOCTYPE html>
@@ -3274,194 +3569,8 @@
   <meta charset="utf-8" />
   <title>工程施工品質自主檢查與三維點雲檢驗報告 - ${scanId}</title>
   <style>
-    * { box-sizing: border-box; }
-    body {
-      font-family: "Noto Serif TC", "PMingLiU", "Microsoft JhengHei", "Noto Sans TC", sans-serif;
-      color: #0f172a;
-      background: #ffffff;
-      margin: 20px 28px;
-      line-height: 1.55;
-      font-size: 12.5px;
-    }
-    body.hide-material .mat-calc-col,
-    body.hide-material .mat-calc-block {
-      display: none !important;
-    }
-    .doc-header {
-      border-bottom: 2px solid #1e293b;
-      padding-bottom: 10px;
-      margin-bottom: 12px;
-      display: flex;
-      justify-content: space-between;
-      align-items: flex-end;
-    }
-    h1 {
-      font-size: 19px;
-      font-weight: 700;
-      margin: 0;
-      color: #0f172a;
-      letter-spacing: 0.5px;
-    }
-    .doc-subtitle {
-      font-size: 11.5px;
-      color: #334155;
-      margin-top: 3px;
-    }
-    .meta-table {
-      width: 100%;
-      border-collapse: collapse;
-      margin-bottom: 14px;
-      font-size: 11.5px;
-    }
-    .meta-table th, .meta-table td {
-      border: 1px solid #94a3b8;
-      padding: 5px 8px;
-    }
-    .meta-table th {
-      background: #f1f5f9;
-      color: #1e293b;
-      width: 13%;
-      text-align: left;
-      font-weight: 700;
-    }
-    .meta-table td {
-      width: 20%;
-      color: #0f172a;
-    }
-    .kpi-grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(175px, 1fr));
-      gap: 8px;
-      margin-bottom: 14px;
-    }
-    .kpi-box {
-      border: 1px solid #94a3b8;
-      padding: 8px 10px;
-      background: #f8fafc;
-    }
-    .kpi-label {
-      font-size: 11px;
-      color: #475569;
-      font-weight: 600;
-    }
-    .kpi-val {
-      font-size: 16px;
-      font-weight: 700;
-      margin-top: 2px;
-      color: #0f172a;
-      font-variant-numeric: tabular-nums;
-    }
-    .section-title {
-      font-size: 13.5px;
-      font-weight: 700;
-      color: #0f172a;
-      background: #e2e8f0;
-      border: 1px solid #94a3b8;
-      border-bottom: none;
-      padding: 6px 10px;
-      margin-top: 14px;
-    }
-    .section-block {
-      margin-top: 16px;
-      page-break-inside: avoid;
-    }
-    .section-header {
-      background: #f1f5f9;
-      border: 1px solid #94a3b8;
-      border-bottom: none;
-      padding: 6px 10px;
-      font-size: 12.5px;
-      font-weight: 700;
-      display: flex;
-      justify-content: space-between;
-      color: #0f172a;
-    }
-    table {
-      width: 100%;
-      border-collapse: collapse;
-      margin-bottom: 12px;
-      font-size: 11.5px;
-    }
-    th, td {
-      border: 1px solid #94a3b8;
-      padding: 6px 8px;
-      text-align: left;
-      vertical-align: middle;
-    }
-    th {
-      background: #f8fafc;
-      color: #1e293b;
-      font-weight: 700;
-    }
-    .overview-fig {
-      border: 1px solid #94a3b8;
-      padding: 8px;
-      background: #ffffff;
-      margin-bottom: 14px;
-    }
-    .overview-fig img {
-      width: 100%;
-      max-height: 360px;
-      object-fit: contain;
-      display: block;
-      background: #0f172a;
-    }
-    .figs {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 10px;
-      margin-bottom: 14px;
-    }
-    .fig-card {
-      border: 1px solid #94a3b8;
-      padding: 6px;
-      background: #ffffff;
-    }
-    .fig-card img {
-      width: 100%;
-      height: auto;
-      display: block;
-    }
-    .fig-cap {
-      font-size: 11px;
-      font-weight: 700;
-      color: #1e293b;
-      margin-top: 5px;
-      text-align: center;
-    }
-    .norm-box {
-      border: 1px solid #94a3b8;
-      background: #f8fafc;
-      padding: 8px 12px;
-      font-size: 11px;
-      color: #1e293b;
-      margin-top: 14px;
-    }
-    .norm-box a {
-      color: #0369a1;
-      text-decoration: underline;
-    }
-    .sign-grid {
-      display: grid;
-      grid-template-columns: repeat(3, 1fr);
-      gap: 12px;
-      margin-top: 18px;
-      page-break-inside: avoid;
-    }
-    .sign-box {
-      border: 1px solid #64748b;
-      padding: 8px 10px;
-      height: 76px;
-      font-size: 11.5px;
-      color: #1e293b;
-      display: flex;
-      flex-direction: column;
-      justify-content: space-between;
-    }
-    @media print {
-      .no-print { display: none !important; }
-      body { margin: 10mm; }
-    }
+    ${window.__GS_CURVED_QA && typeof window.__GS_CURVED_QA.getFlatnessReportStylesheet === "function" ? window.__GS_CURVED_QA.getFlatnessReportStylesheet() : ""}
+    body.hide-material .mat-calc-col, body.hide-material .mat-calc-block { display: none !important; }
   </style>
 </head>
 <body class="${includeMat ? "" : "hide-material"}">
@@ -3472,7 +3581,6 @@
     </label>
     <button onclick="window.print()" style="padding:6px 14px;background:#1e293b;color:#ffffff;border:1px solid #0f172a;font-weight:700;cursor:pointer;">列印或另存正式 PDF 報告 (Print / Save PDF)</button>
   </div>
-
   <div class="doc-header">
     <div>
       <h1>工程施工品質自主檢查與三維點雲表面平整度檢驗報告</h1>
@@ -3483,117 +3591,42 @@
       <div>產製時間：${nowStr}</div>
     </div>
   </div>
-
-  <table class="meta-table">
-    <tbody>
-      <tr>
-        <th>掃描案號 / 標的</th>
-        <td><b>${scanId}</b></td>
-        <th>平面與高程基準</th>
-        <td><b>EPSG:3826 (TWD97 TM2) + TWVD2001</b></td>
-        <th>檢驗分區數量</th>
-        <td><b>共 ${objectSnapshots.length} 處檢驗區</b>（最高精度點雲葉節點採樣）</td>
-      </tr>
-      <tr>
-        <th>全區檢驗總面積</th>
-        <td><b>${totalAreaAll.toFixed(2)} m²</b></td>
-        <th>全區面積加權合格率</th>
-        <td><b>${avgPassRate}%</b></td>
-        <th>檢驗方法標準</th>
-        <td>行政院公共工程委員會《施工綱要規範》及 ASTM E1155</td>
-      </tr>
-    </tbody>
-  </table>
-
+  <table class="meta-table"><tbody>
+    <tr><th>掃描案號 / 標的</th><td><b>${scanId}</b></td><th>平面與高程基準</th><td><b>EPSG:3826 (TWD97 TM2) + TWVD2001</b></td><th>檢驗分區數量</th><td><b>共 ${objectSnapshots.length} 處檢驗區</b>（最高精度點雲葉節點採樣）</td></tr>
+    <tr><th>全區檢驗總面積</th><td><b>${totalAreaAll.toFixed(2)} m²</b></td><th>全區面積加權合格率</th><td><b>${avgPassRate}%</b></td><th>檢驗方法標準</th><td>行政院公共工程委員會《施工綱要規範》及 ASTM E1155</td></tr>
+  </tbody></table>
   <div class="kpi-grid">
-    <div class="kpi-box">
-      <div class="kpi-label">檢驗分區數 ／ 總檢驗面積</div>
-      <div class="kpi-val">${objectSnapshots.length} 區 ／ ${totalAreaAll.toFixed(2)} m²</div>
-    </div>
-    <div class="kpi-box">
-      <div class="kpi-label">全區面積加權合格率</div>
-      <div class="kpi-val">${avgPassRate}%</div>
-    </div>
-    <div class="kpi-box mat-calc-block">
-      <div class="kpi-label">凸起超差總體積 (需打磨剔除)</div>
-      <div class="kpi-val" style="color:#b91c1c;">${totalExcessL.toFixed(2)} L (${(totalExcessL / 1000).toFixed(4)} m³)</div>
-    </div>
-    <div class="kpi-box mat-calc-block">
-      <div class="kpi-label">凹陷超差總體積 ／ 預估 25kg 砂漿</div>
-      <div class="kpi-val" style="color:#1d4ed8;">${totalLackingL.toFixed(2)} L ／ 約 ${totalBags} 包</div>
-    </div>
+    <div class="kpi-box"><div class="kpi-label">檢驗分區數 ／ 總檢驗面積</div><div class="kpi-val">${objectSnapshots.length} 區 ／ ${totalAreaAll.toFixed(2)} m²</div></div>
+    <div class="kpi-box"><div class="kpi-label">全區面積加權合格率</div><div class="kpi-val">${avgPassRate}%</div></div>
+    <div class="kpi-box mat-calc-block"><div class="kpi-label">凸起超差總體積 (需打磨剔除)</div><div class="kpi-val" style="color:#b91c1c;">${totalExcessL.toFixed(2)} L (${(totalExcessL / 1000).toFixed(4)} m³)</div></div>
+    <div class="kpi-box mat-calc-block"><div class="kpi-label">凹陷超差總體積 ／ 預估 25kg 砂漿</div><div class="kpi-val" style="color:#1d4ed8;">${totalLackingL.toFixed(2)} L ／ 約 ${totalBags} 包</div></div>
   </div>
-
   <div class="section-title">壹、全區俯視正射配置總覽圖（含垂直牆面位置引線標示）</div>
   <div class="overview-fig">
     <img src="${figOverviewDataUrl}" alt="Site-Wide Top-Down Plan Overview" />
     <div class="fig-cap">圖 0：全區檢驗分區俯視正射配置總覽圖（共 ${objectSnapshots.length} 處檢驗區；垂直牆面因俯視投影呈線狀，以橘色引線箭頭 ──► 標示其平面座標位置與垂直度）</div>
   </div>
-
   <div class="section-title">貳、各檢驗分區平整度與幾何精度總表</div>
   <table>
-    <thead>
-      <tr>
-        <th style="width:6%;text-align:center;">代號</th>
-        <th style="width:18%;">檢驗分區名稱 ／ 基準模式</th>
-        <th style="width:8%;text-align:right;">容許公差</th>
-        <th style="width:9%;text-align:right;">檢驗面積</th>
-        <th style="width:8%;text-align:right;">合格率</th>
-        <th style="width:8%;text-align:right;">RMS 偏差</th>
-        <th style="width:12%;text-align:right;">最大凸起 / 凹陷</th>
-        <th style="width:11%;text-align:right;">坡度 / 傾角</th>
-        <th class="mat-calc-col" style="width:10%;text-align:right;">凸起 / 凹陷體積</th>
-        <th class="mat-calc-col" style="width:6%;text-align:right;">砂漿包數</th>
-        <th style="width:10%;">判定結果</th>
-      </tr>
-    </thead>
-    <tbody>
-      ${summaryRowsHtml}
-    </tbody>
+    <thead><tr><th style="width:6%;text-align:center;">代號</th><th style="width:18%;">檢驗分區名稱 ／ 基準模式</th><th style="width:8%;text-align:right;">容許公差</th><th style="width:9%;text-align:right;">檢驗面積</th><th style="width:8%;text-align:right;">合格率</th><th style="width:8%;text-align:right;">RMS 偏差</th><th style="width:12%;text-align:right;">最大凸起 / 凹陷</th><th style="width:11%;text-align:right;">坡度 / 傾角</th><th class="mat-calc-col" style="width:10%;text-align:right;">凸起 / 凹陷體積</th><th class="mat-calc-col" style="width:6%;text-align:right;">砂漿包數</th><th style="width:10%;">判定結果</th></tr></thead>
+    <tbody>${summaryRowsHtml}</tbody>
   </table>
-
   <div class="section-title">參、各檢驗分區三維點雲透視圖、法線正射偏差圖與檢驗明細</div>
   ${detailSectionsHtml}
-
   <div class="norm-box">
     <div style="font-weight:700;margin-bottom:4px;">肆、工程檢驗引用規範與標準條文連結（點擊開啟官方規範全文 PDF）：</div>
     <ol style="margin:0;padding-left:18px;line-height:1.65;">
-      <li>
-        <b>行政院公共工程委員會《公共工程施工綱要規範》第 09611 章「整體粉光地坪」</b>：表面平整度以 3 m 直規檢測，精細整體粉光地坪及建築裝修完成面許可差不得大於 ±3 mm。
-        ［<a href="https://www.nlma.gov.tw/filesys/file/chinese/dept/bw2/09611.pdf" target="_blank" rel="noopener noreferrer">第09611章官方規範 PDF</a> ｜ <a href="https://pcces.pcc.gov.tw/" target="_blank" rel="noopener noreferrer">工程會 PCCES 資料庫</a>］
-      </li>
-      <li>
-        <b>行政院公共工程委員會《公共工程施工綱要規範》第 09220 章「水泥砂漿粉刷」</b>：牆面與平頂一般水泥砂漿粉刷完成面以 3 m 直規檢測，平整度及垂直度許可差不得大於 ±6 mm。
-        ［<a href="https://www.nlma.gov.tw/uploads/files/b540c458d9a9ace031fb2cec987593c0.pdf" target="_blank" rel="noopener noreferrer">第09220章官方規範 PDF</a> ｜ <a href="https://pcces.pcc.gov.tw/" target="_blank" rel="noopener noreferrer">工程會 PCCES 資料庫</a>］
-      </li>
-      <li>
-        <b>行政院公共工程委員會《公共工程施工綱要規範》第 03310 章「結構用混凝土」及第 02742 章「瀝青混凝土鋪面及基層」</b>：結構體模板拆模粗底面許可差為 ±10 mm；道路與廣場鋪面基層高程許可差為 ±15 mm。
-        ［<a href="https://www.nlma.gov.tw/uploads/files/896a8dbb1440cce3f17b09e0a4b8dcff.pdf" target="_blank" rel="noopener noreferrer">第03310章官方規範 PDF</a> ｜ <a href="https://www.nlma.gov.tw/uploads/files/5ee2ba58e7e83d1d4345b233fb71d7eb.pdf" target="_blank" rel="noopener noreferrer">第02742章官方規範 PDF</a>］
-      </li>
-      <li>
-        <b>ASTM E1155《Standard Test Method for Determining F<sub>F</sub> Floor Flatness and F<sub>L</sub> Floor Levelness Numbers》</b>：以 300 mm 步距採樣曲率變化量（q<sub>i</sub>）與 3 m 高程差（z<sub>i</sub>）計算地坪平坦度指標 F<sub>F</sub> 與水平度指標 F<sub>L</sub>。
-        ［<a href="https://www.astm.org/e1155-20.html" target="_blank" rel="noopener noreferrer">ASTM International E1155 標準條文連結</a>］
-      </li>
-      <li>
-        <b>內政部國土測繪中心《TWD97 國家坐標系統 (EPSG:3826) 與 TWVD2001 臺灣高程基準》</b>：三維點雲空間坐標與正高轉換基準。
-        ［<a href="https://www.nlsc.gov.tw/" target="_blank" rel="noopener noreferrer">內政部國土測繪中心官方規範連結</a>］
-      </li>
+      <li><b>行政院公共工程委員會《公共工程施工綱要規範》第 09611 章「整體粉光地坪」</b>：表面平整度以 3 m 直規檢測，精細整體粉光地坪及建築裝修完成面許可差不得大於 ±3 mm。［<a href="https://www.nlma.gov.tw/filesys/file/chinese/dept/bw2/09611.pdf" target="_blank" rel="noopener noreferrer">第09611章官方規範 PDF</a> ｜ <a href="https://pcces.pcc.gov.tw/" target="_blank" rel="noopener noreferrer">工程會 PCCES 資料庫</a>］</li>
+      <li><b>行政院公共工程委員會《公共工程施工綱要規範》第 09220 章「水泥砂漿粉刷」</b>：牆面與平頂一般水泥砂漿粉刷完成面以 3 m 直規檢測，平整度及垂直度許可差不得大於 ±6 mm。［<a href="https://www.nlma.gov.tw/uploads/files/b540c458d9a9ace031fb2cec987593c0.pdf" target="_blank" rel="noopener noreferrer">第09220章官方規範 PDF</a> ｜ <a href="https://pcces.pcc.gov.tw/" target="_blank" rel="noopener noreferrer">工程會 PCCES 資料庫</a>］</li>
+      <li><b>行政院公共工程委員會《公共工程施工綱要規範》第 03310 章「結構用混凝土」及第 02742 章「瀝青混凝土鋪面及基層」</b>：結構體模板拆模粗底面許可差為 ±10 mm；道路與廣場鋪面基層高程許可差為 ±15 mm。［<a href="https://www.nlma.gov.tw/uploads/files/896a8dbb1440cce3f17b09e0a4b8dcff.pdf" target="_blank" rel="noopener noreferrer">第03310章官方規範 PDF</a> ｜ <a href="https://www.nlma.gov.tw/uploads/files/5ee2ba58e7e83d1d4345b233fb71d7eb.pdf" target="_blank" rel="noopener noreferrer">第02742章官方規範 PDF</a>］</li>
+      <li><b>ASTM E1155《Standard Test Method for Determining F<sub>F</sub> Floor Flatness and F<sub>L</sub> Floor Levelness Numbers》</b>：以 300 mm 步距採樣曲率變化量（q<sub>i</sub>）與 3 m 高程差（z<sub>i</sub>）計算地坪平坦度指標 F<sub>F</sub> 與水平度指標 F<sub>L</sub>。［<a href="https://www.astm.org/e1155-20.html" target="_blank" rel="noopener noreferrer">ASTM International E1155 標準條文連結</a>］</li>
+      <li><b>內政部國土測繪中心《TWD97 國家坐標系統 (EPSG:3826) 與 TWVD2001 臺灣高程基準》</b>：三維點雲空間坐標與正高轉換基準。［<a href="https://www.nlsc.gov.tw/" target="_blank" rel="noopener noreferrer">內政部國土測繪中心官方規範連結</a>］</li>
     </ol>
   </div>
-
   <div class="sign-grid">
-    <div class="sign-box">
-      <div><b>測量與三維掃描工程師簽章：</b></div>
-      <div style="font-size:10.5px;color:#64748b;">日期：　　年　　月　　日</div>
-    </div>
-    <div class="sign-box">
-      <div><b>施工廠商現場品管人員 (QC) 簽章：</b></div>
-      <div style="font-size:10.5px;color:#64748b;">日期：　　年　　月　　日</div>
-    </div>
-    <div class="sign-box">
-      <div><b>監造單位／主辦機關查驗簽章：</b></div>
-      <div style="font-size:10.5px;color:#64748b;">日期：　　年　　月　　日</div>
-    </div>
+    <div class="sign-box"><div><b>測量與三維掃描工程師簽章：</b></div><div style="font-size:10.5px;color:#64748b;">日期：　　年　　月　　日</div></div>
+    <div class="sign-box"><div><b>施工廠商現場品管人員 (QC) 簽章：</b></div><div style="font-size:10.5px;color:#64748b;">日期：　　年　　月　　日</div></div>
+    <div class="sign-box"><div><b>監造單位／主辦機關查驗簽章：</b></div><div style="font-size:10.5px;color:#64748b;">日期：　　年　　月　　日</div></div>
   </div>
 </body>
 </html>`;
@@ -4284,114 +4317,54 @@
     const scanId = (window.STATE && window.STATE.activeScanId) || "";
     const curMode = QA_STATE.stakeoutSourceMode || "custom";
 
-    const html = `
-      <div class="gs-qa-container" id="rtkStakeoutContainer">
-        ${typeof window.renderSurveyContainerSubtabsHtml === "function" ? window.renderSurveyContainerSubtabsHtml("stakeout") : ""}
-        ${typeof window.renderSurveyToolExplanationBannerHtml === "function" ? window.renderSurveyToolExplanationBannerHtml(
-          "RTK 工地放樣點導出",
-          "RTK Construction Stakeout Export",
-          "於 3D 模型拾取自訂放樣點或生成規則基礎網格，嚴格依 TWD97 (E, N, Z) 順序匯出 CSV、Leica/Trimble TXT、3D DXF 及 A4 現場簽核表。",
-          "Pick custom stakeout points on the 3D surface or generate a regular foundation grid. Exports strictly in TWD97 (Easting, Northing, Elevation) order to CSV, Leica/Trimble TXT, 3D DXF, and printable A4 field sheets."
-        ) : ""}
-        <!-- Compact Header & Mandatory E, N, Z Coordinate Pill -->
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
-          <span style="font-size:12px;font-weight:700;color:var(--ui-text-primary);">
-            ${QA_SVGS.STAKEOUT} ${t("RTK 工地放樣導出", "RTK Stakeout Export")}
-          </span>
-          <span class="gcp-crs-pill" style="color:#059669;border-color:rgba(16,185,129,0.4);">
-            PtID, E, N, Z, Code
-          </span>
+    const html = `<div class="gs-qa-container" id="rtkStakeoutContainer">
+      ${typeof window.renderSurveyContainerSubtabsHtml === "function" ? window.renderSurveyContainerSubtabsHtml("stakeout") : ""}
+      ${typeof window.renderSurveyToolExplanationBannerHtml === "function" ? window.renderSurveyToolExplanationBannerHtml("RTK 工地放樣點導出", "RTK Construction Stakeout Export", "於 3D 模型拾取自訂放樣點或生成規則基礎網格，嚴格依 TWD97 (E, N, Z) 順序匯出 CSV、Leica/Trimble TXT、3D DXF 及 A4 現場簽核表。", "Pick custom stakeout points on the 3D surface or generate a regular foundation grid. Exports strictly in TWD97 (Easting, Northing, Elevation) order to CSV, Leica/Trimble TXT, 3D DXF, and printable A4 field sheets.") : ""}
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+        <span style="font-size:12px;font-weight:700;color:var(--ui-text-primary);">${QA_SVGS.STAKEOUT} ${t("RTK 工地放樣導出", "RTK Stakeout Export")}</span>
+        <span class="gcp-crs-pill" style="color:#059669;border-color:rgba(16,185,129,0.4);">PtID, E, N, Z, Code</span>
+      </div>
+      <div class="gs-qa-card">
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px;margin-bottom:6px;">
+          <label class="gs-qa-mode-pill ${curMode === "custom" ? "active" : ""}"><input type="radio" name="stkSourceMode" value="custom" ${curMode === "custom" ? "checked" : ""} style="display:none;" /><span>${t("自選點位", "Custom Points")}</span></label>
+          <label class="gs-qa-mode-pill ${curMode === "grid" ? "active" : ""}"><input type="radio" name="stkSourceMode" value="grid" ${curMode === "grid" ? "checked" : ""} style="display:none;" /><span>${t("基礎網格", "Grid Array")}</span></label>
         </div>
-
-        <!-- Mode Selector & Parameters -->
-        <div class="gs-qa-card">
-          <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px;margin-bottom:6px;">
-            <label class="gs-qa-mode-pill ${curMode === "custom" ? "active" : ""}">
-              <input type="radio" name="stkSourceMode" value="custom" ${curMode === "custom" ? "checked" : ""} style="display:none;" />
-              <span>${t("自選點位", "Custom Points")}</span>
-            </label>
-            <label class="gs-qa-mode-pill ${curMode === "grid" ? "active" : ""}">
-              <input type="radio" name="stkSourceMode" value="grid" ${curMode === "grid" ? "checked" : ""} style="display:none;" />
-              <span>${t("基礎網格", "Grid Array")}</span>
-            </label>
+        <div id="stkCustomParamsRow" style="display:${curMode === "custom" ? "grid" : "none"};grid-template-columns:1fr 1fr;gap:6px;">
+          <div>
+            <label style="font-size:10px;color:var(--ui-text-muted);display:block;margin-bottom:2px;">${t("放樣代碼 (Code)", "Point Code")}</label>
+            <select id="stkPointCode" class="gs-select" style="width:100%;height:26px;font-size:11px;">
+              <option value="DESIGN_PT">${t("DESIGN_PT (設計點)", "DESIGN_PT (Design)")}</option>
+              <option value="COL_AXIS">${t("COL_AXIS (柱心軸線)", "COL_AXIS (Column)")}</option>
+              <option value="EXCAV_TOE">${t("EXCAV_TOE (開挖坡腳)", "EXCAV_TOE (Toe)")}</option>
+              <option value="CURB_LINE">${t("CURB_LINE (緣石線)", "CURB_LINE (Curb)")}</option>
+              <option value="DRAIN_INV">${t("DRAIN_INV (溝底高程)", "DRAIN_INV (Invert)")}</option>
+            </select>
           </div>
-
-          <!-- Custom Point Code & Design Z Offset -->
-          <div id="stkCustomParamsRow" style="display:${curMode === "custom" ? "grid" : "none"};grid-template-columns:1fr 1fr;gap:6px;">
-            <div>
-              <label style="font-size:10px;color:var(--ui-text-muted);display:block;margin-bottom:2px;">
-                ${t("放樣代碼 (Code)", "Point Code")}
-              </label>
-              <select id="stkPointCode" class="gs-select" style="width:100%;height:26px;font-size:11px;">
-                <option value="DESIGN_PT">${t("DESIGN_PT (設計點)", "DESIGN_PT (Design)")}</option>
-                <option value="COL_AXIS">${t("COL_AXIS (柱心軸線)", "COL_AXIS (Column)")}</option>
-                <option value="EXCAV_TOE">${t("EXCAV_TOE (開挖坡腳)", "EXCAV_TOE (Toe)")}</option>
-                <option value="CURB_LINE">${t("CURB_LINE (緣石線)", "CURB_LINE (Curb)")}</option>
-                <option value="DRAIN_INV">${t("DRAIN_INV (溝底高程)", "DRAIN_INV (Invert)")}</option>
-              </select>
-            </div>
-            <div>
-              <label style="font-size:10px;color:var(--ui-text-muted);display:block;margin-bottom:2px;">
-                ${t("高程偏移 ΔZ (m)", "Design Z Offset (m)")}
-              </label>
-              <input type="number" id="stkDesignZOffset" class="gs-input" value="0.00" step="0.05" style="width:100%;height:26px;font-size:11px;" />
-            </div>
-          </div>
-
-          <!-- Grid Array Parameters -->
-          <div id="stkGridParamsRow" style="display:${curMode === "grid" ? "grid" : "none"};grid-template-columns:repeat(4, 1fr);gap:4px;">
-            <div>
-              <label style="font-size:9.5px;color:var(--ui-text-muted);display:block;margin-bottom:2px;">ΔE (m)</label>
-              <input type="number" id="stkGridSpacingE" class="gs-input" value="10" min="1" max="100" step="1" style="width:100%;height:25px;font-size:10.5px;" />
-            </div>
-            <div>
-              <label style="font-size:9.5px;color:var(--ui-text-muted);display:block;margin-bottom:2px;">ΔN (m)</label>
-              <input type="number" id="stkGridSpacingN" class="gs-input" value="10" min="1" max="100" step="1" style="width:100%;height:25px;font-size:10.5px;" />
-            </div>
-            <div>
-              <label style="font-size:9.5px;color:var(--ui-text-muted);display:block;margin-bottom:2px;">${t("東向數", "Cols E")}</label>
-              <input type="number" id="stkGridCountE" class="gs-input" value="4" min="2" max="12" step="1" style="width:100%;height:25px;font-size:10.5px;" />
-            </div>
-            <div>
-              <label style="font-size:9.5px;color:var(--ui-text-muted);display:block;margin-bottom:2px;">${t("北向數", "Rows N")}</label>
-              <input type="number" id="stkGridCountN" class="gs-input" value="4" min="2" max="12" step="1" style="width:100%;height:25px;font-size:10.5px;" />
-            </div>
+          <div>
+            <label style="font-size:10px;color:var(--ui-text-muted);display:block;margin-bottom:2px;">${t("高程偏移 ΔZ (m)", "Design Z Offset (m)")}</label>
+            <input type="number" id="stkDesignZOffset" class="gs-input" value="0.00" step="0.05" style="width:100%;height:26px;font-size:11px;" />
           </div>
         </div>
-
-        <!-- Action Button Toolbar -->
-        <div style="display:grid;grid-template-columns:repeat(3, 1fr);gap:4px;margin-top:4px;">
-          <button type="button" class="btn-xs primary" id="btnGenStakeout" title="${t("生成放樣點位", "Generate Stakeout Points")}">
-            ${QA_SVGS.STAKEOUT} ${t("放樣", "Stake")}
-          </button>
-          <button type="button" class="btn-xs ${QA_STATE.isPickingStakeoutPoint ? "primary" : ""}" id="btnPickStakeoutPt" title="${t("在 3D 視圖中點擊拾取放樣點", "Click on 3D surface to add stakeout point")}">
-            ${QA_SVGS.PICK} ${t("加點", "Pick")}
-          </button>
-          <button type="button" class="btn-xs" id="btnClearStakeoutPts" title="${t("清除自選點並重設", "Reset custom stakeout points")}">
-            ${QA_SVGS.RESET} ${t("重設", "Reset")}
-          </button>
-        </div>
-        <div style="display:grid;grid-template-columns:repeat(4, 1fr);gap:4px;margin-top:4px;">
-          <button type="button" class="btn-xs" id="btnExportStakeoutCsv" title="${t("導出標準 CSV (嚴格 E N Z 順序)", "Export CSV (E, N, Z)")}">
-            ${QA_SVGS.CSV} CSV
-          </button>
-          <button type="button" class="btn-xs" id="btnExportStakeoutTxt" title="${t("導出 Leica/Trimble TXT", "Export Leica/Trimble TXT")}">
-            ${QA_SVGS.PIPE} TXT
-          </button>
-          <button type="button" class="btn-xs" id="btnExportStakeoutDxf" title="${t("導出 3D AutoCAD DXF R12", "Export 3D AutoCAD DXF")}">
-            ${QA_SVGS.DXF} DXF
-          </button>
-          <button type="button" class="btn-xs" id="btnPrintStakeoutSheet" title="${t("列印 A4 現場放樣檢核記錄表", "Print A4 Field Stakeout Sheet")}">
-            ${QA_SVGS.PRINT} ${t("列印", "Print")}
-          </button>
-        </div>
-
-        <!-- Point List Preview Card -->
-        <div id="stakeoutPointsCard" style="margin-top:8px;">
-          <!-- Populated by renderStakeoutPointsTable -->
+        <div id="stkGridParamsRow" style="display:${curMode === "grid" ? "grid" : "none"};grid-template-columns:repeat(4, 1fr);gap:4px;">
+          <div><label style="font-size:9.5px;color:var(--ui-text-muted);display:block;margin-bottom:2px;">ΔE (m)</label><input type="number" id="stkGridSpacingE" class="gs-input" value="10" min="1" max="100" step="1" style="width:100%;height:25px;font-size:10.5px;" /></div>
+          <div><label style="font-size:9.5px;color:var(--ui-text-muted);display:block;margin-bottom:2px;">ΔN (m)</label><input type="number" id="stkGridSpacingN" class="gs-input" value="10" min="1" max="100" step="1" style="width:100%;height:25px;font-size:10.5px;" /></div>
+          <div><label style="font-size:9.5px;color:var(--ui-text-muted);display:block;margin-bottom:2px;">${t("東向數", "Cols E")}</label><input type="number" id="stkGridCountE" class="gs-input" value="4" min="2" max="12" step="1" style="width:100%;height:25px;font-size:10.5px;" /></div>
+          <div><label style="font-size:9.5px;color:var(--ui-text-muted);display:block;margin-bottom:2px;">${t("北向數", "Rows N")}</label><input type="number" id="stkGridCountN" class="gs-input" value="4" min="2" max="12" step="1" style="width:100%;height:25px;font-size:10.5px;" /></div>
         </div>
       </div>
-    `;
+      <div style="display:grid;grid-template-columns:repeat(3, 1fr);gap:4px;margin-top:4px;">
+        <button type="button" class="btn-xs primary" id="btnGenStakeout" title="${t("生成放樣點位", "Generate Stakeout Points")}">${QA_SVGS.STAKEOUT} ${t("放樣", "Stake")}</button>
+        <button type="button" class="btn-xs ${QA_STATE.isPickingStakeoutPoint ? "primary" : ""}" id="btnPickStakeoutPt" title="${t("在 3D 視圖中點擊拾取放樣點", "Click on 3D surface to add stakeout point")}">${QA_SVGS.PICK} ${t("加點", "Pick")}</button>
+        <button type="button" class="btn-xs" id="btnClearStakeoutPts" title="${t("清除自選點並重設", "Reset custom stakeout points")}">${QA_SVGS.RESET} ${t("重設", "Reset")}</button>
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(4, 1fr);gap:4px;margin-top:4px;">
+        <button type="button" class="btn-xs" id="btnExportStakeoutCsv" title="${t("導出標準 CSV (嚴格 E N Z 順序)", "Export CSV (E, N, Z)")}">${QA_SVGS.CSV} CSV</button>
+        <button type="button" class="btn-xs" id="btnExportStakeoutTxt" title="${t("導出 Leica/Trimble TXT", "Export Leica/Trimble TXT")}">${QA_SVGS.PIPE} TXT</button>
+        <button type="button" class="btn-xs" id="btnExportStakeoutDxf" title="${t("導出 3D AutoCAD DXF R12", "Export 3D AutoCAD DXF")}">${QA_SVGS.DXF} DXF</button>
+        <button type="button" class="btn-xs" id="btnPrintStakeoutSheet" title="${t("列印 A4 現場放樣檢核記錄表", "Print A4 Field Stakeout Sheet")}">${QA_SVGS.PRINT} ${t("列印", "Print")}</button>
+      </div>
+      <div id="stakeoutPointsCard" style="margin-top:8px;"></div>
+    </div>`;
 
     showSidePanel(t("RTK 放樣導出", "RTK Stakeout"), html);
     if (typeof window.bindSurveyContainerSubtabs === "function") {
@@ -4546,44 +4519,25 @@
     const isCustom = QA_STATE.stakeoutSourceMode !== "grid" && QA_STATE.stakeoutPoints.length > 0;
     let rows = "";
     pts.forEach((p, idx) => {
-      rows += `
-        <tr class="stk-point-row" data-stk-idx="${idx}" style="cursor:pointer;" title="${t("點擊聚焦至 3D 放樣點", "Click to focus 3D camera on stakeout point")}">
-          <td style="font-weight:700;color:#fbbf24;">${p.ptid}</td>
-          <td style="font-family:monospace;text-align:right;">${Number(p.easting).toFixed(3)}</td>
-          <td style="font-family:monospace;text-align:right;">${Number(p.northing).toFixed(3)}</td>
-          <td style="font-family:monospace;text-align:right;font-weight:700;color:#38bdf8;">${Number(p.elevation).toFixed(3)}</td>
-          <td>
-            <div style="display:flex;align-items:center;justify-content:space-between;gap:4px;">
-              <span>${p.code}</span>
-              ${isCustom ? `<button type="button" class="btn-del-stk-pt" data-del-stk-idx="${idx}" style="border:none;background:rgba(239,68,68,0.18);color:#f87171;border-radius:4px;padding:0 5px;font-size:10px;cursor:pointer;" title="${t("刪除此點", "Delete point")}">x</button>` : ""}
-            </div>
-          </td>
-        </tr>
-      `;
+      rows += `<tr class="stk-point-row" data-stk-idx="${idx}" style="cursor:pointer;" title="${t("點擊聚焦至 3D 放樣點", "Click to focus 3D camera on stakeout point")}">
+        <td style="font-weight:700;color:#fbbf24;">${p.ptid}</td>
+        <td style="font-family:monospace;text-align:right;">${Number(p.easting).toFixed(3)}</td>
+        <td style="font-family:monospace;text-align:right;">${Number(p.northing).toFixed(3)}</td>
+        <td style="font-family:monospace;text-align:right;font-weight:700;color:#38bdf8;">${Number(p.elevation).toFixed(3)}</td>
+        <td><div style="display:flex;align-items:center;justify-content:space-between;gap:4px;"><span>${p.code}</span>${isCustom ? `<button type="button" class="btn-del-stk-pt" data-del-stk-idx="${idx}" style="border:none;background:rgba(239,68,68,0.18);color:#f87171;border-radius:4px;padding:0 5px;font-size:10px;cursor:pointer;" title="${t("刪除此點", "Delete point")}">x</button>` : ""}</div></td>
+      </tr>`;
     });
 
-    card.innerHTML = `
-      <div style="display:flex;justify-content:space-between;align-items:center;font-size:10px;color:var(--ui-text-secondary);margin-bottom:4px;">
+    card.innerHTML = `<div style="display:flex;justify-content:space-between;align-items:center;font-size:10px;color:var(--ui-text-secondary);margin-bottom:4px;">
         <span>${t(`共 ${pts.length} 個放樣點 (點擊列可聚焦 3D 位置)`, `${pts.length} stakeout points (click row to focus in 3D)`)}</span>
         <span style="color:#fbbf24;font-weight:600;">${QA_STATE.stakeoutSourceMode === "grid" ? t("規則基礎網格", "Grid Array") : QA_STATE.stakeoutPoints.length > 0 ? t("自訂拾取點", "Custom Picked") : t("預設示範點", "Default Sample")}</span>
       </div>
       <div style="max-height:210px;overflow-y:auto;border:1px solid var(--ui-border);border-radius:6px;">
         <table class="gs-qa-table" style="width:100%;font-size:10px;">
-          <thead>
-            <tr>
-              <th>${t("點號 PtID", "PtID")}</th>
-              <th style="text-align:right;">${t("東距 E (m)", "Easting (m)")}</th>
-              <th style="text-align:right;">${t("北距 N (m)", "Northing (m)")}</th>
-              <th style="text-align:right;">${t("高程 Z (m)", "Elev (m)")}</th>
-              <th>${t("代碼 Code", "Code")}</th>
-            </tr>
-          </thead>
-          <tbody id="stakeoutPtsBody">
-            ${rows}
-          </tbody>
+          <thead><tr><th>${t("點號 PtID", "PtID")}</th><th style="text-align:right;">${t("東距 E (m)", "Easting (m)")}</th><th style="text-align:right;">${t("北距 N (m)", "Northing (m)")}</th><th style="text-align:right;">${t("高程 Z (m)", "Elev (m)")}</th><th>${t("代碼 Code", "Code")}</th></tr></thead>
+          <tbody id="stakeoutPtsBody">${rows}</tbody>
         </table>
-      </div>
-    `;
+      </div>`;
 
     card.querySelectorAll(".stk-point-row").forEach((trEl) => {
       trEl.addEventListener("click", (ev) => {
@@ -4760,6 +4714,25 @@
   function syncQaLinkedPolygonEdit(source, action, idx, pt = null, measId = null) {
     const st = window.STATE;
     if (!st) return;
+    if (source === "flatnessSplinePoints" && Number.isFinite(idx) && Array.isArray(QA_STATE.curvedSplinePoints) && QA_STATE.curvedSplinePoints[idx]) {
+      if ((action === "move" || action === "commit") && pt) {
+        QA_STATE.curvedSplinePoints[idx] = { x: Number(pt.x), y: Number(pt.y), z: Number(pt.z) };
+        QA_STATE.curvedHasExplicitSpline = true;
+      }
+      if (action === "commit") applyCurvedSplineExtrusionAnalysis({ updateActiveObject: true });
+      return;
+    }
+    if (source === "flatnessExtrusionHandle") {
+      if ((action === "move" || action === "commit") && pt) {
+        QA_STATE.curvedExtrudeTargetPt = { x: Number(pt.x), y: Number(pt.y), z: Number(pt.z) };
+        QA_STATE.flatnessExtrudeDirMode = "custom_e1";
+        QA_STATE.curvedHasExplicitSpline = true;
+        const selDir = document.getElementById("selFlatnessExtrudeDir");
+        if (selDir) selDir.value = "custom_e1";
+      }
+      if (action === "commit") applyCurvedSplineExtrusionAnalysis({ updateActiveObject: true });
+      return;
+    }
     const linkedId = st.qaLinkedAreaMeasId;
     const isLinked =
       Boolean(linkedId) &&
@@ -4815,6 +4788,7 @@
   window.syncQaLinkedPolygonEdit = syncQaLinkedPolygonEdit;
   window.openSurfaceFlatnessQaInspector = openSurfaceFlatnessQaInspector;
   window.lockFlatnessPolygonAndAnalyze = lockFlatnessPolygonAndAnalyze;
+  window.applyCurvedSplineExtrusionAnalysis = applyCurvedSplineExtrusionAnalysis;
   window.refreshFlatnessDraftVisuals = refreshFlatnessDraftVisuals;
   window.recomputeFlatnessMetricsAndVisuals = recomputeFlatnessMetricsAndVisuals;
   window.renderPolygonFlatness3DOverlay = renderPolygonFlatness3DOverlay;
@@ -4853,6 +4827,40 @@
     }
     if (tool === "flatness" || QA_STATE.isPickingFlatnessPoint) {
       if (!window.STATE || !pt) return true;
+      if (QA_STATE.flatnessPlaneMode === "curved_extruded" && QA_STATE.curvedPickStage === "spline") {
+        if (!Array.isArray(QA_STATE.curvedSplinePoints)) QA_STATE.curvedSplinePoints = [];
+        QA_STATE.curvedSplinePoints.push({ x: Number(pt.x), y: Number(pt.y), z: Number(pt.z) });
+        QA_STATE.curvedHasExplicitSpline = true;
+        const scnt = QA_STATE.curvedSplinePoints.length;
+        const lblStatus = document.getElementById("lblFlatnessCurvedStatus");
+        if (lblStatus) {
+          lblStatus.textContent = scnt >= 3
+            ? t(`已選 ${scnt} 個弧線點 — 點「套用分析」或選「擠出終點」`, `${scnt} spline pts placed — click Apply or Pick Extrude End`)
+            : t(`已選 ${scnt}/3 個弧線點 — 再點 ${3 - scnt} 點`, `${scnt}/3 spline pts placed — click ${3 - scnt} more`);
+        }
+        refreshFlatnessDraftVisuals();
+        if (typeof showToast === "function") {
+          showToast(scnt < 3
+            ? t(`弧線控制點 S${scnt} 已標記 — 再點 ${3 - scnt} 點可形成曲面`, `Spline point S${scnt} placed — click ${3 - scnt} more`)
+            : t(`弧線控制點 S${scnt} 已標記 — 可繼續加點或點擊「套用分析」`, `Spline point S${scnt} placed — click Apply to analyze`));
+        }
+        return true;
+      }
+      if (QA_STATE.flatnessPlaneMode === "curved_extruded" && QA_STATE.curvedPickStage === "extrude") {
+        QA_STATE.curvedExtrudeTargetPt = { x: Number(pt.x), y: Number(pt.y), z: Number(pt.z) };
+        QA_STATE.flatnessExtrudeDirMode = "custom_e1";
+        QA_STATE.curvedPickStage = "";
+        QA_STATE.curvedHasExplicitSpline = true;
+        document.getElementById("btnPickFlatnessExtrudePt")?.classList.remove("primary");
+        const selDir = document.getElementById("selFlatnessExtrudeDir");
+        if (selDir) selDir.value = "custom_e1";
+        if (Array.isArray(QA_STATE.curvedSplinePoints) && QA_STATE.curvedSplinePoints.length >= 3) {
+          applyCurvedSplineExtrusionAnalysis({ updateActiveObject: Boolean(QA_STATE.activeFlatnessObjectId) });
+        } else {
+          refreshFlatnessDraftVisuals();
+        }
+        return true;
+      }
       if (!Array.isArray(window.STATE.measurePoints)) window.STATE.measurePoints = [];
       if (window.STATE.flatnessPolygonLocked && window.STATE.measurePoints.length === 0) {
         startNewFlatnessObjectDraft(false);
@@ -4917,37 +4925,25 @@
       const ptid = `STK-${String(idx).padStart(3, "0")}`;
       const elev = Number((twd.h + zOffset).toFixed(3));
       QA_STATE.stakeoutPoints.push({
-        ptid,
-        easting: Number(twd.e.toFixed(3)),
-        northing: Number(twd.n.toFixed(3)),
-        elevation: elev,
-        code: codeVal,
+        ptid, easting: Number(twd.e.toFixed(3)), northing: Number(twd.n.toFixed(3)), elevation: elev, code: codeVal,
         local_x: pt && Number.isFinite(pt.x) ? Number(pt.x.toFixed(3)) : undefined,
         local_y: pt && Number.isFinite(pt.y) ? Number((pt.y + zOffset).toFixed(3)) : undefined,
         local_z: pt && Number.isFinite(pt.z) ? Number(pt.z.toFixed(3)) : undefined,
         _exactPicked: true,
       });
       if (typeof showToast === "function") {
-        showToast(
-          t(
-            `已新增放樣點 ${ptid} (E:${twd.e.toFixed(2)}, N:${twd.n.toFixed(2)}, Z:${elev.toFixed(2)}m)`,
-            `Added ${ptid} (E:${twd.e.toFixed(2)}, N:${twd.n.toFixed(2)}, Z:${elev.toFixed(2)}m)`
-          )
-        );
+        showToast(t(`已新增放樣點 ${ptid} (E:${twd.e.toFixed(2)}, N:${twd.n.toFixed(2)}, Z:${elev.toFixed(2)}m)`, `Added ${ptid} (E:${twd.e.toFixed(2)}, N:${twd.n.toFixed(2)}, Z:${elev.toFixed(2)}m)`));
       }
       runGenerateStakeout(scanId, { focusCamera: false });
       return true;
     }
     return false;
   };
-
   document.addEventListener("DOMContentLoaded", () => {
     const btnCmpVol = document.getElementById("btnCompareDeltaV");
     if (btnCmpVol) {
       btnCmpVol.addEventListener("click", () => {
-        if (window.STATE && window.STATE.activeView === "compare" && typeof switchView === "function") {
-          switchView("studio");
-        }
+        if (window.STATE && window.STATE.activeView === "compare" && typeof switchView === "function") switchView("studio");
         openCompareVolumeTakeoffInspector();
         const baseId = (window.STATE && window.STATE.compareBaseScanId) || (window.STATE && window.STATE.activeScanId) || "";
         const compId = (window.STATE && window.STATE.compareScanId) || baseId;
@@ -4955,8 +4951,6 @@
       });
     }
   });
-
-  // Handle URL parameters auto-launching
   if (typeof window !== "undefined" && window.location) {
     try {
       const q = new URLSearchParams(window.location.search);

@@ -3088,6 +3088,39 @@ class OptimizerBridge:
                         shifted_tile_b = shift_glb_node_translation(raw_tile_b, ox_m, oy_m, oz_m)
                         with open(tile_out_path, "wb") as wf_g:
                             wf_g.write(shifted_tile_b)
+                        # Build L1 (Auto mid-range, 2048px / 50% tris) and L0 (Rough overview, 768px / 22% tris)
+                        base_pil_lod = pil_im
+                        if base_pil_lod is None and exact_jpeg_for_glb:
+                            try:
+                                base_pil_lod = Image.open(io.BytesIO(exact_jpeg_for_glb)).convert("RGB")
+                            except Exception:
+                                base_pil_lod = None
+                        for lod_tag, si_ratio, max_dim_lod, jq_lod in (("l1", 0.50, 2048, 86), ("l0", 0.22, 768, 78)):
+                            lod_out_p = os.path.join(tiles_work_dir, f"tile_s{p_idx}_{lod_tag}.glb")
+                            tmp_lod_g = lod_out_p + ".tmp.glb"
+                            try:
+                                subprocess.run(
+                                    [GLTFPACK_EXE, "-i", tmp_part_obj, "-o", tmp_lod_g, "-vp", "16", "-vt", "16", "-vn", "8", "-si", f"{si_ratio:.2f}", "-slb", "-sv", "-cc"],
+                                    capture_output=True,
+                                    timeout=120,
+                                    creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000) if os.name == "nt" else 0,
+                                )
+                                if os.path.isfile(tmp_lod_g) and os.path.getsize(tmp_lod_g) > 256:
+                                    raw_lod_b = open(tmp_lod_g, "rb").read()
+                                    if base_pil_lod is not None:
+                                        im_lod = base_pil_lod.copy()
+                                        im_lod.thumbnail((max_dim_lod, max_dim_lod), Image.Resampling.LANCZOS)
+                                        buf_lod = io.BytesIO()
+                                        im_lod.save(buf_lod, format="JPEG", quality=jq_lod, optimize=True)
+                                        raw_lod_b = replace_glb_single_image_bytes(raw_lod_b, buf_lod.getvalue(), "image/jpeg")
+                                    with open(lod_out_p, "wb") as wf_lod:
+                                        wf_lod.write(shift_glb_node_translation(raw_lod_b, ox_m, oy_m, oz_m))
+                            finally:
+                                if os.path.isfile(tmp_lod_g):
+                                    try:
+                                        os.remove(tmp_lod_g)
+                                    except OSError:
+                                        pass
                 finally:
                     for p_clean in (tmp_part_mtl, tmp_part_obj, tmp_tile_glb):
                         if os.path.isfile(p_clean):
@@ -3101,30 +3134,52 @@ class OptimizerBridge:
                 p_bc = (p_vmin_twd + p_vmax_twd) * 0.5
                 p_bh = (p_vmax_twd - p_vmin_twd) * 0.5
                 if os.path.isfile(tile_out_path):
-                    child_tile_nodes.append(
+                    p_box = [
+                        round(float(p_bc[0]), 4),
+                        round(float(p_bc[1]), 4),
+                        round(float(p_bc[2]), 4),
+                        round(max(float(p_bh[0]), 0.5), 4),
+                        0.0,
+                        0.0,
+                        0.0,
+                        round(max(float(p_bh[1]), 0.5), 4),
+                        0.0,
+                        0.0,
+                        0.0,
+                        round(max(float(p_bh[2]), 0.5), 4),
+                    ]
+                    leaf_node = {
+                        "boundingVolume": {"box": list(p_box)},
+                        "geometricError": 0.0,
+                        "refine": "REPLACE",
+                        "content": {"uri": tile_rel_uri},
+                        "children": [],
+                    }
+                    l1_path = os.path.join(tiles_work_dir, f"tile_s{p_idx}_l1.glb")
+                    l0_path = os.path.join(tiles_work_dir, f"tile_s{p_idx}_l0.glb")
+                    mid_node = (
                         {
-                            "boundingVolume": {
-                                "box": [
-                                    round(float(p_bc[0]), 4),
-                                    round(float(p_bc[1]), 4),
-                                    round(float(p_bc[2]), 4),
-                                    round(max(float(p_bh[0]), 0.5), 4),
-                                    0.0,
-                                    0.0,
-                                    0.0,
-                                    round(max(float(p_bh[1]), 0.5), 4),
-                                    0.0,
-                                    0.0,
-                                    0.0,
-                                    round(max(float(p_bh[2]), 0.5), 4),
-                                ]
-                            },
-                            "geometricError": 0.0,
+                            "boundingVolume": {"box": list(p_box)},
+                            "geometricError": 0.0036,
                             "refine": "REPLACE",
-                            "content": {"uri": tile_rel_uri},
-                            "children": [],
+                            "content": {"uri": f"tiles/tile_s{p_idx}_l1.glb"},
+                            "children": [leaf_node],
                         }
+                        if os.path.isfile(l1_path)
+                        else leaf_node
                     )
+                    top_node = (
+                        {
+                            "boundingVolume": {"box": list(p_box)},
+                            "geometricError": 24.0,
+                            "refine": "REPLACE",
+                            "content": {"uri": f"tiles/tile_s{p_idx}_l0.glb"},
+                            "children": [mid_node],
+                        }
+                        if os.path.isfile(l0_path)
+                        else mid_node
+                    )
+                    child_tile_nodes.append(top_node)
 
                 f_global = f_local_1based.copy()
                 f_global[:, [0, 2, 4]] += v_global_off

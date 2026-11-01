@@ -1882,11 +1882,11 @@
       tr._maxActiveTiles = 16;
     } else if (lodMode === "max" && !isEmbed) {
       tr.maxDepth = Infinity;
-      tr.errorTarget = isPreview ? 0.5 : isMobOrTab ? 1.5 : 0.05;
-      tr._maxActiveTiles = isIOS || isPhone ? 140 : isMobOrTab ? 180 : isPreview ? 240 : 800;
+      tr.errorTarget = isPreview ? 0.35 : isMobOrTab ? 0.5 : 0.02;
+      tr._maxActiveTiles = isIOS || isPhone ? 160 : isMobOrTab ? 220 : isPreview ? 280 : 900;
     } else {
-      // Auto mode: progressive view-dependent LOD — refines close-up focal tiles to deepest leaf level
-      // while keeping mid-range and background tiles at intermediate LOD until zoomed in or switched to Max.
+      // Auto mode: progressive view-dependent LOD — renders intermediate LOD at medium/far range
+      // and refines close-up focal tiles (< 3.6m) to deepest leaf level.
       tr.maxDepth = Infinity;
       if (isIOS || isPhone) {
         tr._maxActiveTiles = 85;

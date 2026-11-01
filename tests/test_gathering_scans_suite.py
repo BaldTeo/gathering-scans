@@ -3820,12 +3820,85 @@ class GatheringScansTestSuite(unittest.TestCase):
         ):
             self.assertIn(token, js10, f"Missing {token} in 10-construction-qa-and-stakeout.js")
 
+    def test_36_multi_level_lod_hierarchy_and_indoor_obb_sse(self):
+        """Verify 3d-tiles-renderer indoor OBB SSE calculation, pre-leaf geometricError normalization, Rough/Auto/Max caps, and QiHu_Merged 3-level LOD hierarchy."""
+        import json as _json
+
+        with open(os.path.join(BASE_DIR, "web", "lib", "3d-tiles-renderer.bundle.js"), "r", encoding="utf-8") as f:
+            bundle_js = f.read()
+        with open(os.path.join(BASE_DIR, "web", "src", "02-map-and-timeline.js"), "r", encoding="utf-8") as f:
+            js02 = f.read()
+
+        # 1. Indoor OBB distance fallback and pre-leaf SSE normalization in calculateTileViewError
+        self.assertIn("isPreLeaf", bundle_js)
+        self.assertIn("Math.min(e.geometricError,.0036)", bundle_js)
+        self.assertIn("x.internal.depth-y.internal.depth", bundle_js)
+
+        # 2. Distinct Rough, Auto, and Max errorTarget / maxDepth caps in configureTilesRendererLodAndCaps
+        self.assertIn("tr.maxDepth = depthInfo.roughMaxDepth;", js02)
+        self.assertIn("tr.errorTarget = isPreview ? 0.35 : isMobOrTab ? 0.5 : 0.02;", js02)
+        self.assertIn("tr.errorTarget = 1.2;", js02)
+
+        # 3. Verify QiHu_Merged 3-level LOD hierarchy (tile_s4_l0.glb -> tile_s4_l1.glb -> tile_s4.glb) if present on disk
+        qihu_ts = r"C:\GatheringScans\edited_qihu_merged_2026_10_28_858499\tileset\tileset.json"
+        if os.path.isfile(qihu_ts):
+            with open(qihu_ts, "r", encoding="utf-8") as tf:
+                ts_doc = _json.load(tf)
+            root_children = ts_doc.get("root", {}).get("children") or []
+            self.assertGreaterEqual(len(root_children), 5)
+            s4_l0 = root_children[4]
+            self.assertEqual(s4_l0["content"]["uri"], "tiles/tile_s4_l0.glb")
+            self.assertGreater(float(s4_l0["geometricError"]), 1.0)
+            s4_l1 = s4_l0["children"][0]
+            self.assertEqual(s4_l1["content"]["uri"], "tiles/tile_s4_l1.glb")
+            self.assertAlmostEqual(float(s4_l1["geometricError"]), 0.0036, places=5)
+            s4_l2 = s4_l1["children"][0]
+            self.assertEqual(s4_l2["content"]["uri"], "tiles/tile_s4.glb")
+            self.assertEqual(float(s4_l2["geometricError"]), 0.0)
+
+    def test_79_curved_extruded_spline_surface_flatness_qa(self):
+        """Verify Curved / Bent Extruded Spline Surface (curved_extruded) mode in Surface Flatness QA tool."""
+        with open(os.path.join(BASE_DIR, "web", "src", "09-construction-survey-and-bim.js"), "r", encoding="utf-8") as f:
+            js09 = f.read()
+        with open(os.path.join(BASE_DIR, "web", "src", "10-construction-qa-and-stakeout.js"), "r", encoding="utf-8") as f:
+            js10 = f.read()
+        with open(os.path.join(BASE_DIR, "web", "src", "12-public-utilities-gis.js"), "r", encoding="utf-8") as f:
+            js12 = f.read()
+
+        for token in (
+            "window.__GS_CURVED_QA",
+            "fit2DCircleAlgebraicAndRefine",
+            "evaluateCatmullRomChain3D",
+            "buildCurvedExtrudedSurfaceEvaluator",
+            "fitCurvedExtrudedSurfaceFromPolygonSamples",
+            "evaluateCurvedCacheFromCells",
+            "buildCurvedReferenceSurfaceThreeGroup",
+            "buildCurvedDraftPreviewThreeGroup",
+            "renderFlatnessCurvedConfigCardHtml",
+        ):
+            self.assertIn(token, js09, f"Missing {token} in 09-construction-survey-and-bim.js")
+
+        for token in (
+            'value="curved_extruded"',
+            "flatnessCurveType",
+            "flatnessCurvedOffsetMode",
+            "flatnessExtrudeDirMode",
+            "flatnessExtrudeDepthM",
+            "curvedSplinePoints",
+            "applyCurvedSplineExtrusionAnalysis",
+            "btnDrawFlatnessSpline",
+            "btnPickFlatnessExtrudePt",
+            "btnFinishFlatnessSpline",
+            "dummyMat.makeBasis(cellTan, cellExt, cellNorm)",
+        ):
+            self.assertIn(token, js10, f"Missing {token} in 10-construction-qa-and-stakeout.js")
+
+        for token in (
+            "flatnessSplinePoints",
+            "flatnessExtrusionHandle",
+        ):
+            self.assertIn(token, js12, f"Missing {token} in 12-public-utilities-gis.js")
+
 
 if __name__ == "__main__":
     unittest.main()
-
-
-
-
-
-

@@ -2020,6 +2020,1278 @@
   window.clearEnhancedPondingVisuals3D = clearEnhancedPondingVisuals3D;
   window.exportDrainagePondingCsv = exportDrainagePondingCsv;
 
+  // =========================================================================
+  // 5. CURVED / BENT EXTRUDED SPLINE SURFACE QA ENGINE (4TH FLATNESS MODE)
+  // =========================================================================
+
+  function cVecNorm(v) {
+    const len = Math.hypot(v.x, v.y, v.z) || 1.0;
+    return { x: v.x / len, y: v.y / len, z: v.z / len };
+  }
+
+  function cVecCross(a, b) {
+    return {
+      x: a.y * b.z - a.z * b.y,
+      y: a.z * b.x - a.x * b.z,
+      z: a.x * b.y - a.y * b.x,
+    };
+  }
+
+  function cVecDot(a, b) {
+    return a.x * b.x + a.y * b.y + a.z * b.z;
+  }
+
+  /**
+   * Algebraic Kasa circle fit followed by Huber-weighted Gauss-Newton orthogonal refinement in 2D profile coordinates (u, v).
+   * Fits (u - a)^2 + (v - b)^2 = R^2.
+   */
+  function fit2DCircleAlgebraicAndRefine(pts2D) {
+    const n = Array.isArray(pts2D) ? pts2D.length : 0;
+    if (n < 3) {
+      return { isValidArc: false, centerU: 0, centerV: 0, radiusM: 9999.0, rmsResidualM: 0, sagittaM: 0 };
+    }
+
+    let meanU = 0, meanV = 0, wSum = 0;
+    for (let i = 0; i < n; i++) {
+      const w = Number.isFinite(pts2D[i].w) && pts2D[i].w > 0 ? pts2D[i].w : 1.0;
+      meanU += pts2D[i].u * w;
+      meanV += pts2D[i].v * w;
+      wSum += w;
+    }
+    if (wSum <= 1e-12) wSum = 1.0;
+    meanU /= wSum;
+    meanV /= wSum;
+
+    let suu = 0, suv = 0, svv = 0, su3 = 0, sv3 = 0, suvv = 0, svuu = 0;
+    let minU = Infinity, maxU = -Infinity, minV = Infinity, maxV = -Infinity;
+    for (let i = 0; i < n; i++) {
+      const w = Number.isFinite(pts2D[i].w) && pts2D[i].w > 0 ? pts2D[i].w : 1.0;
+      const u = pts2D[i].u - meanU;
+      const v = pts2D[i].v - meanV;
+      if (pts2D[i].u < minU) minU = pts2D[i].u;
+      if (pts2D[i].u > maxU) maxU = pts2D[i].u;
+      if (pts2D[i].v < minV) minV = pts2D[i].v;
+      if (pts2D[i].v > maxV) maxV = pts2D[i].v;
+      const u2 = u * u, v2 = v * v;
+      suu += w * u2;
+      suv += w * u * v;
+      svv += w * v2;
+      su3 += w * u2 * u;
+      sv3 += w * v2 * v;
+      suvv += w * u * v2;
+      svuu += w * v * u2;
+    }
+
+    const det = suu * svv - suv * suv;
+    const span = Math.hypot(maxU - minU, maxV - minV);
+    if (Math.abs(det) < 1e-11 || span < 0.08) {
+      return { isValidArc: false, centerU: meanU, centerV: meanV, radiusM: 9999.0, rmsResidualM: 0, sagittaM: 0 };
+    }
+
+    const rhs1 = 0.5 * (su3 + suvv);
+    const rhs2 = 0.5 * (sv3 + svuu);
+    let uc = (rhs1 * svv - rhs2 * suv) / det;
+    let vc = (suu * rhs2 - suv * rhs1) / det;
+    let cx = meanU + uc;
+    let cy = meanV + vc;
+    let R = Math.sqrt(uc * uc + vc * vc + (suu + svv) / wSum);
+
+    // 6 iterations of Huber-weighted Gauss-Newton orthogonal distance refinement
+    for (let iter = 0; iter < 6; iter++) {
+      let j00 = 0, j01 = 0, j02 = 0, j11 = 0, j12 = 0, j22 = 0;
+      let g0 = 0, g1 = 0, g2 = 0;
+      for (let i = 0; i < n; i++) {
+        const p = pts2D[i];
+        const baseW = Number.isFinite(p.w) && p.w > 0 ? p.w : 1.0;
+        const du = p.u - cx;
+        const dv = p.v - cy;
+        const dist = Math.hypot(du, dv);
+        if (dist < 1e-6) continue;
+        const res = dist - R;
+        const absRes = Math.abs(res);
+        const huberW = absRes <= 0.025 ? baseW : baseW * (0.025 / absRes);
+        const ju = -du / dist;
+        const jv = -dv / dist;
+        const jr = -1.0;
+        j00 += huberW * ju * ju;
+        j01 += huberW * ju * jv;
+        j02 += huberW * ju * jr;
+        j11 += huberW * jv * jv;
+        j12 += huberW * jv * jr;
+        j22 += huberW * jr * jr;
+        g0 -= huberW * ju * res;
+        g1 -= huberW * jv * res;
+        g2 -= huberW * jr * res;
+      }
+      // Solve 3x3 normal equation with small Levenberg-Marquardt damping
+      j00 += 1e-5; j11 += 1e-5; j22 += 1e-5;
+      const m01 = j01, m02 = j02, m12 = j12;
+      const d =
+        j00 * (j11 * j22 - m12 * m12) -
+        m01 * (m01 * j22 - m12 * m02) +
+        m02 * (m01 * m12 - j11 * m02);
+      if (Math.abs(d) < 1e-12) break;
+      const dCx = (g0 * (j11 * j22 - m12 * m12) - m01 * (g1 * j22 - m12 * g2) + m02 * (g1 * m12 - j11 * g2)) / d;
+      const dCy = (j00 * (g1 * j22 - m12 * g2) - g0 * (m01 * j22 - m02 * m12) + m02 * (m01 * g2 - g1 * m02)) / d;
+      const dR = (j00 * (j11 * g2 - g1 * m12) - m01 * (m01 * g2 - g1 * m02) + g0 * (m01 * m12 - j11 * m02)) / d;
+      cx += dCx * 0.85;
+      cy += dCy * 0.85;
+      R = Math.max(0.1, R + dR * 0.85);
+      if (Math.hypot(dCx, dCy, dR) < 1e-5) break;
+    }
+
+    let sqSum = 0;
+    for (let i = 0; i < n; i++) {
+      const dist = Math.hypot(pts2D[i].u - cx, pts2D[i].v - cy);
+      const err = dist - R;
+      sqSum += err * err;
+    }
+    const rmsResidualM = Math.sqrt(sqSum / n);
+    const halfChord = 0.5 * span;
+    const sagittaM = R > halfChord ? R - Math.sqrt(Math.max(0, R * R - halfChord * halfChord)) : R;
+    const isValidArc = Number.isFinite(R) && R >= 0.12 && R <= 250.0 && sagittaM >= 0.005;
+
+    return {
+      isValidArc,
+      centerU: cx,
+      centerV: cy,
+      radiusM: Number(R.toFixed(3)),
+      rmsResidualM: Number(rmsResidualM.toFixed(4)),
+      sagittaM: Number(sagittaM.toFixed(4)),
+    };
+  }
+
+  /**
+   * Evaluates a smooth Centripetal Catmull-Rom 3D spline chain through ctrlPts.
+   */
+  function evaluateCatmullRomChain3D(ctrlPts, numSamples = 200) {
+    const pts = (Array.isArray(ctrlPts) ? ctrlPts : []).map((p) => ({
+      x: Number(p.x) || 0,
+      y: Number(p.y) || 0,
+      z: Number(p.z) || 0,
+    }));
+    if (pts.length === 0) return [];
+    if (pts.length === 1) return [pts[0]];
+    if (pts.length === 2) {
+      const out = [];
+      for (let i = 0; i < numSamples; i++) {
+        const f = i / Math.max(1, numSamples - 1);
+        out.push({
+          x: pts[0].x + (pts[1].x - pts[0].x) * f,
+          y: pts[0].y + (pts[1].y - pts[0].y) * f,
+          z: pts[0].z + (pts[1].z - pts[0].z) * f,
+        });
+      }
+      return out;
+    }
+
+    // Remove consecutive duplicate points
+    const clean = [pts[0]];
+    for (let i = 1; i < pts.length; i++) {
+      const prev = clean[clean.length - 1];
+      if (Math.hypot(pts[i].x - prev.x, pts[i].y - prev.y, pts[i].z - prev.z) > 1e-4) {
+        clean.push(pts[i]);
+      }
+    }
+    if (clean.length < 3) return evaluateCatmullRomChain3D(clean, numSamples);
+
+    const pFirst = clean[0];
+    const pSecond = clean[1];
+    const pLast = clean[clean.length - 1];
+    const pPrevLast = clean[clean.length - 2];
+    const ext = [
+      { x: 2 * pFirst.x - pSecond.x, y: 2 * pFirst.y - pSecond.y, z: 2 * pFirst.z - pSecond.z },
+      ...clean,
+      { x: 2 * pLast.x - pPrevLast.x, y: 2 * pLast.y - pPrevLast.y, z: 2 * pLast.z - pPrevLast.z },
+    ];
+
+    const nSegs = clean.length - 1;
+    const out = [];
+    const evalSeg = (P0, P1, P2, P3, u) => {
+      const knotGap = (A, B) => Math.max(1e-3, Math.pow(Math.hypot(B.x - A.x, B.y - A.y, B.z - A.z), 0.5));
+      const t0 = 0.0;
+      const t1 = t0 + knotGap(P0, P1);
+      const t2 = t1 + knotGap(P1, P2);
+      const t3 = t2 + knotGap(P2, P3);
+      const t = t1 + u * (t2 - t1);
+
+      const lerpPt = (A, B, ta, tb) => {
+        const denom = tb - ta || 1e-6;
+        const wA = (tb - t) / denom;
+        const wB = (t - ta) / denom;
+        return { x: wA * A.x + wB * B.x, y: wA * A.y + wB * B.y, z: wA * A.z + wB * B.z };
+      };
+      const A1 = lerpPt(P0, P1, t0, t1);
+      const A2 = lerpPt(P1, P2, t1, t2);
+      const A3 = lerpPt(P2, P3, t2, t3);
+      const B1 = lerpPt(A1, A2, t0, t2);
+      const B2 = lerpPt(A2, A3, t1, t3);
+      return lerpPt(B1, B2, t1, t2);
+    };
+
+    for (let s = 0; s < numSamples; s++) {
+      const globalU = (s / Math.max(1, numSamples - 1)) * nSegs;
+      const segIdx = Math.min(nSegs - 1, Math.floor(globalU));
+      const localU = globalU - segIdx;
+      out.push(evalSeg(ext[segIdx], ext[segIdx + 1], ext[segIdx + 2], ext[segIdx + 3], localU));
+    }
+    return out;
+  }
+
+  /**
+   * Builds the parametric extruded curved surface evaluator S(s, v) = C(s) + v * wAxis.
+   */
+  function buildCurvedExtrudedSurfaceEvaluator(config = {}) {
+    const rawSplinePts = Array.isArray(config.splinePts) ? config.splinePts : [];
+    const pts = rawSplinePts.map((p) => ({
+      x: Number(p.x) || 0,
+      y: Number(p.y) || 0,
+      z: Number(p.z) || 0,
+    }));
+    const curveType = config.curveType === "arc" ? "arc" : "spline";
+    const extrudeDirMode = config.extrudeDirMode || "auto";
+    const offsetMode = config.offsetMode === "lock_spline" ? "lock_spline" : "auto_center";
+    const normalOffsetM = Number(config.normalOffsetM) || 0.0;
+    let extrudeDepthM = Math.max(0.15, Math.min(30.0, Number(config.extrudeDepthM) || 1.8));
+    const extrudeTargetPt = config.extrudeTargetPt
+      ? { x: Number(config.extrudeTargetPt.x) || 0, y: Number(config.extrudeTargetPt.y) || 0, z: Number(config.extrudeTargetPt.z) || 0 }
+      : null;
+
+    if (pts.length < 2) {
+      pts.push({ x: 0, y: 0, z: 0 }, { x: 2, y: 0, z: 0 }, { x: 4, y: 0, z: 0 });
+    }
+
+    const firstPt = pts[0];
+    const lastPt = pts[pts.length - 1];
+    const chord = { x: lastPt.x - firstPt.x, y: lastPt.y - firstPt.y, z: lastPt.z - firstPt.z };
+    const chordUnit = cVecNorm(chord);
+
+    let minY = Infinity, maxY = -Infinity, maxXzDist = 0;
+    let midX = 0, midY = 0, midZ = 0;
+    for (let i = 0; i < pts.length; i++) {
+      if (pts[i].y < minY) minY = pts[i].y;
+      if (pts[i].y > maxY) maxY = pts[i].y;
+      midX += pts[i].x;
+      midY += pts[i].y;
+      midZ += pts[i].z;
+      for (let j = i + 1; j < pts.length; j++) {
+        const dXz = Math.hypot(pts[i].x - pts[j].x, pts[i].z - pts[j].z);
+        if (dXz > maxXzDist) maxXzDist = dXz;
+      }
+    }
+    midX /= pts.length;
+    midY /= pts.length;
+    midZ /= pts.length;
+    const ySpan = maxY - minY;
+
+    // 1. Determine unit extrusion axis wAxis
+    let wAxis = { x: 0, y: -1, z: 0 };
+    if (config.explicitWAxis && Number.isFinite(config.explicitWAxis.x)) {
+      wAxis = cVecNorm(config.explicitWAxis);
+    } else if (extrudeDirMode === "down_y") {
+      wAxis = { x: 0, y: -1, z: 0 };
+    } else if (extrudeDirMode === "up_y") {
+      wAxis = { x: 0, y: 1, z: 0 };
+    } else if (extrudeDirMode === "lateral") {
+      const hLen = Math.hypot(chord.x, chord.z);
+      wAxis = hLen > 1e-4 ? { x: -chord.z / hLen, y: 0, z: chord.x / hLen } : { x: 0, y: 0, z: 1 };
+      if (extrudeTargetPt) {
+        const toE1 = { x: extrudeTargetPt.x - midX, y: extrudeTargetPt.y - midY, z: extrudeTargetPt.z - midZ };
+        if (cVecDot(wAxis, toE1) < 0) wAxis = { x: -wAxis.x, y: -wAxis.y, z: -wAxis.z };
+      }
+    } else if (extrudeDirMode === "custom_e1" && extrudeTargetPt) {
+      const toE1 = { x: extrudeTargetPt.x - midX, y: extrudeTargetPt.y - midY, z: extrudeTargetPt.z - midZ };
+      const dotT = cVecDot(toE1, chordUnit);
+      const perp = { x: toE1.x - dotT * chordUnit.x, y: toE1.y - dotT * chordUnit.y, z: toE1.z - dotT * chordUnit.z };
+      const pLen = Math.hypot(perp.x, perp.y, perp.z);
+      if (pLen > 0.08) {
+        wAxis = { x: perp.x / pLen, y: perp.y / pLen, z: perp.z / pLen };
+        if (config.useE1Depth) extrudeDepthM = Math.max(0.2, Math.min(30.0, pLen));
+      }
+    } else {
+      // Auto mode: if spline is primarily a horizontal arc (like top of a curved wall), extrude vertically downward (-Y);
+      // if spline rises significantly in Y (like a sloped skate ramp side profile), extrude horizontally (Lateral)
+      if (extrudeTargetPt && config.useE1Depth) {
+        const toE1 = { x: extrudeTargetPt.x - midX, y: extrudeTargetPt.y - midY, z: extrudeTargetPt.z - midZ };
+        const dotT = cVecDot(toE1, chordUnit);
+        const perp = { x: toE1.x - dotT * chordUnit.x, y: toE1.y - dotT * chordUnit.y, z: toE1.z - dotT * chordUnit.z };
+        const pLen = Math.hypot(perp.x, perp.y, perp.z);
+        if (pLen > 0.08) {
+          wAxis = { x: perp.x / pLen, y: perp.y / pLen, z: perp.z / pLen };
+          extrudeDepthM = Math.max(0.2, Math.min(30.0, pLen));
+        }
+      } else if (ySpan < 0.38 * Math.max(0.4, maxXzDist)) {
+        wAxis = { x: 0, y: -1, z: 0 };
+      } else {
+        const hLen = Math.hypot(chord.x, chord.z);
+        wAxis = hLen > 1e-4 ? { x: -chord.z / hLen, y: 0, z: chord.x / hLen } : { x: 0, y: 0, z: 1 };
+      }
+    }
+
+    // 2. Orthonormal profile plane basis (e1Axis, e2Axis) orthogonal to wAxis
+    let meanW = 0;
+    for (let i = 0; i < pts.length; i++) {
+      meanW += (pts[i].x - firstPt.x) * wAxis.x + (pts[i].y - firstPt.y) * wAxis.y + (pts[i].z - firstPt.z) * wAxis.z;
+    }
+    meanW /= pts.length;
+    const originP = {
+      x: firstPt.x + meanW * wAxis.x,
+      y: firstPt.y + meanW * wAxis.y,
+      z: firstPt.z + meanW * wAxis.z,
+    };
+
+    const projPts3D = pts.map((p) => {
+      const dw = (p.x - originP.x) * wAxis.x + (p.y - originP.y) * wAxis.y + (p.z - originP.z) * wAxis.z;
+      return {
+        x: p.x - dw * wAxis.x,
+        y: p.y - dw * wAxis.y,
+        z: p.z - dw * wAxis.z,
+      };
+    });
+
+    let chordPerp = {
+      x: projPts3D[projPts3D.length - 1].x - projPts3D[0].x,
+      y: projPts3D[projPts3D.length - 1].y - projPts3D[0].y,
+      z: projPts3D[projPts3D.length - 1].z - projPts3D[0].z,
+    };
+    if (Math.hypot(chordPerp.x, chordPerp.y, chordPerp.z) < 1e-4) {
+      chordPerp = Math.abs(wAxis.y) < 0.9 ? cVecCross({ x: 0, y: 1, z: 0 }, wAxis) : { x: 1, y: 0, z: 0 };
+    }
+    const e1Axis = cVecNorm(chordPerp);
+    const e2Axis = cVecNorm(cVecCross(wAxis, e1Axis));
+
+    const ctrlPts2D = projPts3D.map((p) => ({
+      u: (p.x - originP.x) * e1Axis.x + (p.y - originP.y) * e1Axis.y + (p.z - originP.z) * e1Axis.z,
+      v: (p.x - originP.x) * e2Axis.x + (p.y - originP.y) * e2Axis.y + (p.z - originP.z) * e2Axis.z,
+      w: 1.0,
+    }));
+
+    // 3. Fit circle to profile points to report radiusM and support "arc" mode
+    const circleFit = fit2DCircleAlgebraicAndRefine(
+      Array.isArray(config.denseProfilePts2D) && config.denseProfilePts2D.length >= 6 ? config.denseProfilePts2D : ctrlPts2D
+    );
+
+    const N_RAW = 240;
+    let rawCurve3D = [];
+    if (curveType === "arc" && circleFit.isValidArc) {
+      const a = circleFit.centerU;
+      const b = circleFit.centerV;
+      const R = circleFit.radiusM;
+      const angles = ctrlPts2D.map((pt) => Math.atan2(pt.v - b, pt.u - a));
+      for (let i = 1; i < angles.length; i++) {
+        while (angles[i] - angles[i - 1] > Math.PI) angles[i] -= 2 * Math.PI;
+        while (angles[i] - angles[i - 1] < -Math.PI) angles[i] += 2 * Math.PI;
+      }
+      const thetaStart = angles[0];
+      const thetaEnd = angles[angles.length - 1];
+      for (let k = 0; k < N_RAW; k++) {
+        const th = thetaStart + (k / (N_RAW - 1)) * (thetaEnd - thetaStart);
+        const cu = a + R * Math.cos(th);
+        const cv = b + R * Math.sin(th);
+        rawCurve3D.push({
+          x: originP.x + cu * e1Axis.x + cv * e2Axis.x,
+          y: originP.y + cu * e1Axis.y + cv * e2Axis.y,
+          z: originP.z + cu * e1Axis.z + cv * e2Axis.z,
+        });
+      }
+    } else {
+      rawCurve3D = evaluateCatmullRomChain3D(projPts3D, N_RAW);
+    }
+
+    // 4. Build uniform arc-length lookup table (LUT)
+    const cumS = new Float64Array(rawCurve3D.length);
+    cumS[0] = 0;
+    for (let i = 1; i < rawCurve3D.length; i++) {
+      const dx = rawCurve3D[i].x - rawCurve3D[i - 1].x;
+      const dy = rawCurve3D[i].y - rawCurve3D[i - 1].y;
+      const dz = rawCurve3D[i].z - rawCurve3D[i - 1].z;
+      cumS[i] = cumS[i - 1] + Math.hypot(dx, dy, dz);
+    }
+    const arcLengthM = Math.max(0.05, cumS[rawCurve3D.length - 1]);
+
+    const N_LUT = 200;
+    const lut = [];
+    let rawIdx = 0;
+    for (let k = 0; k < N_LUT; k++) {
+      const targetS = (k / (N_LUT - 1)) * arcLengthM;
+      while (rawIdx < rawCurve3D.length - 2 && cumS[rawIdx + 1] < targetS) {
+        rawIdx++;
+      }
+      const s0 = cumS[rawIdx];
+      const s1 = cumS[rawIdx + 1];
+      const frac = s1 > s0 ? Math.max(0, Math.min(1, (targetS - s0) / (s1 - s0))) : 0;
+      const p0 = rawCurve3D[rawIdx];
+      const p1 = rawCurve3D[rawIdx + 1];
+      lut.push({
+        s: targetS,
+        x: p0.x + (p1.x - p0.x) * frac,
+        y: p0.y + (p1.y - p0.y) * frac,
+        z: p0.z + (p1.z - p0.z) * frac,
+        tanX: 1, tanY: 0, tanZ: 0,
+        normX: 0, normY: 1, normZ: 0,
+      });
+    }
+
+    // Compute tangents & normals along LUT
+    for (let k = 0; k < N_LUT; k++) {
+      const prev = lut[Math.max(0, k - 1)];
+      const next = lut[Math.min(N_LUT - 1, k + 1)];
+      const tVec = cVecNorm({ x: next.x - prev.x, y: next.y - prev.y, z: next.z - prev.z });
+      const nVec = cVecNorm(cVecCross(tVec, wAxis));
+      lut[k].tanX = tVec.x;
+      lut[k].tanY = tVec.y;
+      lut[k].tanZ = tVec.z;
+      lut[k].normX = nVec.x;
+      lut[k].normY = nVec.y;
+      lut[k].normZ = nVec.z;
+    }
+
+    // Orient surface normals consistently toward camera (or +Y for horizontal / outward for cylinder)
+    const midLut = lut[Math.floor(N_LUT * 0.5)];
+    const center3D = {
+      x: midLut.x + 0.5 * extrudeDepthM * wAxis.x,
+      y: midLut.y + 0.5 * extrudeDepthM * wAxis.y,
+      z: midLut.z + 0.5 * extrudeDepthM * wAxis.z,
+    };
+    let flipNormal = false;
+    const camPos = config.cameraPos || (window.studioThree && window.studioThree.camera ? window.studioThree.camera.position : null);
+    if (config.preferredNormal && Number.isFinite(config.preferredNormal.x)) {
+      if (cVecDot({ x: midLut.normX, y: midLut.normY, z: midLut.normZ }, config.preferredNormal) < 0) {
+        flipNormal = true;
+      }
+    } else if (camPos) {
+      const toCam = { x: camPos.x - center3D.x, y: camPos.y - center3D.y, z: camPos.z - center3D.z };
+      if (cVecDot({ x: midLut.normX, y: midLut.normY, z: midLut.normZ }, toCam) < 0) {
+        flipNormal = true;
+      }
+    } else if (midLut.normY < -0.25) {
+      flipNormal = true;
+    }
+
+    if (flipNormal) {
+      for (let k = 0; k < N_LUT; k++) {
+        lut[k].normX = -lut[k].normX;
+        lut[k].normY = -lut[k].normY;
+        lut[k].normZ = -lut[k].normZ;
+      }
+    }
+
+    // Apply normalOffsetM shift if non-zero
+    if (Math.abs(normalOffsetM) > 1e-6) {
+      for (let k = 0; k < N_LUT; k++) {
+        lut[k].x += normalOffsetM * lut[k].normX;
+        lut[k].y += normalOffsetM * lut[k].normY;
+        lut[k].z += normalOffsetM * lut[k].normZ;
+      }
+    }
+
+    const avgNormal3D = cVecNorm({
+      x: lut[Math.floor(N_LUT * 0.5)].normX,
+      y: lut[Math.floor(N_LUT * 0.5)].normY,
+      z: lut[Math.floor(N_LUT * 0.5)].normZ,
+    });
+    const avgTan3D = cVecNorm({
+      x: lut[Math.floor(N_LUT * 0.5)].tanX,
+      y: lut[Math.floor(N_LUT * 0.5)].tanY,
+      z: lut[Math.floor(N_LUT * 0.5)].tanZ,
+    });
+
+    const evalAt = (s, v) => {
+      const clampedS = Math.max(0, Math.min(arcLengthM, s));
+      const fIdx = (clampedS / arcLengthM) * (N_LUT - 1);
+      const i0 = Math.min(N_LUT - 2, Math.max(0, Math.floor(fIdx)));
+      const frac = fIdx - i0;
+      const a = lut[i0];
+      const b = lut[i0 + 1];
+      const cx = a.x + (b.x - a.x) * frac + v * wAxis.x;
+      const cy = a.y + (b.y - a.y) * frac + v * wAxis.y;
+      const cz = a.z + (b.z - a.z) * frac + v * wAxis.z;
+      const tx = a.tanX + (b.tanX - a.tanX) * frac;
+      const ty = a.tanY + (b.tanY - a.tanY) * frac;
+      const tz = a.tanZ + (b.tanZ - a.tanZ) * frac;
+      const nx = a.normX + (b.normX - a.normX) * frac;
+      const ny = a.normY + (b.normY - a.normY) * frac;
+      const nz = a.normZ + (b.normZ - a.normZ) * frac;
+      const tNorm = cVecNorm({ x: tx, y: ty, z: tz });
+      const nNorm = cVecNorm({ x: nx, y: ny, z: nz });
+      return {
+        x: cx, y: cy, z: cz,
+        tanX: tNorm.x, tanY: tNorm.y, tanZ: tNorm.z,
+        extX: wAxis.x, extY: wAxis.y, extZ: wAxis.z,
+        normX: nNorm.x, normY: nNorm.y, normZ: nNorm.z,
+      };
+    };
+
+    const projectPoint = (lx, ly, lz) => {
+      const dx0 = lx - originP.x;
+      const dy0 = ly - originP.y;
+      const dz0 = lz - originP.z;
+      const v = dx0 * wAxis.x + dy0 * wAxis.y + dz0 * wAxis.z;
+      // Point projected onto v=0 profile plane
+      const px = lx - v * wAxis.x;
+      const py = ly - v * wAxis.y;
+      const pz = lz - v * wAxis.z;
+
+      // Coarse search every 8 stations, then fine search +-8 stations
+      let bestK = 0;
+      let bestDistSq = Infinity;
+      for (let k = 0; k < N_LUT; k += 8) {
+        const ddx = px - lut[k].x, ddy = py - lut[k].y, ddz = pz - lut[k].z;
+        const dSq = ddx * ddx + ddy * ddy + ddz * ddz;
+        if (dSq < bestDistSq) {
+          bestDistSq = dSq;
+          bestK = k;
+        }
+      }
+      const kMin = Math.max(0, bestK - 8);
+      const kMax = Math.min(N_LUT - 1, bestK + 8);
+      for (let k = kMin; k <= kMax; k++) {
+        const ddx = px - lut[k].x, ddy = py - lut[k].y, ddz = pz - lut[k].z;
+        const dSq = ddx * ddx + ddy * ddy + ddz * ddz;
+        if (dSq < bestDistSq) {
+          bestDistSq = dSq;
+          bestK = k;
+        }
+      }
+
+      const st = lut[bestK];
+      const relX = px - st.x, relY = py - st.y, relZ = pz - st.z;
+      const ds = relX * st.tanX + relY * st.tanY + relZ * st.tanZ;
+      const s = Math.max(0, Math.min(arcLengthM, st.s + ds));
+      const ev = evalAt(s, v);
+      const signedN = (lx - ev.x) * ev.normX + (ly - ev.y) * ev.normY + (lz - ev.z) * ev.normZ;
+      return {
+        s,
+        v,
+        signedN,
+        planeX: ev.x,
+        planeY: ev.y,
+        planeZ: ev.z,
+        normX: ev.normX,
+        normY: ev.normY,
+        normZ: ev.normZ,
+        tanX: ev.tanX,
+        tanY: ev.tanY,
+        tanZ: ev.tanZ,
+        extX: ev.extX,
+        extY: ev.extY,
+        extZ: ev.extZ,
+      };
+    };
+
+    const midStation = evalAt(0.5 * arcLengthM, 0);
+    const extrudeHandle3D = {
+      x: midStation.x + extrudeDepthM * wAxis.x,
+      y: midStation.y + extrudeDepthM * wAxis.y,
+      z: midStation.z + extrudeDepthM * wAxis.z,
+    };
+
+    // Ribbon perimeter polygon in 3D (for top-down plan overview & polygon bounds)
+    const ribbonBoundaryPts3D = [];
+    const nEdgePts = 7;
+    for (let i = 0; i < nEdgePts; i++) {
+      const s = (i / (nEdgePts - 1)) * arcLengthM;
+      const pTop = evalAt(s, 0);
+      ribbonBoundaryPts3D.push({ x: pTop.x, y: pTop.y, z: pTop.z });
+    }
+    for (let i = nEdgePts - 1; i >= 0; i--) {
+      const s = (i / (nEdgePts - 1)) * arcLengthM;
+      const pBot = evalAt(s, extrudeDepthM);
+      ribbonBoundaryPts3D.push({ x: pBot.x, y: pBot.y, z: pBot.z });
+    }
+
+    // Build planeSummary compatible with cache.plane
+    const nyAbs = Math.min(1.0, Math.abs(avgNormal3D.y));
+    const nh = Math.hypot(avgNormal3D.x, avgNormal3D.z);
+    const angleFromHorizontalDeg = (Math.atan2(nh, nyAbs) * 180.0) / Math.PI;
+    const slopePct = nyAbs > 1e-4 ? (nh / nyAbs) * 100.0 : 999.9;
+    const plumbMmPerM =
+      angleFromHorizontalDeg <= 45.0
+        ? nyAbs > 1e-4 ? (nh / nyAbs) * 1000.0 : 0.0
+        : nh > 1e-4 ? (nyAbs / nh) * 1000.0 : 0.0;
+    let tiltRatio = "1:INF";
+    if (angleFromHorizontalDeg <= 45.0) {
+      if (slopePct >= 0.05) tiltRatio = `1:${Math.max(1, Math.round(100.0 / slopePct))}`;
+    } else if (plumbMmPerM >= 0.5) {
+      tiltRatio = `1:${Math.max(1, Math.round(1000.0 / plumbMmPerM))}`;
+    }
+    const azRad = Math.atan2(avgNormal3D.x, -avgNormal3D.z);
+    const azimuthDeg = ((azRad * 180.0) / Math.PI + 360.0) % 360.0;
+    const rLabel = circleFit.isValidArc ? `R=${circleFit.radiusM.toFixed(2)}m` : `L=${arcLengthM.toFixed(2)}m`;
+
+    const planeSummary = {
+      center: center3D,
+      normal: avgNormal3D,
+      uAxis: avgTan3D,
+      vAxis: wAxis,
+      planeMode: "curved_extruded",
+      slopePct: Number(slopePct.toFixed(2)),
+      slopeDeg: Number(angleFromHorizontalDeg.toFixed(2)),
+      tiltRatio,
+      plumbMmPerM: Number(plumbMmPerM.toFixed(1)),
+      azimuthDeg: Number(azimuthDeg.toFixed(1)),
+      surfaceClassZh: angleFromHorizontalDeg > 55.0 ? `弧形牆面 (${rLabel})` : `弧形曲面 (${rLabel})`,
+      surfaceClassEn: angleFromHorizontalDeg > 55.0 ? `Curved Wall (${rLabel})` : `Curved Surface (${rLabel})`,
+    };
+
+    return {
+      evalAt,
+      projectPoint,
+      lut,
+      arcLengthM: Number(arcLengthM.toFixed(3)),
+      extrudeDepthM: Number(extrudeDepthM.toFixed(3)),
+      radiusM: circleFit.isValidArc ? Number(circleFit.radiusM.toFixed(2)) : null,
+      sagittaM: circleFit.sagittaM,
+      isValidArc: circleFit.isValidArc,
+      curveType,
+      extrudeDirMode,
+      offsetMode,
+      normalOffsetM: Number(normalOffsetM.toFixed(4)),
+      wAxis,
+      e1Axis,
+      e2Axis,
+      originP,
+      splinePts3D: projPts3D,
+      extrudeHandle3D,
+      ribbonBoundaryPts3D,
+      planeSummary,
+    };
+  }
+
+  /**
+   * Automatically fits a Curved Extruded Surface (spline control points S1..S5 + extrusion axis wAxis + depth)
+   * to a set of 3D mesh points sampled inside a polygon (Workflow B).
+   */
+  function fitCurvedExtrudedSurfaceFromPolygonSamples(sampledPts, polyPts, config = {}) {
+    const pts = Array.isArray(sampledPts) && sampledPts.length >= 6 ? sampledPts : (Array.isArray(polyPts) ? polyPts : []);
+    const boundaryPts = Array.isArray(polyPts) && polyPts.length >= 3 ? polyPts : pts;
+    const initPlane = typeof window.fitFlatnessReferencePlane === "function"
+      ? window.fitFlatnessReferencePlane(pts, "best_fit_3d")
+      : { center: { x: 0, y: 0, z: 0 }, normal: { x: 0, y: 1, z: 0 }, uAxis: { x: 1, y: 0, z: 0 }, vAxis: { x: 0, y: 0, z: 1 }, slopeDeg: 0 };
+
+    const extrudeDirMode = config.extrudeDirMode || "auto";
+    const curveType = config.curveType === "arc" ? "arc" : "spline";
+    let wAxis = { x: 0, y: -1, z: 0 };
+
+    if (extrudeDirMode === "down_y") {
+      wAxis = { x: 0, y: -1, z: 0 };
+    } else if (extrudeDirMode === "up_y") {
+      wAxis = { x: 0, y: 1, z: 0 };
+    } else if (extrudeDirMode === "lateral") {
+      const fn = initPlane.normal;
+      const hLen = Math.hypot(fn.x, fn.z);
+      wAxis = hLen > 1e-4 ? { x: -fn.z / hLen, y: 0, z: fn.x / hLen } : { x: 1, y: 0, z: 0 };
+    } else {
+      // Auto ruling axis discovery:
+      // 1. If steep/vertical wall (slopeDeg > 48 deg), cylinder generator axis is vertical (-Y)
+      if (Number(initPlane.slopeDeg) > 48.0) {
+        wAxis = { x: 0, y: -1, z: 0 };
+      } else {
+        // 2. For curved ramps / vaulted slabs, test candidate ruling directions in tangent plane
+        // and select the axis wAxis whose orthogonal profile circle/parabola fit has minimum residual variance
+        const u0 = initPlane.uAxis;
+        const v0 = initPlane.vAxis;
+        let bestW = v0;
+        let bestRms = Infinity;
+        for (let aIdx = 0; aIdx < 12; aIdx++) {
+          const ang = (aIdx * Math.PI) / 12.0;
+          const candW = cVecNorm({
+            x: Math.cos(ang) * u0.x + Math.sin(ang) * v0.x,
+            y: Math.cos(ang) * u0.y + Math.sin(ang) * v0.y,
+            z: Math.cos(ang) * u0.z + Math.sin(ang) * v0.z,
+          });
+          const candE1 = cVecNorm({
+            x: -Math.sin(ang) * u0.x + Math.cos(ang) * v0.x,
+            y: -Math.sin(ang) * u0.y + Math.cos(ang) * v0.y,
+            z: -Math.sin(ang) * u0.z + Math.cos(ang) * v0.z,
+          });
+          const candE2 = initPlane.normal;
+          const c0 = initPlane.center;
+          const step = Math.max(1, Math.floor(pts.length / 250));
+          const p2d = [];
+          for (let i = 0; i < pts.length; i += step) {
+            const dx = pts[i].x - c0.x, dy = pts[i].y - c0.y, dz = pts[i].z - c0.z;
+            p2d.push({
+              u: dx * candE1.x + dy * candE1.y + dz * candE1.z,
+              v: dx * candE2.x + dy * candE2.y + dz * candE2.z,
+              w: 1.0,
+            });
+          }
+          const cf = fit2DCircleAlgebraicAndRefine(p2d);
+          if (cf.rmsResidualM < bestRms) {
+            bestRms = cf.rmsResidualM;
+            bestW = candW;
+          }
+        }
+        wAxis = bestW;
+      }
+    }
+
+    // Orthonormal profile basis (e1Axis, e2Axis) perpendicular to wAxis
+    const c0 = initPlane.center;
+    let e2Guess = initPlane.normal;
+    const e2DotW = cVecDot(e2Guess, wAxis);
+    e2Guess = cVecNorm({
+      x: e2Guess.x - e2DotW * wAxis.x,
+      y: e2Guess.y - e2DotW * wAxis.y,
+      z: e2Guess.z - e2DotW * wAxis.z,
+    });
+    if (Math.hypot(e2Guess.x, e2Guess.y, e2Guess.z) < 1e-4) {
+      e2Guess = Math.abs(wAxis.y) < 0.9 ? { x: 0, y: 1, z: 0 } : { x: 1, y: 0, z: 0 };
+    }
+    const e1Axis = cVecNorm(cVecCross(e2Guess, wAxis));
+    const e2Axis = cVecNorm(cVecCross(wAxis, e1Axis));
+
+    // Find w and u bounds across polygon + sampled points
+    let minW = Infinity, maxW = -Infinity, minU = Infinity, maxU = -Infinity;
+    const allBoundsPts = boundaryPts.concat(pts);
+    for (let i = 0; i < allBoundsPts.length; i++) {
+      const p = allBoundsPts[i];
+      const dx = p.x - c0.x, dy = p.y - c0.y, dz = p.z - c0.z;
+      const pw = dx * wAxis.x + dy * wAxis.y + dz * wAxis.z;
+      const pu = dx * e1Axis.x + dy * e1Axis.y + dz * e1Axis.z;
+      if (pw < minW) minW = pw;
+      if (pw > maxW) maxW = pw;
+      if (pu < minU) minU = pu;
+      if (pu > maxU) maxU = pu;
+    }
+    if (!Number.isFinite(minW) || maxW - minW < 0.1) {
+      minW = -1.0;
+      maxW = 1.0;
+    }
+    if (!Number.isFinite(minU) || maxU - minU < 0.1) {
+      minU = -1.0;
+      maxU = 1.0;
+    }
+
+    const topOrigin = {
+      x: c0.x + minW * wAxis.x,
+      y: c0.y + minW * wAxis.y,
+      z: c0.z + minW * wAxis.z,
+    };
+    const extrudeDepthM = Math.max(0.2, maxW - minW);
+
+    // Project all sampled surface points into (u, v) in the topOrigin profile plane
+    const dense2D = [];
+    for (let i = 0; i < pts.length; i++) {
+      const p = pts[i];
+      const dx = p.x - topOrigin.x, dy = p.y - topOrigin.y, dz = p.z - topOrigin.z;
+      dense2D.push({
+        u: dx * e1Axis.x + dy * e1Axis.y + dz * e1Axis.z,
+        v: dx * e2Axis.x + dy * e2Axis.y + dz * e2Axis.z,
+        w: Number.isFinite(p.w) && p.w > 0 ? p.w : 1.0,
+      });
+    }
+
+    const circleFit = fit2DCircleAlgebraicAndRefine(dense2D);
+    const numCtrl = 5;
+    const splinePts = [];
+
+    if (circleFit.isValidArc) {
+      // Sample 5 control points directly along the fitted circular arc spanning [minU, maxU]
+      const a = circleFit.centerU;
+      const b = circleFit.centerV;
+      const R = circleFit.radiusM;
+      const pStart = dense2D.reduce((best, cur) => (cur.u < best.u ? cur : best), dense2D[0]);
+      const pEnd = dense2D.reduce((best, cur) => (cur.u > best.u ? cur : best), dense2D[0]);
+      let th0 = Math.atan2(pStart.v - b, pStart.u - a);
+      let th1 = Math.atan2(pEnd.v - b, pEnd.u - a);
+      while (th1 - th0 > Math.PI) th1 -= 2 * Math.PI;
+      while (th1 - th0 < -Math.PI) th1 += 2 * Math.PI;
+      for (let k = 0; k < numCtrl; k++) {
+        const th = th0 + (k / (numCtrl - 1)) * (th1 - th0);
+        const cu = a + R * Math.cos(th);
+        const cv = b + R * Math.sin(th);
+        splinePts.push({
+          x: topOrigin.x + cu * e1Axis.x + cv * e2Axis.x,
+          y: topOrigin.y + cu * e1Axis.y + cv * e2Axis.y,
+          z: topOrigin.z + cu * e1Axis.z + cv * e2Axis.z,
+        });
+      }
+    } else {
+      // Robust binned median profile stations across [minU, maxU]
+      const spanU = Math.max(0.2, maxU - minU);
+      for (let k = 0; k < numCtrl; k++) {
+        const targetU = minU + (k / (numCtrl - 1)) * spanU;
+        const winHalf = spanU * 0.18;
+        const nearV = [];
+        for (let i = 0; i < dense2D.length; i++) {
+          if (Math.abs(dense2D[i].u - targetU) <= winHalf) nearV.push(dense2D[i].v);
+        }
+        let medV = 0;
+        if (nearV.length > 0) {
+          nearV.sort((x, y) => x - y);
+          medV = nearV[Math.floor(nearV.length * 0.5)];
+        }
+        splinePts.push({
+          x: topOrigin.x + targetU * e1Axis.x + medV * e2Axis.x,
+          y: topOrigin.y + targetU * e1Axis.y + medV * e2Axis.y,
+          z: topOrigin.z + targetU * e1Axis.z + medV * e2Axis.z,
+        });
+      }
+    }
+
+    return buildCurvedExtrudedSurfaceEvaluator({
+      splinePts,
+      curveType,
+      extrudeDirMode,
+      extrudeDepthM,
+      explicitWAxis: wAxis,
+      denseProfilePts2D: dense2D,
+      offsetMode: config.offsetMode || "auto_center",
+      preferredNormal: initPlane.normal,
+    });
+  }
+
+  /**
+   * Converts or refines a sampled flatness cache into a Curved Extruded Surface cache,
+   * orienting every cell along the local curved tangent/extrusion/normal frame (t(s), w, n(s)).
+   */
+  function evaluateCurvedCacheFromCells(rawCells, polyPts, config = {}) {
+    if (!Array.isArray(rawCells) || rawCells.length === 0) return null;
+
+    let evaluator = null;
+    if (config.hasExplicitSpline && Array.isArray(config.splinePts) && config.splinePts.length >= 2) {
+      evaluator = buildCurvedExtrudedSurfaceEvaluator(config);
+    } else {
+      evaluator = fitCurvedExtrudedSurfaceFromPolygonSamples(rawCells, polyPts, config);
+    }
+
+    // Project all sampled 3D points onto the curved surface and optionally center mean normal offset
+    const projections = new Array(rawCells.length);
+    const devs = [];
+    for (let i = 0; i < rawCells.length; i++) {
+      const c = rawCells[i];
+      const rawX = Number.isFinite(c.rawX) ? c.rawX : c.x;
+      const rawY = Number.isFinite(c.rawY) ? c.rawY : c.y;
+      const rawZ = Number.isFinite(c.rawZ) ? c.rawZ : c.z;
+      c.rawX = rawX;
+      c.rawY = rawY;
+      c.rawZ = rawZ;
+      const proj = evaluator.projectPoint(rawX, rawY, rawZ);
+      projections[i] = proj;
+      devs.push(proj.signedN);
+    }
+
+    let meanOffsetM = 0.0;
+    if (evaluator.offsetMode !== "lock_spline" && devs.length > 0) {
+      const sorted = devs.slice().sort((a, b) => a - b);
+      const med = sorted[Math.floor(sorted.length * 0.5)] || 0.0;
+      let wSum = 0, dSum = 0;
+      for (let i = 0; i < devs.length; i++) {
+        const r = Math.abs(devs[i] - med) / 0.025;
+        const w = r <= 1.0 ? 1.0 : 1.0 / (1.0 + r * r);
+        dSum += devs[i] * w;
+        wSum += w;
+      }
+      meanOffsetM = wSum > 0 ? dSum / wSum : med;
+    }
+
+    const originTwd = typeof window.localToTwd97 === "function" ? window.localToTwd97({ x: 0, y: 0, z: 0 }) : { e: 0, n: 0, h: 0 };
+    let sumSqMm = 0;
+    let sumAbsMm = 0;
+    let maxHigh = null;
+    let maxLow = null;
+
+    for (let i = 0; i < rawCells.length; i++) {
+      const cell = rawCells[i];
+      const proj = projections[i];
+      const devM = proj.signedN - meanOffsetM;
+      const devMm = devM * 1000.0;
+      cell.devM = devM;
+      cell.devMm = devMm;
+      cell.planeU = proj.s;
+      cell.planeV = proj.v;
+      cell.planeX = proj.planeX + meanOffsetM * proj.normX;
+      cell.planeY = proj.planeY + meanOffsetM * proj.normY;
+      cell.planeZ = proj.planeZ + meanOffsetM * proj.normZ;
+      cell.normX = proj.normX;
+      cell.normY = proj.normY;
+      cell.normZ = proj.normZ;
+      cell.tanX = proj.tanX;
+      cell.tanY = proj.tanY;
+      cell.tanZ = proj.tanZ;
+      cell.extX = proj.extX;
+      cell.extY = proj.extY;
+      cell.extZ = proj.extZ;
+      cell.x = cell.planeX + devM * proj.normX;
+      cell.y = cell.planeY + devM * proj.normY;
+      cell.z = cell.planeZ + devM * proj.normZ;
+      cell.e = Number((originTwd.e + cell.x).toFixed(3));
+      cell.n = Number((originTwd.n - cell.z).toFixed(3));
+      cell.h = Number((originTwd.h + cell.y).toFixed(3));
+      sumSqMm += devMm * devMm;
+      sumAbsMm += Math.abs(devMm);
+      if (!maxHigh || devMm > maxHigh.devMm) maxHigh = cell;
+      if (!maxLow || devMm < maxLow.devMm) maxLow = cell;
+    }
+
+    const nSamples = Math.max(1, rawCells.length);
+    const rmsMm = Math.sqrt(sumSqMm / nSamples);
+    const meanAbsMm = sumAbsMm / nSamples;
+    let curvSumSq = 0, curvCnt = 0;
+    for (let i = 2; i < rawCells.length; i++) {
+      const q = Math.abs(rawCells[i].devMm - 2.0 * rawCells[i - 1].devMm + rawCells[i - 2].devMm);
+      curvSumSq += q * q;
+      curvCnt++;
+    }
+    const rmsCurvMm = curvCnt > 0 ? Math.sqrt(curvSumSq / curvCnt) : Math.max(1.2, rmsMm * 0.8);
+    const ffVal = Number(Math.min(120.0, Math.max(8.0, 115.0 / Math.max(1.1, rmsCurvMm))).toFixed(1));
+    const flVal = Number(Math.min(100.0, Math.max(6.0, 95.0 / Math.max(1.2, rmsMm))).toFixed(1));
+
+    const planeSummary = evaluator.planeSummary;
+    planeSummary.medH = Number((originTwd.h + planeSummary.center.y).toFixed(3));
+
+    return {
+      evaluator,
+      plane: planeSummary,
+      rmsMm: Number(rmsMm.toFixed(2)),
+      meanAbsMm: Number(meanAbsMm.toFixed(2)),
+      ffFlatness: ffVal,
+      flLevelness: flVal,
+      maxHigh,
+      maxLow,
+      curvedMeta: {
+        curveType: evaluator.curveType,
+        extrudeDirMode: evaluator.extrudeDirMode,
+        offsetMode: evaluator.offsetMode,
+        extrudeDepthM: evaluator.extrudeDepthM,
+        arcLengthM: evaluator.arcLengthM,
+        radiusM: evaluator.radiusM,
+        sagittaM: evaluator.sagittaM,
+        isValidArc: evaluator.isValidArc,
+        splinePts: evaluator.splinePts3D.map((p) => ({ x: Number(p.x.toFixed(3)), y: Number(p.y.toFixed(3)), z: Number(p.z.toFixed(3)) })),
+        extrudeHandlePt: {
+          x: Number(evaluator.extrudeHandle3D.x.toFixed(3)),
+          y: Number(evaluator.extrudeHandle3D.y.toFixed(3)),
+          z: Number(evaluator.extrudeHandle3D.z.toFixed(3)),
+        },
+        wAxis: evaluator.wAxis,
+        lut: evaluator.lut.map((st) => ({
+          s: Number(st.s.toFixed(3)),
+          x: Number((st.x + meanOffsetM * st.normX).toFixed(3)),
+          y: Number((st.y + meanOffsetM * st.normY).toFixed(3)),
+          z: Number((st.z + meanOffsetM * st.normZ).toFixed(3)),
+          normX: Number(st.normX.toFixed(4)),
+          normY: Number(st.normY.toFixed(4)),
+          normZ: Number(st.normZ.toFixed(4)),
+        })),
+      },
+    };
+  }
+
+  /**
+   * Builds the 3D curved wireframe reference surface, translucent ribbon, blue/cyan spline control pins (S1..Sn),
+   * and emerald extrusion handle (E1) for a saved/active curved flatness object.
+   */
+  function buildCurvedReferenceSurfaceThreeGroup(cache, opts = {}) {
+    const THREE = window.THREE;
+    if (!THREE || !cache || !cache.curvedMeta) return null;
+    const grp = new THREE.Group();
+    grp.name = "GS_CurvedReferenceSurface";
+    const isActive = Boolean(opts.isActive);
+    const meta = cache.curvedMeta;
+    const lut = Array.isArray(meta.lut) && meta.lut.length >= 2 ? meta.lut : [];
+    const wAxis = meta.wAxis || { x: 0, y: -1, z: 0 };
+    const extDepth = Math.max(0.2, Number(meta.extrudeDepthM) || 1.8);
+
+    if (lut.length >= 2) {
+      const segU = Math.min(32, lut.length - 1);
+      const segV = 6;
+      const positions = [];
+      const indices = [];
+      for (let r = 0; r <= segV; r++) {
+        const vDist = (r / segV) * extDepth;
+        for (let c = 0; c <= segU; c++) {
+          const lIdx = Math.min(lut.length - 1, Math.round((c / segU) * (lut.length - 1)));
+          const st = lut[lIdx];
+          positions.push(st.x + vDist * wAxis.x, st.y + vDist * wAxis.y, st.z + vDist * wAxis.z);
+        }
+      }
+      for (let r = 0; r < segV; r++) {
+        for (let c = 0; c < segU; c++) {
+          const a = r * (segU + 1) + c;
+          const b = a + 1;
+          const d = (r + 1) * (segU + 1) + c;
+          const e = d + 1;
+          indices.push(a, b, d, b, e, d);
+        }
+      }
+      const surfGeo = new THREE.BufferGeometry();
+      surfGeo.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
+      surfGeo.setIndex(indices);
+
+      // Subtle translucent emerald/cyan curved surface fill
+      const fillMat = new THREE.MeshBasicMaterial({
+        color: 0x10b981,
+        transparent: true,
+        opacity: isActive ? 0.14 : 0.06,
+        side: THREE.DoubleSide,
+        depthTest: false,
+      });
+      const fillMesh = new THREE.Mesh(surfGeo, fillMat);
+      fillMesh.renderOrder = 993;
+      grp.add(fillMesh);
+
+      // Crisp curved wireframe grid
+      const wireMat = new THREE.MeshBasicMaterial({
+        color: 0x22d3ee,
+        wireframe: true,
+        transparent: true,
+        opacity: isActive ? 0.48 : 0.25,
+        depthTest: false,
+      });
+      const wireMesh = new THREE.Mesh(surfGeo, wireMat);
+      wireMesh.renderOrder = 994;
+      grp.add(wireMesh);
+
+      // Highlight top profile spline C(s) in bright cyan
+      const curvePts = lut.map((st) => new THREE.Vector3(st.x, st.y, st.z));
+      const curveGeo = new THREE.BufferGeometry().setFromPoints(curvePts);
+      const curveLine = new THREE.Line(
+        curveGeo,
+        new THREE.LineBasicMaterial({ color: 0x38bdf8, depthTest: false, transparent: !isActive, opacity: isActive ? 1.0 : 0.75 })
+      );
+      curveLine.renderOrder = 998;
+      grp.add(curveLine);
+    }
+
+    // Render interactive blue/cyan spline control pins (S1..Sn) and emerald extrusion handle (E1) when active
+    if (isActive && Array.isArray(meta.splinePts)) {
+      meta.splinePts.forEach((pt) => {
+        const sp = new THREE.Mesh(
+          new THREE.SphereGeometry(0.14, 14, 14),
+          new THREE.MeshBasicMaterial({ color: 0x2563eb, depthTest: false })
+        );
+        sp.position.set(pt.x, pt.y, pt.z);
+        sp.renderOrder = 999;
+        grp.add(sp);
+      });
+      if (meta.extrudeHandlePt) {
+        const ep = meta.extrudeHandlePt;
+        const eMesh = new THREE.Mesh(
+          new THREE.OctahedronGeometry(0.17, 0),
+          new THREE.MeshBasicMaterial({ color: 0x10b981, depthTest: false })
+        );
+        eMesh.position.set(ep.x, ep.y, ep.z);
+        eMesh.renderOrder = 999;
+        grp.add(eMesh);
+      }
+    }
+
+    return grp;
+  }
+
+  /**
+   * Builds the live 3D spline + translucent green extruded surface preview while drawing/adjusting S1..Sn & E1.
+   */
+  function buildCurvedDraftPreviewThreeGroup(draftConfig = {}) {
+    const THREE = window.THREE;
+    if (!THREE) return null;
+    const grp = new THREE.Group();
+    grp.name = "GS_CurvedDraftPreview";
+
+    const pts = (Array.isArray(draftConfig.splinePts) ? draftConfig.splinePts : []).map((p) => ({
+      x: Number(p.x) || 0,
+      y: Number(p.y) || 0,
+      z: Number(p.z) || 0,
+    }));
+    const hoverPt = draftConfig.hoverPt
+      ? { x: Number(draftConfig.hoverPt.x) || 0, y: Number(draftConfig.hoverPt.y) || 0, z: Number(draftConfig.hoverPt.z) || 0 }
+      : null;
+    const pickStage = draftConfig.pickStage || "spline";
+
+    const activeSplinePts = pts.slice();
+    if (pickStage === "spline" && hoverPt) {
+      activeSplinePts.push(hoverPt);
+    }
+
+    // Render blue control point spheres S1..Sn
+    pts.forEach((p) => {
+      const pinMesh = new THREE.Mesh(
+        new THREE.SphereGeometry(0.16, 16, 16),
+        new THREE.MeshBasicMaterial({ color: 0x2563eb, depthTest: false })
+      );
+      pinMesh.position.set(p.x, p.y, p.z);
+      pinMesh.renderOrder = 999;
+      grp.add(pinMesh);
+    });
+
+    if (activeSplinePts.length >= 2) {
+      const e1Target = pickStage === "extrude" && hoverPt ? hoverPt : draftConfig.extrudeTargetPt || null;
+      const evaluator = buildCurvedExtrudedSurfaceEvaluator({
+        splinePts: activeSplinePts,
+        curveType: draftConfig.curveType || "spline",
+        extrudeDirMode: e1Target && pickStage === "extrude" ? "custom_e1" : draftConfig.extrudeDirMode || "auto",
+        extrudeDepthM: draftConfig.extrudeDepthM || 1.8,
+        extrudeTargetPt: e1Target,
+        useE1Depth: Boolean(e1Target && (pickStage === "extrude" || draftConfig.extrudeDirMode === "custom_e1")),
+      });
+
+      const fakeCache = {
+        curvedMeta: {
+          lut: evaluator.lut,
+          wAxis: evaluator.wAxis,
+          extrudeDepthM: evaluator.extrudeDepthM,
+          splinePts: activeSplinePts,
+          extrudeHandlePt: evaluator.extrudeHandle3D,
+        },
+      };
+      const surfGrp = buildCurvedReferenceSurfaceThreeGroup(fakeCache, { isActive: true });
+      if (surfGrp) {
+        // Boost green preview opacity during interactive spline drawing (matching Screenshot 3)
+        surfGrp.traverse((ch) => {
+          if (ch.isMesh && ch.material && !ch.material.wireframe && ch.material.transparent) {
+            ch.material.opacity = 0.34;
+          }
+        });
+        grp.add(surfGrp);
+      }
+    }
+
+    return grp;
+  }
+
+  function getFlatnessReportStylesheet() {
+    return `
+    * { box-sizing: border-box; }
+    body { font-family: "Noto Serif TC", "PMingLiU", "Microsoft JhengHei", "Noto Sans TC", sans-serif; color: #0f172a; background: #ffffff; margin: 20px 28px; line-height: 1.55; font-size: 12.5px; }
+    .doc-header { border-bottom: 2px solid #1e293b; padding-bottom: 10px; margin-bottom: 12px; display: flex; justify-content: space-between; align-items: flex-end; }
+    h1 { font-size: 19px; font-weight: 700; margin: 0; color: #0f172a; letter-spacing: 0.5px; }
+    .doc-subtitle { font-size: 11.5px; color: #334155; margin-top: 3px; }
+    .meta-table { width: 100%; border-collapse: collapse; margin-bottom: 14px; font-size: 11.5px; }
+    .meta-table th, .meta-table td { border: 1px solid #94a3b8; padding: 5px 8px; }
+    .meta-table th { background: #f1f5f9; color: #1e293b; width: 13%; text-align: left; font-weight: 700; }
+    .meta-table td { width: 20%; color: #0f172a; }
+    .kpi-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(175px, 1fr)); gap: 8px; margin-bottom: 14px; }
+    .kpi-box { border: 1px solid #94a3b8; padding: 8px 10px; background: #f8fafc; }
+    .kpi-label { font-size: 11px; color: #475569; font-weight: 600; }
+    .kpi-val { font-size: 16px; font-weight: 700; margin-top: 2px; color: #0f172a; font-variant-numeric: tabular-nums; }
+    .section-title { font-size: 13.5px; font-weight: 700; color: #0f172a; background: #e2e8f0; border: 1px solid #94a3b8; border-bottom: none; padding: 6px 10px; margin-top: 14px; }
+    .section-block { margin-top: 16px; page-break-inside: avoid; }
+    .section-header { background: #f1f5f9; border: 1px solid #94a3b8; border-bottom: none; padding: 6px 10px; font-size: 12.5px; font-weight: 700; display: flex; justify-content: space-between; color: #0f172a; }
+    table { width: 100%; border-collapse: collapse; margin-bottom: 12px; font-size: 11.5px; }
+    th, td { border: 1px solid #94a3b8; padding: 6px 8px; text-align: left; vertical-align: middle; }
+    th { background: #f8fafc; color: #1e293b; font-weight: 700; }
+    .overview-fig { border: 1px solid #94a3b8; padding: 8px; background: #ffffff; margin-bottom: 14px; }
+    .overview-fig img { width: 100%; max-height: 360px; object-fit: contain; display: block; background: #0f172a; }
+    .figs { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 14px; }
+    .fig-card { border: 1px solid #94a3b8; padding: 6px; background: #ffffff; }
+    .fig-card img { width: 100%; height: auto; display: block; }
+    .fig-cap { font-size: 11px; font-weight: 700; color: #1e293b; margin-top: 5px; text-align: center; }
+    .norm-box { border: 1px solid #94a3b8; background: #f8fafc; padding: 8px 12px; font-size: 11px; color: #1e293b; margin-top: 14px; }
+    .norm-box a { color: #0369a1; text-decoration: underline; }
+    .sign-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-top: 18px; page-break-inside: avoid; }
+    .sign-box { border: 1px solid #64748b; padding: 8px 10px; height: 76px; font-size: 11.5px; color: #1e293b; display: flex; flex-direction: column; justify-content: space-between; }
+    @media print { .no-print { display: none !important; } body { margin: 10mm; } }`;
+  }
+
+  function renderFlatnessCurvedConfigCardHtml(qaState, cache, svgs, trFn) {
+    const t = typeof trFn === "function" ? trFn : (zh) => zh;
+    const planeMode = qaState.flatnessPlaneMode || "best_fit_3d";
+    const curveType = qaState.flatnessCurveType || "spline";
+    const extrudeDir = qaState.flatnessExtrudeDirMode || "auto";
+    const offsetMode = qaState.flatnessCurvedOffsetMode || "auto_center";
+    const extDepthM = Number(qaState.flatnessExtrudeDepthM || cache?.curvedMeta?.extrudeDepthM || 1.8);
+    const meta = cache?.curvedMeta || null;
+    const splineCount = Array.isArray(qaState.curvedSplinePoints)
+      ? qaState.curvedSplinePoints.length
+      : Array.isArray(meta?.splinePts)
+      ? meta.splinePts.length
+      : 0;
+    const pickStage = qaState.curvedPickStage || "";
+    const radText = meta && Number.isFinite(meta.radiusM)
+      ? `R = ${meta.radiusM} m`
+      : curveType === "arc"
+      ? t("圓弧擬合", "Circular Arc")
+      : t("樣條擠出", "Spline Extrude");
+    const statusText = pickStage === "spline"
+      ? t(`請於 3D 表面點擊弧線控制點 S${splineCount + 1} (至少 3 點，完成點「套用曲面」)`, `Click 3D spline control point S${splineCount + 1} (3+ pts, then click Apply)`)
+      : pickStage === "extrude"
+      ? t("請於 3D 表面點擊擠出終點 E1 以決定擠出方向與深度", "Click extrusion target E1 on 3D surface to set direction & depth")
+      : meta
+      ? t(
+          `已擬合 (${radText}, 弧長 ${meta.arcLengthM}m × 擠出 ${meta.extrudeDepthM}m) — 可於 3D 拖曳藍點 S1..S${splineCount} 或綠點 E1`,
+          `Fitted (${radText}, Arc ${meta.arcLengthM}m × Ext ${meta.extrudeDepthM}m) — drag blue S1..S${splineCount} or green E1 in 3D`
+        )
+      : t("可於現有多邊形自動擬合弧形曲面，或點「繪製弧線」在 3D 點擊 S1..Sn 擠出曲面", "Auto-fits curved surface to polygon, or click 'Draw Spline' to place S1..Sn in 3D");
+
+    return `
+      <div id="flatnessCurvedConfigWrap" style="display:${planeMode === "curved_extruded" ? "block" : "none"};margin-top:6px;padding-top:6px;border-top:1px solid var(--ui-border);">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:5px;">
+          <span style="font-size:10.5px;font-weight:700;color:#10b981;">
+            ${t("弧形擠出基準曲面 (S(s,v) = C(s) + v·W)", "Curved Extruded Design Surface")}
+          </span>
+          <span id="lblFlatnessCurvedRadiusBadge" style="font-size:10px;padding:1px 6px;border-radius:999px;background:rgba(16,185,129,0.18);color:#34d399;font-weight:800;font-family:monospace;">
+            ${radText}
+          </span>
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(3, 1fr);gap:4px;margin-bottom:5px;">
+          <button type="button" class="btn-xs ${pickStage === "spline" ? "primary" : ""}" id="btnDrawFlatnessSpline" title="${t("在 3D 模型點擊 3+ 個控制點 S1..Sn 繪製基準弧線", "Click 3+ control points S1..Sn on 3D surface to draw profile spline")}">
+            ${svgs.PICK} ${t("繪製弧線", "Draw Spline")}
+          </button>
+          <button type="button" class="btn-xs ${pickStage === "extrude" ? "primary" : ""}" id="btnPickFlatnessExtrudePt" title="${t("在 3D 模型點擊擠出終點 E1 設定擠出方向與寬度", "Click target point E1 in 3D to set extrusion vector & width")}">
+            ${svgs.STAKEOUT} ${t("擠出點 E1", "Pick E1")}
+          </button>
+          <button type="button" class="btn-xs primary" id="btnFinishFlatnessSpline" title="${t("完成弧線並套用弧形擠出曲面分析", "Finish spline and analyze curved extruded surface")}">
+            ${svgs.CHECK} ${t("套用曲面", "Apply")}
+          </button>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px;margin-bottom:5px;">
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:3px;">
+            <label class="gs-qa-mode-pill ${curveType === "spline" ? "active" : ""}" title="${t("通過控制點 S1..Sn 之平滑樣條曲線 (Catmull-Rom)", "Smooth Catmull-Rom Spline through S1..Sn")}">
+              <input type="radio" name="flatnessCurveType" value="spline" ${curveType === "spline" ? "checked" : ""} style="display:none;" />
+              <span style="font-size:9.5px;">${t("樣條曲線", "Spline")}</span>
+            </label>
+            <label class="gs-qa-mode-pill ${curveType === "arc" ? "active" : ""}" title="${t("固定曲率半徑 R 之標準圓柱圓弧", "Constant-radius circular cylinder arc (R)")}">
+              <input type="radio" name="flatnessCurveType" value="arc" ${curveType === "arc" ? "checked" : ""} style="display:none;" />
+              <span style="font-size:9.5px;">${t("標準圓弧", "Circle Arc")}</span>
+            </label>
+          </div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:3px;">
+            <label class="gs-qa-mode-pill ${offsetMode === "auto_center" ? "active" : ""}" title="${t("自動平移曲面使平均法線偏差為 0mm", "Auto-center surface normal offset to 0mm mean")}">
+              <input type="radio" name="flatnessCurvedOffsetMode" value="auto_center" ${offsetMode === "auto_center" ? "checked" : ""} style="display:none;" />
+              <span style="font-size:9.5px;">${t("最佳平移", "Auto-Fit")}</span>
+            </label>
+            <label class="gs-qa-mode-pill ${offsetMode === "lock_spline" ? "active" : ""}" title="${t("嚴格鎖定 0mm 基準面通過 S1..Sn 控制點", "Strictly lock 0mm surface to S1..Sn pins")}">
+              <input type="radio" name="flatnessCurvedOffsetMode" value="lock_spline" ${offsetMode === "lock_spline" ? "checked" : ""} style="display:none;" />
+              <span style="font-size:9.5px;">${t("貼合弧線", "Lock Pins")}</span>
+            </label>
+          </div>
+        </div>
+        <div style="display:grid;grid-template-columns:1.1fr 0.9fr;gap:5px;align-items:center;margin-bottom:4px;">
+          <select id="selFlatnessExtrudeDir" class="gs-select" style="width:100%;height:25px;font-size:10px;" title="${t("選擇弧線擠出延伸方向", "Select spline extrusion direction")}">
+            <option value="auto" ${extrudeDir === "auto" ? "selected" : ""}>${t("擠出: 自動正交 (牆面-Y/坡面橫推)", "Extrude: Auto Orthogonal")}</option>
+            <option value="down_y" ${extrudeDir === "down_y" ? "selected" : ""}>${t("擠出: 垂直向下 (-Y 牆頂往下)", "Extrude: Down (-Y)")}</option>
+            <option value="up_y" ${extrudeDir === "up_y" ? "selected" : ""}>${t("擠出: 垂直向上 (+Y 牆底往上)", "Extrude: Up (+Y)")}</option>
+            <option value="lateral" ${extrudeDir === "lateral" ? "selected" : ""}>${t("擠出: 水平橫向 (坡面側緣橫推)", "Extrude: Horizontal Lateral")}</option>
+            <option value="custom_e1" ${extrudeDir === "custom_e1" ? "selected" : ""}>${t("擠出: 自訂終點 E1 向量", "Extrude: Custom E1 Vector")}</option>
+          </select>
+          <div style="display:flex;align-items:center;gap:4px;">
+            <input type="range" id="rngFlatnessExtrudeDepthM" min="0.2" max="15.0" step="0.1" value="${Math.min(15, Math.max(0.2, extDepthM))}" style="flex:1;accent-color:#10b981;cursor:pointer;" title="${t("擠出深度/寬度 (m)", "Extrusion depth/width (m)")}" />
+            <input type="number" id="inpFlatnessExtrudeDepthM" class="gs-input" value="${extDepthM.toFixed(2)}" min="0.1" max="30.0" step="0.1" style="width:52px;height:25px;font-size:10.5px;text-align:right;" />
+            <span id="lblFlatnessExtrudeDepthReadout" style="font-size:9.5px;color:var(--ui-text-muted);font-family:monospace;">m</span>
+          </div>
+        </div>
+        <div id="lblFlatnessCurvedStatus" style="font-size:9.5px;color:var(--ui-text-secondary);line-height:1.35;">
+          ${statusText}
+        </div>
+      </div>
+    `;
+  }
+
+  window.__GS_CURVED_QA = {
+    fit2DCircleAlgebraicAndRefine,
+    evaluateCatmullRomChain3D,
+    buildCurvedExtrudedSurfaceEvaluator,
+    fitCurvedExtrudedSurfaceFromPolygonSamples,
+    evaluateCurvedCacheFromCells,
+    buildCurvedReferenceSurfaceThreeGroup,
+    buildCurvedDraftPreviewThreeGroup,
+    getFlatnessReportStylesheet,
+    renderFlatnessCurvedConfigCardHtml,
+  };
+
   // Auto-launch Stationing or Drainage Inspector if tool requested in URL
   if (typeof window !== "undefined" && window.location) {
     try {
@@ -2047,3 +3319,4 @@
     } catch (_) {}
   }
 })();
+
