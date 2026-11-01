@@ -1155,7 +1155,11 @@ class CategorizationHeuristicsMixin:
                     max_aspect_sc = 4.6 if (span_sc <= 1.65 and r2_sc <= 0.26 and is_warm_or_grn_sc) else 2.55
                     if aspect_sc > max_aspect_sc:
                         continue
-                    max_r2_sc = 0.33 if (is_warm_or_grn_sc and med_sc_sat >= 0.14) else 0.30
+                    max_r2_sc = (
+                        0.42
+                        if (med_sc_rb >= 0.065 and med_sc_sat >= 0.25 and r4_sc <= 0.18)
+                        else (0.33 if (is_warm_or_grn_sc and med_sc_sat >= 0.14) else 0.30)
+                    )
                     max_r4_sc = 0.38 if (r2_sc <= 0.23 and is_warm_or_grn_sc) else 0.30
                     if r2_sc > max_r2_sc or r4_sc > max_r4_sc:
                         continue
@@ -1184,6 +1188,37 @@ class CategorizationHeuristicsMixin:
                         continue
                     pruned_stem_mask |= (st_lbl == sc_id)
                     verified_stem_centers.append((sc_e, sc_n))
+
+        # Identify 3D V-fork twin-stem trees where two verified stems diverge with an empty air valley between them
+        twin_stem_centers: List[Tuple[float, float, float]] = []
+        if len(verified_stem_centers) >= 2 and all_xy_tree is not None:
+            for i_vsc in range(len(verified_stem_centers)):
+                for j_vsc in range(i_vsc + 1, len(verified_stem_centers)):
+                    s1_e, s1_n = verified_stem_centers[i_vsc]
+                    s2_e, s2_n = verified_stem_centers[j_vsc]
+                    d_vsc = math.hypot(s1_e - s2_e, s1_n - s2_n)
+                    if not (0.50 <= d_vsc <= 1.05):
+                        continue
+                    mid_e, mid_n = 0.5 * (s1_e + s2_e), 0.5 * (s1_n + s2_n)
+                    if sum(1 for ke, kn in verified_stem_centers if math.hypot(ke - mid_e, kn - mid_n) <= 1.15) != 2:
+                        continue
+                    idx_tw = np.array(all_xy_tree.query_ball_point([mid_e, mid_n], r=1.80), dtype=np.int32)
+                    if len(idx_tw) < 60:
+                        continue
+                    c_tw = centroids[idx_tw]
+                    pi_tw = int(np.clip((mid_e - e_min) / res, 0, nx - 1))
+                    pj_tw = int(np.clip((mid_n - n_min) / res, 0, ny - 1))
+                    zr_tw = c_tw[:, 2] - float(h_dtm_local[pj_tw, pi_tw])
+                    steep_up_tw = (zr_tw >= 1.15) & (zr_tw <= 2.25) & (nz_abs[idx_tw] < 0.48)
+                    if np.count_nonzero(steep_up_tw) < 60:
+                        continue
+                    c_up_tw = c_tw[steep_up_tw]
+                    n1_tw = int(np.count_nonzero(np.hypot(c_up_tw[:, 0] - s1_e, c_up_tw[:, 1] - s1_n) <= 0.28))
+                    n2_tw = int(np.count_nonzero(np.hypot(c_up_tw[:, 0] - s2_e, c_up_tw[:, 1] - s2_n) <= 0.28))
+                    n_mid_tw = int(np.count_nonzero(np.hypot(c_up_tw[:, 0] - mid_e, c_up_tw[:, 1] - mid_n) <= 0.16))
+                    if min(n1_tw, n2_tw) >= 85 and n_mid_tw <= max(5, int(0.05 * min(n1_tw, n2_tw))):
+                        twin_stem_centers.append((s1_e, s1_n, d_vsc))
+                        twin_stem_centers.append((s2_e, s2_n, d_vsc))
 
         canopy_mask = green_canopy_mask | pruned_stem_mask
         chm_smooth = gaussian_filter(np.minimum(hag_tree_grid, 16.5), sigma=max(0.85, 0.55 / res))
@@ -1217,7 +1252,11 @@ class CategorizationHeuristicsMixin:
         for idx_p in peak_order:
             pj, pi = int(pk_js[idx_p]), int(pk_is[idx_p])
             ph = float(chm_smooth[pj, pi])
-            if any(math.hypot(pi - ki, pj - kj) < min_tree_dist_px for kj, ki, _ in kept_peaks):
+            pk_e = float(e_min + (pi + 0.5) * res)
+            pk_n = float(n_min + (pj + 0.5) * res)
+            is_twin_pk = any(math.hypot(pk_e - ts_e, pk_n - ts_n) <= 0.45 for ts_e, ts_n, _ in twin_stem_centers)
+            req_dist_px = max(1.5, 0.42 / res) if is_twin_pk else min_tree_dist_px
+            if any(math.hypot(pi - ki, pj - kj) < req_dist_px for kj, ki, _ in kept_peaks):
                 continue
             kept_peaks.append((pj, pi, ph))
             if len(kept_peaks) >= max_cand_peaks:
@@ -1238,6 +1277,12 @@ class CategorizationHeuristicsMixin:
 
             # 3D geometry, annular ground datum & stem centering (eliminates terrace steps, lamp posts, pillars & retaining walls)
             pre_stem_xy: Optional[Tuple[float, float]] = None
+            twin_match_d: Optional[float] = None
+            for ts_e, ts_n, ts_d in twin_stem_centers:
+                if math.hypot(te - ts_e, tn - ts_n) <= 0.45:
+                    pre_stem_xy = (ts_e, ts_n)
+                    twin_match_d = ts_d
+                    break
             is_verified_cyl = False
             trunk_is_warm_or_green = False
             med_ts_sat = 0.0
@@ -1332,7 +1377,7 @@ class CategorizationHeuristicsMixin:
                 if tree_h < 2.20:
                     continue
 
-                if n_stem_11 >= 8:
+                if pre_stem_xy is None and n_stem_11 >= 8:
                     med_st = np.median(c26[stem_11_mask, :2], axis=0)
                     pre_stem_xy = (float(med_st[0]), float(med_st[1]))
 
@@ -1341,7 +1386,8 @@ class CategorizationHeuristicsMixin:
                     continue
                 dt_26 = np.hypot(c26[:, 0] - t_cx, c26[:, 1] - t_cy)
                 z_rel_26 = c26[:, 2] - th_ground
-                trunk_slice_m = (dt_26 <= 0.68) & (z_rel_26 >= 0.45) & (z_rel_26 <= 1.90) & (nz_abs[idx_arr26] < 0.48)
+                r_ts_slice = min(0.36, 0.48 * twin_match_d) if twin_match_d is not None else 0.68
+                trunk_slice_m = (dt_26 <= r_ts_slice) & (z_rel_26 >= 0.45) & (z_rel_26 <= 1.90) & (nz_abs[idx_arr26] < 0.48)
                 n_trunk_steep = int(np.count_nonzero(trunk_slice_m))
                 if n_trunk_steep >= 8:
                     ts_idx_pre = idx_arr26[trunk_slice_m]
@@ -1420,8 +1466,12 @@ class CategorizationHeuristicsMixin:
                     ang4_ts = ang2_ts * 2.0
                     r2_ts = float(math.hypot(float(np.mean(np.cos(ang2_ts))), float(np.mean(np.sin(ang2_ts)))))
                     r4_ts = float(math.hypot(float(np.mean(np.cos(ang4_ts))), float(np.mean(np.sin(ang4_ts)))))
-                    # Rule 1: Never Square Pillar (r4 > 0.38, or r4 > 0.30 unless warm/green & r2 <= 0.25) or Planar Wall/Post (r2 > 0.30/0.33)
-                    max_r2_ts = 0.33 if (med_ts_rb >= 0.045 and med_ts_sat >= 0.15) else 0.30
+                    # Rule 1: Never Square Pillar (r4 > 0.38, or r4 > 0.30 unless warm/green & r2 <= 0.25) or Planar Wall/Post (r2 > 0.30/0.33/0.38)
+                    max_r2_ts = (
+                        0.42
+                        if (med_ts_rb >= 0.065 and med_ts_sat >= 0.25 and r4_ts <= 0.18)
+                        else (0.33 if (med_ts_rb >= 0.045 and med_ts_sat >= 0.15) else 0.30)
+                    )
                     if not has_dense_green_crown and (
                         r2_ts > max_r2_ts
                         or r4_ts > 0.38
@@ -1446,7 +1496,7 @@ class CategorizationHeuristicsMixin:
 
                 has_valid_green_crown = (
                     (n_core_grn >= 16 and grn_frac_core >= 0.30 and p75_core_exg >= 0.046)
-                    or (tree_h >= 5.0 and n_grn_26 >= 65 and grn_frac_26 >= 0.42 and n_core_grn >= 10)
+                    or (tree_h >= 4.2 and n_grn_26 >= 65 and grn_frac_26 >= 0.42 and n_core_grn >= 10)
                     or (is_verified_cyl and n_grn_26 >= 24 and grn_frac_26 >= 0.34 and n_core_grn >= 8 and p75_core_exg >= 0.042)
                 )
                 if not has_valid_green_crown:
@@ -1502,7 +1552,10 @@ class CategorizationHeuristicsMixin:
             dbh_method = "none"
             trunk_e, trunk_n = pre_stem_xy if pre_stem_xy is not None else (te, tn)
             if tree_h >= 2.20 and bh_tree is not None:
-                r_bh_q = 0.78 if pre_stem_xy is not None else min(2.2, max(1.05, crown_diam_m * 0.42))
+                if twin_match_d is not None:
+                    r_bh_q = min(0.36, 0.48 * twin_match_d)
+                else:
+                    r_bh_q = 0.78 if pre_stem_xy is not None else min(2.2, max(1.05, crown_diam_m * 0.42))
                 cand_idxs = bh_tree.query_ball_point([trunk_e, trunk_n], r=r_bh_q)
                 if len(cand_idxs) >= 6:
                     pts_local_bh = bh_pts[cand_idxs, :2]
@@ -1510,7 +1563,8 @@ class CategorizationHeuristicsMixin:
                     med_xy = np.median(pts_local_bh, axis=0)
                     rel_xy = pts_local_bh - med_xy
                     dists_bh = np.hypot(rel_xy[:, 0], rel_xy[:, 1])
-                    tight_mask = (dists_bh >= 0.03) & (dists_bh <= 0.72)
+                    max_tight_r = min(0.34, 0.46 * twin_match_d) if twin_match_d is not None else 0.72
+                    tight_mask = (dists_bh >= 0.02) & (dists_bh <= max_tight_r)
                     if np.count_nonzero(tight_mask) >= 6:
                         pts_stem = pts_local_bh[tight_mask]
                         med_xy = np.median(pts_stem, axis=0)
@@ -1581,7 +1635,8 @@ class CategorizationHeuristicsMixin:
                 if n_ts_tight < 8 or n_low_trunk < 3 or n_mid_trunk < 3:
                     continue
                 # Verify 3D chlorophyll crown above centered trunk and reject porch columns, building facade pillars & painted basketball hoop poles
-                cr_fin_m = (dt_fin <= 1.85) & (z_rel_fin >= 1.80) & (z_rel_fin <= tree_h + 1.50)
+                dt_cr = dt_fin
+                cr_fin_m = (dt_cr <= 1.85) & (z_rel_fin >= 1.80) & (z_rel_fin <= tree_h + 1.50)
                 if not np.any(cr_fin_m):
                     continue
                 cr_idx = idx_arr26[cr_fin_m]
@@ -1595,13 +1650,13 @@ class CategorizationHeuristicsMixin:
                 med_cr_rb = float(np.median(rb_diff[cr_idx]))
                 if (
                     n_cr_fol < 18
-                    or cr_fol_frac < 0.34
-                    or med_cr_exg < 0.025
+                    or (cr_fol_frac < 0.34 and not (n_cr_fol >= 120 and cr_fol_a >= 2.0 and cr_fol_frac >= 0.30 and med_cr_gb >= 0.025))
+                    or (med_cr_exg < 0.025 and not (n_cr_fol >= 120 and cr_fol_a >= 2.0 and med_cr_gb >= 0.025 and med_cr_exg >= 0.018))
                     or med_cr_rb < -0.055
                     or (med_cr_gb < 0.010 and med_cr_exg < 0.065)
                 ):
                     continue
-                ic_fin_m = (dt_fin <= 1.15) & (z_rel_fin >= 1.90) & (z_rel_fin <= tree_h + 1.50)
+                ic_fin_m = (dt_cr <= 1.15) & (z_rel_fin >= 1.90) & (z_rel_fin <= tree_h + 1.50)
                 if not np.any(ic_fin_m):
                     continue
                 ic_idx = idx_arr26[ic_fin_m]
@@ -1609,12 +1664,13 @@ class CategorizationHeuristicsMixin:
                 n_ic_fol = int(np.count_nonzero(ic_fol))
                 ic_fol_a = float(area_3d[ic_idx[ic_fol]].sum())
                 ic_fol_frac = ic_fol_a / max(float(area_3d[ic_idx].sum()), 1e-5)
-                if n_ic_fol < 5 or ic_fol_a < 0.22 or ic_fol_frac < 0.24:
+                if n_ic_fol < 5 or ic_fol_a < 0.22 or (ic_fol_frac < 0.24 and not (n_ic_fol >= 120 and ic_fol_a >= 1.00 and ic_fol_frac >= 0.20 and med_cr_gb >= 0.025)):
                     continue
                 upper26_m = z_rel_fin >= 2.00
                 if np.any(upper26_m):
                     u26_idx = idx_arr26[upper26_m]
-                    u26_non_fol = ~fol_tri_mask[u26_idx]
+                    # Count only achromatic/cool structural surfaces as building roof soffit or wall facade (never warm brown tree bark/branches)
+                    u26_non_fol = (~fol_tri_mask[u26_idx]) & (sat[u26_idx] < 0.145) & (rb_diff[u26_idx] < 0.045) & (exg[u26_idx] < 0.022)
                     roof_soffit_a = float(area_3d[u26_idx[u26_non_fol & (nz_abs[u26_idx] >= 0.80)]].sum())
                     wall_facade_a = float(area_3d[u26_idx[u26_non_fol & (nz_abs[u26_idx] <= 0.35)]].sum())
                     bldg_to_fol_ratio = (roof_soffit_a + wall_facade_a) / (cr_fol_a + 0.5)
@@ -1639,7 +1695,8 @@ class CategorizationHeuristicsMixin:
                         dbh_method = "trunk_slice_1.3m_hybrid"
                 if dbh_cm <= 0.0:
                     continue
-                ts_fin_m = (dt_fin <= 0.68) & (z_rel_fin >= 0.45) & (z_rel_fin <= 1.90) & (nz_abs[idx_arr26] < 0.48)
+                r_ts_fin = min(0.36, 0.48 * twin_match_d) if twin_match_d is not None else 0.68
+                ts_fin_m = (dt_fin <= r_ts_fin) & (z_rel_fin >= 0.45) & (z_rel_fin <= 1.90) & (nz_abs[idx_arr26] < 0.48)
                 n_ts_fin = int(np.count_nonzero(ts_fin_m))
                 if n_ts_fin > 640:
                     continue
@@ -1678,10 +1735,10 @@ class CategorizationHeuristicsMixin:
                         is_valid_small_park_stem = (
                             not has_grey_concrete_base
                             and is_verified_cyl
-                            and med_fin_rb >= 0.036
-                            and med_fin_exg >= 0.026
-                            and med_fin_sat >= 0.105
-                            and 4 <= n_neck_fin <= 45
+                            and (
+                                (med_fin_rb >= 0.036 and med_fin_exg >= 0.026 and med_fin_sat >= 0.105 and 4 <= n_neck_fin <= 160)
+                                or (med_fin_sat >= 0.120 and med_fin_rb >= 0.030 and r2_ts <= 0.16 and cr_fol_frac >= 0.55 and med_cr_exg >= 0.045 and n_neck_fin >= 18)
+                            )
                         )
                         if not (
                             is_valid_small_park_stem
@@ -1694,7 +1751,10 @@ class CategorizationHeuristicsMixin:
                         ):
                             continue
 
-            nms_dist_m = 1.35 if (pre_stem_xy is not None or tree_h >= 6.0) else 1.85
+            is_confirmed_twin = twin_match_d is not None or any(
+                math.hypot(trunk_e - ts_e, trunk_n - ts_n) <= 0.45 for ts_e, ts_n, _ in twin_stem_centers
+            )
+            nms_dist_m = 0.45 if is_confirmed_twin else (1.35 if (pre_stem_xy is not None or tree_h >= 6.0) else 1.85)
             if any(
                 math.hypot(trunk_e - k["trunk_twd97"][0], trunk_n - k["trunk_twd97"][1]) < nms_dist_m for k in trees_list
             ):
@@ -2532,6 +2592,23 @@ class CategorizationHeuristicsMixin:
                     ec["count"] = len(stockpiles_list)
 
         summary_kpi["trees_ai_verified_count"] = sum(1 for t in trees_list if t.get("ai_vision_verified"))
+        scan_disp_name = str(scan.get("name") or scan_id)
+        fin_t_cnt = int(summary_kpi.get("trees_count") or 0)
+        fin_m_dbh = float(summary_kpi.get("trees_mean_dbh_cm") or 0.0)
+        fin_max_dbh = float(summary_kpi.get("trees_max_dbh_cm") or 0.0)
+        fin_m_h = float(summary_kpi.get("trees_mean_height_m") or 0.0)
+        fin_can_a = float(summary_kpi.get("trees_canopy_area_m2") or 0.0)
+        fin_ai_v = int(summary_kpi.get("trees_ai_verified_count") or 0)
+        clean_summary_zh = (
+            f"【AI 3D 樹幹圓柱斷面與地面實景照片判釋】本測區（{scan_disp_name}）經 TWD97 局部裸地 DTM 分離、1.3m 胸高樹幹圓柱斷面切片（No Trunk = No Tree）與行動裝置 RTK 實景照片雙視角驗證："
+            f"共確認具實體樹幹之喬木 {fin_t_cnt} 棵（AI 視覺驗證 {fin_ai_v} 棵），1.3m 胸高斷面 Pratt 圓擬合平均胸徑 DBH {fin_m_dbh:.1f} cm（最大胸徑 {fin_max_dbh:.1f} cm）、"
+            f"平均樹高 {fin_m_h:.1f} m、樹冠投影總面積 {fin_can_a:,.1f} m²（已自動排除建築廊柱、街燈桿、號誌桿與圍牆結構）。"
+        )
+        clean_summary_en = (
+            f"[Gemini Vision + 3D Trunk Cylinder & Ground Photo Referee] Local bare-earth DTM separation, strict 1.3m breast-height trunk cylinder slicing ('No Trunk = No Tree'), and dual-angle RTK mobile photo verification on '{scan_disp_name}' "
+            f"confirmed {fin_t_cnt} standing tree(s) ({fin_ai_v} AI vision verified) with mean 1.3m DBH {fin_m_dbh:.1f} cm (max DBH {fin_max_dbh:.1f} cm via anti-webbing Pratt circle fit), "
+            f"mean tree height {fin_m_h:.1f} m, and total canopy footprint {fin_can_a:,.1f} m² (automatically excluding building columns, lamp posts, utility poles, and walls)."
+        )
 
         # Apply Gemini-verified semantic subtype & labels to roads_list, water_list, and categories_breakdown
         ai_road_subtype = str(ai_info.get("road_corridor_subtype") or "paved_asphalt_concrete").strip()
@@ -2589,8 +2666,8 @@ class CategorizationHeuristicsMixin:
             "generated_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
             "ai_verified": bool(ai_info.get("ai_verified", False)),
             "ai_model": ai_info.get("ai_model", "Gemini 2.5 Flash Multimodal + Ground Photo Referee"),
-            "ai_summary_zh": ai_info.get("ai_summary_zh", ""),
-            "ai_summary_en": ai_info.get("ai_summary_en", ""),
+            "ai_summary_zh": clean_summary_zh,
+            "ai_summary_en": clean_summary_en,
             "road_corridor_subtype": ai_road_subtype,
             "road_corridor_label_zh": ai_road_zh,
             "road_corridor_label_en": ai_road_en,

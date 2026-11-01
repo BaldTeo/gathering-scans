@@ -1132,35 +1132,21 @@ class CategorizationIoMixin:
 
         n_photo_verified = len(photo_matches)
 
+        max_dbh = float(summary_data.get("trees_max_dbh_cm") or 0.0)
+        mean_h = float(summary_data.get("trees_mean_height_m") or 0.0)
+        canopy_a = float(summary_data.get("trees_canopy_area_m2") or 0.0)
+
         def _build_default_summaries(t_cnt: int, m_dbh: float) -> Tuple[str, str]:
-            if water_cnt > 0:
-                d_zh = (
-                    f"【AI 3D 幾何與地面實景照片多模態判釋】本測區（{scan_name}）經 TWD97 局部地形視窗裸地 DTM 分離、3D 樹幹圓柱斷面驗證（No Trunk = No Tree）與 {n_photo_verified} 張行動裝置 RTK 實景照片投影驗證："
-                    f"共識別出道路鋪面 {roads_cnt} 處（平面面積 {road_area:,.1f} m²）、"
-                    f"具實體樹幹之喬木 {t_cnt} 株（1.3m 胸高斷面 Pratt 圓擬合平均胸徑 DBH {m_dbh:.1f} cm）、"
-                    f"水域與未建模水面空洞 {water_cnt} 處（面積 {water_area:,.1f} m²，靜水岸際基準高程 TWVD2001 +{water_lvl:.2f} m）、"
-                    f"以及垂直擋土牆/護岸結構 {walls_cnt} 段（3D 垂直立面面積 {walls_area:,.1f} m²）。"
-                )
-                d_en = (
-                    f"[Gemini Vision + 3D Trunk Cylinder & Ground Photo Referee] Multi-scale local DTM, strict 3D trunk cylinder slicing ('No Trunk = No Tree'), and {n_photo_verified} calibrated mobile phone photo projection(s) on '{scan_name}' "
-                    f"verified {roads_cnt} paved road corridor(s) ({road_area:,.1f} m² planar), "
-                    f"{t_cnt} trunk-verified tree(s) (mean 1.3m breast-height DBH {m_dbh:.1f} cm via anti-webbing Pratt circle fit), "
-                    f"{water_cnt} water basin / un-modelled canal void zone(s) ({water_area:,.1f} m² at hydrostatic shoreline TWVD2001 +{water_lvl:.2f} m), "
-                    f"and {walls_cnt} retaining/structural wall segment(s) ({walls_area:,.1f} m² true 3D vertical face area)."
-                )
-            else:
-                d_zh = (
-                    f"【AI 3D 幾何與地面實景照片多模態判釋】本測區（{scan_name}）經 TWD97 局部地形視窗裸地 DTM 分離、3D 樹幹圓柱斷面驗證（No Trunk = No Tree）與 {n_photo_verified} 張行動裝置 RTK 實景照片投影驗證："
-                    f"共識別出道路與人行步道鋪面 {roads_cnt} 處（平面面積 {road_area:,.1f} m²，已精確扣除草坪與圓形樹穴範圍）、"
-                    f"具實體樹幹之公園與行道喬木 {t_cnt} 株（1.3m 胸高斷面 Pratt 圓擬合平均胸徑 DBH {m_dbh:.1f} cm）、"
-                    f"場區內無水域或河道空洞（0 處），以及垂直擋土牆與建築結構立面 {walls_cnt} 段（3D 垂直立面面積 {walls_area:,.1f} m²）。"
-                )
-                d_en = (
-                    f"[Gemini Vision + 3D Trunk Cylinder & Ground Photo Referee] Multi-scale local DTM, strict 3D trunk cylinder slicing ('No Trunk = No Tree'), and {n_photo_verified} calibrated mobile phone photo projection(s) on '{scan_name}' "
-                    f"verified {roads_cnt} paved road & walkway corridor(s) ({road_area:,.1f} m² planar, excluding turf lawns & tree planters), "
-                    f"{t_cnt} trunk-verified urban & park tree(s) (mean 1.3m breast-height DBH {m_dbh:.1f} cm via anti-webbing Pratt circle fit), "
-                    f"0 water bodies (dry urban/campus/park terrain), and {walls_cnt} retaining/structural wall segment(s) ({walls_area:,.1f} m² true 3D vertical face area)."
-                )
+            d_zh = (
+                f"【AI 3D 樹幹圓柱斷面與地面實景照片判釋】本測區（{scan_name}）經 TWD97 局部裸地 DTM 分離、1.3m 胸高樹幹圓柱斷面切片（No Trunk = No Tree）與行動裝置 RTK 實景照片雙視角驗證："
+                f"共確認具實體樹幹之喬木 {t_cnt} 棵，1.3m 胸高斷面 Pratt 圓擬合平均胸徑 DBH {m_dbh:.1f} cm（最大胸徑 {max_dbh:.1f} cm）、"
+                f"平均樹高 {mean_h:.1f} m、樹冠投影總面積 {canopy_a:,.1f} m²（已自動排除建築廊柱、街燈桿、號誌桿與圍牆結構）。"
+            )
+            d_en = (
+                f"[Gemini Vision + 3D Trunk Cylinder & Ground Photo Referee] Local bare-earth DTM separation, strict 1.3m breast-height trunk cylinder slicing ('No Trunk = No Tree'), and dual-angle RTK mobile photo verification on '{scan_name}' "
+                f"confirmed {t_cnt} standing tree(s) with mean 1.3m DBH {m_dbh:.1f} cm (max DBH {max_dbh:.1f} cm via anti-webbing Pratt circle fit), "
+                f"mean tree height {mean_h:.1f} m, and total canopy footprint {canopy_a:,.1f} m² (automatically excluding building columns, lamp posts, utility poles, and walls)."
+            )
             return d_zh, d_en
 
         default_zh, default_en = _build_default_summaries(trees_cnt, mean_dbh)
@@ -2022,6 +2008,19 @@ class CategorizationIoMixin:
                 cat["planar_area_m2"] = water_planar_total
                 cat["planar_area_ping"] = round(water_planar_total * 0.3025, 2)
                 cat["surface_area_3d_m2"] = water_planar_total
+        canopy_m2 = round(float(summary_kpi.get("trees_canopy_area_m2") or 0.0), 2)
+        res["ai_summary_zh"] = (
+            f"已完成全區 3D 喬木與 1.3m 樹幹胸徑（DBH）量測分析：\n"
+            f"• 喬木與樹幹胸徑：共識別 {summary_kpi['trees_count']} 株立木，"
+            f"1.3m 處平均胸徑 DBH {summary_kpi['trees_mean_dbh_cm']:.1f} cm（最大 {summary_kpi['trees_max_dbh_cm']:.1f} cm），"
+            f"平均樹高 {summary_kpi['trees_mean_height_m']:.2f} m，樹冠投影面積 {canopy_m2:,.2f} m²。"
+        )
+        res["ai_summary_en"] = (
+            f"Completed 3D Tree & 1.3m Trunk DBH survey:\n"
+            f"• Trees & Trunk DBH: {summary_kpi['trees_count']} trees detected, "
+            f"mean 1.3m DBH {summary_kpi['trees_mean_dbh_cm']:.1f} cm (max {summary_kpi['trees_max_dbh_cm']:.1f} cm), "
+            f"mean height {summary_kpi['trees_mean_height_m']:.2f} m, canopy area {canopy_m2:,.2f} m²."
+        )
         return res
 
     def modify_saved_categorization(self, scan_id: str, payload: Dict[str, Any]) -> Dict[str, Any]:

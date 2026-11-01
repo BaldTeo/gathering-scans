@@ -1,1 +1,4537 @@
-{"ok": true, "status": "ok", "categorization_schema_version": 4, "environment_regime": {"regime": "URBAN_CAMPUS_MULTI_STORY", "modality": "TERRESTRIAL_IPHONE_LIDAR", "footprint_area_m2": 3455.4, "surface_area_3d_m2": 6139.7, "vertical_area_m2": 2552.36, "horizontal_area_m2": 2778.26, "vert_horiz_ratio": 0.919, "vegetation_fraction": 0.678, "relief_z_m": 9.87, "camera_count": 1994}, "has_categorization": true, "saved_on_server": true, "from_server_cache": false, "overlay_visible_default": false, "layer_filters": {"roads": true, "trees": true, "water": true, "walls": true, "stockpiles": true, "buildings": true, "tanks": true, "pipes": true}, "scan_id": "rosepark_20260917_east", "scan_name": "RosePark_260917", "project_group": "Rose Park", "crs": "TWD97 / TM2 zone 121 + TWVD 2001 height - EPSG:3826+8904 [TWGEOID2018h]", "crs_short": "TWD97 (121) + TWVD2001", "anchor_twd97": {"e": 295979.411, "n": 2768494.23, "h": 15.15}, "generated_at": "2026-11-01 14:29:22", "ai_verified": true, "ai_model": "Gemini 3.5 Flash Multimodal + Ground Photo Referee", "ai_summary_zh": "本場區（RosePark_260917）經三維光達與多元影像驗證，包含鋪面道路與步道面積共318.2平方公尺，採用鋪面瀝青與混凝土結構；經辨識確認之健康樹木共22株（平均胸徑21.1公分），並排除14處非樹木偽陽性；場區內無水體（場區無水域），共記錄12處擋土牆與建築立面（垂直面積79.0平方公尺）。", "ai_summary_en": "The site (RosePark_260917) features 318.2 m2 of paved asphalt concrete walkways, 22 vision-verified trees (mean DBH 21.1 cm) with 14 false-positive tags excluded, 0 m2 of water bodies (no water bodies on site), and 12 retaining/building walls covering 79.0 m2 of vertical area.", "road_corridor_subtype": "paved_asphalt_concrete", "road_corridor_label_zh": "鋪面道路與步道", "road_corridor_label_en": "Paved Roads and Walkways", "water_body_label_zh": "無水域", "summary": {"roads_count": 3, "roads_planar_area_m2": 318.18, "roads_planar_area_ping": 96.25, "roads_surface_area_3d_m2": 319.77, "trees_count": 22, "trees_mean_dbh_cm": 20.7, "trees_max_dbh_cm": 29.2, "trees_mean_height_m": 4.95, "trees_canopy_area_m2": 812.41, "water_count": 0, "water_planar_area_m2": 0, "water_planar_area_ping": 0.0, "water_level_twvd2001_m": null, "walls_count": 12, "walls_total_length_m": 47.29, "walls_vertical_area_m2": 79.01, "buildings_count": 0, "water_tanks_count": 0, "pipes_count": 0, "street_furniture_count": 8, "stockpiles_count": 0, "bare_earth_area_m2": 662.72, "grass_area_m2": 1343.43, "revetment_area_3d_m2": 335.15, "clutter_area_m2": 111.98, "total_site_planar_area_m2": 3455.4, "total_site_surface_3d_m2": 6139.7, "grid_resolution_m": 0.25, "triangle_count": 1002521, "trees_ai_verified_count": 22}, "categories_breakdown": [{"key": "roads", "name_zh": "鋪面道路與步道 (Paved Roads and Walkways)", "name_en": "Paved Roads and Walkways", "color": "#f59e0b", "count": 3, "planar_area_m2": 318.18, "planar_area_ping": 96.25, "surface_area_3d_m2": 319.77, "site_share_pct": 9.2}, {"key": "trees", "name_zh": "喬木林冠與胸徑 (Trees & Trunk DBH)", "name_en": "Canopy Trees & 1.3m Trunk DBH", "color": "#10b981", "count": 22, "planar_area_m2": 812.41, "planar_area_ping": 245.75, "surface_area_3d_m2": 2017.92, "site_share_pct": 23.5}, {"key": "water_bodies", "name_zh": "水域與未建模水面空洞 (Water & Voids)", "name_en": "Water Bodies & Un-Modelled Water Voids", "color": "#06b6d4", "count": 0, "planar_area_m2": 0, "planar_area_ping": 0.0, "surface_area_3d_m2": 0, "site_share_pct": 0.0}, {"key": "walls", "name_zh": "擋土牆與垂直結構面 (Retaining/Building Walls)", "name_en": "Retaining & Structural Vertical Walls", "color": "#f43f5e", "count": 12, "planar_area_m2": 16.55, "planar_area_ping": 5.01, "surface_area_3d_m2": 79.01, "site_share_pct": 1.3}, {"key": "bare_earth_stockpiles", "name_zh": "裸露土石/河灘卵石/堆置區 (Bare Earth & Cobble)", "name_en": "Bare Earth, River Cobble & Stockpiles", "color": "#d97706", "count": 0, "planar_area_m2": 662.72, "planar_area_ping": 200.47, "surface_area_3d_m2": 686.31, "site_share_pct": 19.2}, {"key": "low_vegetation_grass", "name_zh": "低矮植生與草坡 (Low Veg & Grass)", "name_en": "Low Vegetation, Shrubs & Grass", "color": "#84cc16", "count": 1, "planar_area_m2": 1343.43, "planar_area_ping": 406.39, "surface_area_3d_m2": 1458.25, "site_share_pct": 38.9}, {"key": "sloped_revetments", "name_zh": "護岸斜坡與人工邊坡 (Sloped Revetments)", "name_en": "Pitched Revetments & Sloped Banks (30°-68°)", "color": "#a855f7", "count": 1, "planar_area_m2": 200.72, "planar_area_ping": 60.72, "surface_area_3d_m2": 335.15, "site_share_pct": 5.8}, {"key": "buildings_structures", "name_zh": "建築屋頂與人造設施 (Buildings & Structures)", "name_en": "Building Roofs & Elevated Structures", "color": "#3b82f6", "count": 1, "planar_area_m2": 35.35, "planar_area_ping": 10.69, "surface_area_3d_m2": 36.4, "site_share_pct": 1.0}, {"key": "water_tanks_and_mep", "name_zh": "儲水塔與管線設施 (Water Tanks & MEP Pipes)", "name_en": "Water Storage Tanks & MEP Piping", "color": "#0284c7", "count": 0, "planar_area_m2": 0, "planar_area_ping": 0.0, "surface_area_3d_m2": 0, "site_share_pct": 0.0}, {"key": "drainage_curbs", "name_zh": "排水邊溝與緣石 (Drainage & Curbs)", "name_en": "Drainage Channels & Road Curbs", "color": "#64748b", "count": 1, "planar_area_m2": 23.63, "planar_area_ping": 7.15, "surface_area_3d_m2": 44.66, "site_share_pct": 0.7}, {"key": "transient_clutter", "name_zh": "施工機具/車輛與雜物 (Vehicles & Clutter)", "name_en": "Vehicles, Equipment & Transient Clutter", "color": "#ec4899", "count": 8, "planar_area_m2": 111.98, "planar_area_ping": 33.87, "surface_area_3d_m2": 564.3, "site_share_pct": 3.2}], "roads": [{"id": "R1", "name": "鋪面道路與步道 R1 (Paved Roads and Walkways)", "subtype": "paved_asphalt_concrete", "planar_area_m2": 185.56, "planar_area_ping": 56.13, "surface_area_3d_m2": 186.49, "perimeter_m": 112.91, "mean_width_m": 3.35, "mean_slope_pct": 7.4, "elongation_ratio": 3.58, "center_twd97": [295991.801, 2768480.429, 7.592], "center_local": [12.39, -7.558, 13.801], "boundary_twd97": [[296001.75, 2768469.916, 6.64], [296001.5, 2768470.523, 6.702], [296000.166, 2768470.75, 6.714], [296000.0, 2768472.023, 6.813], [295998.666, 2768472.25, 6.787], [295998.548, 2768473.5, 6.948], [295997.25, 2768474.794, 7.109], [295995.75, 2768474.604, 7.144], [295994.25, 2768475.598, 7.279], [295991.25, 2768475.354, 7.253], [295989.5, 2768475.897, 7.356], [295988.5, 2768477.773, 7.556], [295985.5, 2768477.897, 7.66], [295984.5, 2768479.051, 7.743], [295981.0, 2768480.394, 7.914], [295978.25, 2768482.801, 8.129], [295976.666, 2768483.25, 8.202], [295976.646, 2768484.0, 8.235], [295977.0, 2768484.886, 8.262], [295978.301, 2768485.25, 8.273], [295978.599, 2768486.0, 8.313], [295978.666, 2768487.25, 8.385], [295980.0, 2768487.476, 8.341], [295981.25, 2768488.893, 8.359], [295981.75, 2768488.227, 8.059], [295983.0, 2768488.084, 8.165], [295983.227, 2768486.75, 8.068], [295984.0, 2768486.45, 8.047], [295986.5, 2768487.146, 8.269], [295990.0, 2768485.856, 8.133], [295990.353, 2768485.5, 8.112], [295990.393, 2768485.25, 8.104], [295989.653, 2768484.5, 8.047], [295989.75, 2768482.977, 7.878], [295991.75, 2768483.643, 7.894], [295992.5, 2768483.401, 7.863], [295993.75, 2768483.477, 7.764], [295994.25, 2768484.143, 7.856], [295995.853, 2768483.0, 7.783], [295995.75, 2768481.916, 7.743], [295994.0, 2768481.274, 7.755], [295993.477, 2768479.0, 7.54], [295995.75, 2768479.393, 7.498], [295998.25, 2768478.584, 7.351], [295998.334, 2768477.75, 7.327], [295997.25, 2768477.316, 7.334], [295997.153, 2768476.5, 7.293], [295998.75, 2768475.2, 7.108], [296000.5, 2768475.727, 7.057], [296001.0, 2768477.259, 7.084], [296003.25, 2768476.202, 6.967], [296007.5, 2768480.104, 6.881], [296011.5, 2768479.853, 6.705], [296011.853, 2768479.5, 6.685], [296012.0, 2768478.977, 6.623], [296012.834, 2768478.75, 6.635], [296012.75, 2768477.166, 6.527], [296010.75, 2768477.798, 6.771], [296005.25, 2768474.397, 6.85], [296001.75, 2768475.023, 7.009], [296001.651, 2768472.0, 6.809], [296002.393, 2768470.25, 6.67], [296001.75, 2768469.916, 6.64]], "boundary_local": [[22.339, -8.51, 24.314], [22.089, -8.448, 23.707], [20.755, -8.436, 23.48], [20.589, -8.337, 22.207], [19.255, -8.363, 21.98], [19.137, -8.202, 20.73], [17.839, -8.041, 19.436], [16.339, -8.006, 19.626], [14.839, -7.871, 18.632], [11.839, -7.897, 18.876], [10.089, -7.794, 18.333], [9.089, -7.594, 16.457], [6.089, -7.49, 16.333], [5.089, -7.407, 15.179], [1.589, -7.236, 13.836], [-1.161, -7.021, 11.429], [-2.745, -6.948, 10.98], [-2.765, -6.915, 10.23], [-2.411, -6.888, 9.344], [-1.11, -6.877, 8.98], [-0.812, -6.837, 8.23], [-0.745, -6.765, 6.98], [0.589, -6.809, 6.754], [1.839, -6.791, 5.337], [2.339, -7.091, 6.003], [3.589, -6.985, 6.146], [3.816, -7.082, 7.48], [4.589, -7.103, 7.78], [7.089, -6.881, 7.084], [10.589, -7.017, 8.374], [10.942, -7.038, 8.73], [10.982, -7.046, 8.98], [10.242, -7.103, 9.73], [10.339, -7.272, 11.253], [12.339, -7.256, 10.587], [13.089, -7.287, 10.829], [14.339, -7.386, 10.753], [14.839, -7.294, 10.087], [16.442, -7.367, 11.23], [16.339, -7.407, 12.314], [14.589, -7.395, 12.956], [14.066, -7.61, 15.23], [16.339, -7.652, 14.837], [18.839, -7.799, 15.646], [18.923, -7.823, 16.48], [17.839, -7.816, 16.914], [17.742, -7.857, 17.73], [19.339, -8.042, 19.03], [21.089, -8.093, 18.503], [21.589, -8.066, 16.971], [23.839, -8.183, 18.028], [28.089, -8.269, 14.126], [32.089, -8.445, 14.377], [32.442, -8.465, 14.73], [32.589, -8.527, 15.253], [33.423, -8.515, 15.48], [33.339, -8.623, 17.064], [31.339, -8.379, 16.432], [25.839, -8.3, 19.833], [22.339, -8.141, 19.207], [22.24, -8.341, 22.23], [22.982, -8.48, 23.98], [22.339, -8.51, 24.314]], "holes_twd97": [[[295990.0, 2768478.683, 7.581], [295988.933, 2768479.75, 7.705], [295989.648, 2768481.25, 7.822], [295991.0, 2768481.351, 7.821], [295991.101, 2768481.25, 7.821], [295991.144, 2768481.0, 7.804], [295991.145, 2768480.75, 7.784], [295991.112, 2768479.75, 7.687], [295990.0, 2768478.683, 7.581]]], "holes_local": [[[10.589, -7.569, 15.547], [9.522, -7.445, 14.48], [10.237, -7.328, 12.98], [11.589, -7.329, 12.879], [11.69, -7.329, 12.98], [11.733, -7.346, 13.23], [11.734, -7.366, 13.48], [11.701, -7.463, 14.48], [10.589, -7.569, 15.547]]], "verified_photo": "Image_001781.jpg", "verified_photo_uv": [0.2952, 0.5483], "verified_photo_dist_m": 8.64, "verified_photo_angles": 2, "second_verified_photo": "Image_001768.jpg", "ai_photo_verified": true, "label_zh": "鋪面道路與步道", "label_en": "Paved Roads and Walkways"}, {"id": "R2", "name": "鋪面道路與步道 R2 (Paved Roads and Walkways)", "subtype": "paved_asphalt_concrete", "planar_area_m2": 68.5, "planar_area_ping": 20.72, "surface_area_3d_m2": 68.84, "perimeter_m": 62.61, "mean_width_m": 2.5, "mean_slope_pct": 5.1, "elongation_ratio": 3.34, "center_twd97": [295977.183, 2768522.395, 10.257], "center_local": [-2.228, -4.893, -28.165], "boundary_twd97": [[295971.0, 2768516.165, 10.113], [295970.5, 2768516.801, 10.136], [295969.416, 2768517.25, 10.134], [295969.298, 2768519.5, 10.353], [295968.665, 2768520.0, 10.402], [295968.604, 2768521.0, 10.438], [295969.75, 2768522.585, 10.45], [295971.0, 2768522.7, 10.425], [295971.5, 2768522.949, 10.423], [295971.798, 2768523.25, 10.439], [295972.0, 2768523.834, 10.456], [295975.25, 2768524.202, 10.394], [295975.548, 2768524.5, 10.422], [295975.75, 2768525.084, 10.447], [295977.25, 2768525.202, 10.38], [295978.0, 2768525.856, 10.412], [295978.5, 2768526.009, 10.394], [295979.0, 2768525.403, 10.356], [295981.0, 2768525.834, 10.332], [295981.25, 2768524.727, 10.241], [295982.25, 2768524.653, 10.206], [295982.75, 2768525.834, 10.284], [295985.5, 2768526.395, 10.213], [295985.898, 2768525.25, 10.193], [295985.477, 2768523.25, 10.105], [295986.846, 2768522.75, 10.023], [295988.5, 2768521.474, 9.789], [295990.0, 2768521.334, 9.718], [295990.0, 2768520.31, 9.67], [295989.0, 2768520.987, 9.742], [295987.75, 2768520.172, 9.828], [295986.5, 2768522.293, 10.01], [295986.25, 2768522.361, 10.022], [295985.5, 2768522.273, 10.043], [295985.25, 2768521.416, 9.988], [295984.5, 2768521.397, 10.015], [295982.75, 2768523.275, 10.159], [295982.0, 2768523.599, 10.192], [295981.25, 2768523.548, 10.209], [295978.0, 2768522.023, 10.225], [295977.75, 2768521.416, 10.229], [295972.5, 2768519.773, 10.273], [295972.151, 2768518.75, 10.241], [295972.103, 2768516.75, 10.12], [295971.0, 2768516.165, 10.113]], "boundary_local": [[-8.411, -5.037, -21.935], [-8.911, -5.014, -22.571], [-9.995, -5.016, -23.02], [-10.113, -4.797, -25.27], [-10.746, -4.748, -25.77], [-10.807, -4.712, -26.77], [-9.661, -4.7, -28.355], [-8.411, -4.725, -28.47], [-7.911, -4.727, -28.719], [-7.613, -4.711, -29.02], [-7.411, -4.694, -29.604], [-4.161, -4.756, -29.972], [-3.863, -4.728, -30.27], [-3.661, -4.703, -30.854], [-2.161, -4.77, -30.972], [-1.411, -4.738, -31.626], [-0.911, -4.756, -31.779], [-0.411, -4.794, -31.173], [1.589, -4.818, -31.604], [1.839, -4.909, -30.497], [2.839, -4.944, -30.423], [3.339, -4.866, -31.604], [6.089, -4.937, -32.165], [6.487, -4.957, -31.02], [6.066, -5.045, -29.02], [7.435, -5.127, -28.52], [9.089, -5.361, -27.244], [10.589, -5.432, -27.104], [10.589, -5.48, -26.08], [9.589, -5.408, -26.757], [8.339, -5.322, -25.942], [7.089, -5.14, -28.063], [6.839, -5.128, -28.131], [6.089, -5.107, -28.043], [5.839, -5.162, -27.186], [5.089, -5.135, -27.167], [3.339, -4.991, -29.045], [2.589, -4.958, -29.369], [1.839, -4.941, -29.318], [-1.411, -4.925, -27.793], [-1.661, -4.921, -27.186], [-6.911, -4.877, -25.543], [-7.26, -4.909, -24.52], [-7.308, -5.03, -22.52], [-8.411, -5.037, -21.935]], "holes_twd97": [], "holes_local": [], "verified_photo": "Image_000897.jpg", "verified_photo_uv": [0.5047, 0.5335], "verified_photo_dist_m": 5.44, "verified_photo_angles": 2, "second_verified_photo": "Image_000794.jpg", "ai_photo_verified": true, "label_zh": "鋪面道路與步道", "label_en": "Paved Roads and Walkways"}, {"id": "R3", "name": "鋪面道路與步道 R3 (Paved Roads and Walkways)", "subtype": "paved_asphalt_concrete", "planar_area_m2": 64.12, "planar_area_ping": 19.4, "surface_area_3d_m2": 64.44, "perimeter_m": 45.94, "mean_width_m": 2.92, "mean_slope_pct": 5.8, "elongation_ratio": 2.04, "center_twd97": [295990.11, 2768505.945, 9.003], "center_local": [10.699, -6.147, -11.715], "boundary_twd97": [[295994.25, 2768500.665, 8.718], [295993.25, 2768502.275, 8.808], [295991.25, 2768502.609, 8.929], [295990.75, 2768504.847, 9.021], [295988.5, 2768504.108, 9.078], [295988.0, 2768504.773, 9.083], [295987.75, 2768504.847, 9.082], [295987.0, 2768504.8, 9.075], [295986.476, 2768504.5, 9.064], [295986.01, 2768502.5, 9.054], [295985.5, 2768502.663, 9.059], [295985.273, 2768503.75, 9.048], [295984.25, 2768503.916, 9.047], [295984.166, 2768504.0, 9.05], [295984.105, 2768504.25, 9.054], [295984.023, 2768505.0, 9.065], [295981.897, 2768506.0, 9.219], [295981.669, 2768507.0, 9.326], [295982.75, 2768507.398, 9.167], [295984.5, 2768506.728, 9.11], [295984.647, 2768507.25, 9.158], [295985.0, 2768507.603, 9.158], [295988.0, 2768508.973, 9.139], [295989.25, 2768510.834, 9.138], [295990.25, 2768510.834, 9.137], [295990.477, 2768509.75, 9.108], [295992.75, 2768508.656, 9.052], [295996.853, 2768503.75, 8.557], [295996.834, 2768502.5, 8.588], [295996.0, 2768502.146, 8.633], [295995.0, 2768502.023, 8.671], [295994.834, 2768500.75, 8.688], [295994.25, 2768500.665, 8.718]], "boundary_local": [[14.839, -6.432, -6.435], [13.839, -6.342, -8.045], [11.839, -6.221, -8.379], [11.339, -6.129, -10.617], [9.089, -6.072, -9.878], [8.589, -6.067, -10.543], [8.339, -6.068, -10.617], [7.589, -6.075, -10.57], [7.065, -6.086, -10.27], [6.599, -6.096, -8.27], [6.089, -6.091, -8.433], [5.862, -6.102, -9.52], [4.839, -6.103, -9.686], [4.755, -6.1, -9.77], [4.694, -6.096, -10.02], [4.612, -6.085, -10.77], [2.486, -5.931, -11.77], [2.258, -5.824, -12.77], [3.339, -5.983, -13.168], [5.089, -6.04, -12.498], [5.236, -5.992, -13.02], [5.589, -5.992, -13.373], [8.589, -6.011, -14.743], [9.839, -6.012, -16.604], [10.839, -6.013, -16.604], [11.066, -6.042, -15.52], [13.339, -6.098, -14.426], [17.442, -6.593, -9.52], [17.423, -6.562, -8.27], [16.589, -6.517, -7.916], [15.589, -6.479, -7.793], [15.423, -6.462, -6.52], [14.839, -6.432, -6.435]], "holes_twd97": [], "holes_local": [], "verified_photo": "Image_000224.jpg", "verified_photo_uv": [0.5721, 0.5978], "verified_photo_dist_m": 8.69, "ai_photo_verified": true, "los_unoccluded": true, "label_zh": "鋪面道路與步道", "label_en": "Paved Roads and Walkways"}], "trees": [{"id": "T1", "name": "喬木 T1", "height_m": 9.76, "dbh_cm": 19.6, "dbh_method": "pratt_circle_1.3m_slice", "trunk_verified_3d": true, "trunk_triangle_count": 85, "ai_vision_verified": true, "ai_vision_label": "large park tree trunk", "object_seen": "large park tree trunk", "crown_diameter_m": 5.51, "crown_area_m2": 23.84, "ground_elevation_m": 7.983, "top_elevation_m": 17.743, "trunk_twd97": [295977.844, 2768481.535, 7.983], "trunk_local": [-1.567, -7.167, 12.695], "verified_photo": "Image_001653.jpg", "verified_photo_uv": [0.5195, 0.4613], "verified_photo_dist_m": 4.41, "verified_photo_angles": 2, "second_verified_photo": "Image_001659.jpg", "ai_photo_verified": true}, {"id": "T2", "name": "喬木 T2", "height_m": 6.95, "dbh_cm": 24.7, "dbh_method": "pratt_circle_1.3m_slice", "trunk_verified_3d": true, "trunk_triangle_count": 32, "ai_vision_verified": true, "ai_vision_label": "park tree trunk and canopy", "object_seen": "park tree trunk and canopy", "crown_diameter_m": 4.62, "crown_area_m2": 16.76, "ground_elevation_m": 8.651, "top_elevation_m": 15.601, "trunk_twd97": [295972.76, 2768489.604, 8.651], "trunk_local": [-6.651, -6.499, 4.626], "verified_photo": "Image_001404.jpg", "verified_photo_uv": [0.3843, 0.3821], "verified_photo_dist_m": 8.61, "verified_photo_angles": 2, "second_verified_photo": "Image_001271.jpg", "ai_photo_verified": true}, {"id": "T3", "name": "喬木 T3", "height_m": 6.09, "dbh_cm": 29.2, "dbh_method": "pratt_allometric_hybrid", "trunk_verified_3d": true, "trunk_triangle_count": 301, "ai_vision_verified": true, "ai_vision_label": "slanted park tree trunk", "object_seen": "slanted park tree trunk", "crown_diameter_m": 4.22, "crown_area_m2": 13.99, "ground_elevation_m": 11.134, "top_elevation_m": 17.224, "trunk_twd97": [295976.35, 2768542.678, 11.134], "trunk_local": [-3.061, -4.016, -48.448], "verified_photo": "Image_000532.jpg", "verified_photo_uv": [0.1025, 0.2374], "verified_photo_dist_m": 10.64, "verified_photo_angles": 2, "second_verified_photo": "Image_000687.jpg", "ai_photo_verified": true}, {"id": "T4", "name": "喬木 T4", "height_m": 5.97, "dbh_cm": 23.4, "dbh_method": "pratt_circle_1.3m_slice", "trunk_verified_3d": true, "trunk_triangle_count": 247, "ai_vision_verified": true, "ai_vision_label": "mature park tree trunk", "object_seen": "mature park tree trunk", "crown_diameter_m": 3.98, "crown_area_m2": 12.44, "ground_elevation_m": 6.894, "top_elevation_m": 12.864, "trunk_twd97": [295993.554, 2768470.59, 6.894], "trunk_local": [14.143, -8.256, 23.64], "verified_photo": "Image_001801.jpg", "verified_photo_uv": [0.4663, 0.5523], "verified_photo_dist_m": 7.32, "verified_photo_angles": 2, "second_verified_photo": "Image_001806.jpg", "ai_photo_verified": true}, {"id": "T5", "name": "喬木 T5", "height_m": 5.82, "dbh_cm": 27.9, "dbh_method": "pratt_allometric_hybrid", "trunk_verified_3d": true, "trunk_triangle_count": 226, "ai_vision_verified": true, "ai_vision_label": "forested park tree trunk", "object_seen": "forested park tree trunk", "crown_diameter_m": 3.44, "crown_area_m2": 9.29, "ground_elevation_m": 11.175, "top_elevation_m": 16.995, "trunk_twd97": [295970.68, 2768539.49, 11.175], "trunk_local": [-8.731, -3.975, -45.26], "verified_photo": "Image_000689.jpg", "verified_photo_uv": [0.4494, 0.3552], "verified_photo_dist_m": 20.32, "verified_photo_angles": 2, "second_verified_photo": "Image_000879.jpg", "ai_photo_verified": true}, {"id": "T6", "name": "喬木 T6", "height_m": 5.6, "dbh_cm": 23.0, "dbh_method": "trunk_slice_1.3m_hybrid", "trunk_verified_3d": true, "trunk_triangle_count": 84, "ai_vision_verified": true, "ai_vision_label": "Young park tree trunk", "object_seen": "Young park tree trunk", "crown_diameter_m": 4.35, "crown_area_m2": 14.86, "ground_elevation_m": 8.989, "top_elevation_m": 14.589, "trunk_twd97": [295966.939, 2768491.286, 8.989], "trunk_local": [-12.472, -6.161, 2.944], "verified_photo": "Image_001395.jpg", "verified_photo_uv": [0.5698, 0.3627], "verified_photo_dist_m": 4.73, "verified_photo_angles": 2, "second_verified_photo": "Image_001296.jpg", "ai_photo_verified": true}, {"id": "T7", "name": "喬木 T7", "height_m": 5.31, "dbh_cm": 25.5, "dbh_method": "pratt_allometric_hybrid", "trunk_verified_3d": true, "trunk_triangle_count": 373, "ai_vision_verified": true, "ai_vision_label": "Mature banyan tree trunk", "object_seen": "Mature banyan tree trunk", "crown_diameter_m": 3.45, "crown_area_m2": 9.35, "ground_elevation_m": 9.048, "top_elevation_m": 14.358, "trunk_twd97": [295984.454, 2768498.91, 9.048], "trunk_local": [5.043, -6.102, -4.68], "verified_photo": "Image_000025.jpg", "verified_photo_uv": [0.5103, 0.395], "verified_photo_dist_m": 8.88, "verified_photo_angles": 2, "second_verified_photo": "Image_000225.jpg", "ai_photo_verified": true}, {"id": "T8", "name": "喬木 T8", "height_m": 5.0, "dbh_cm": 24.0, "dbh_method": "pratt_allometric_hybrid", "trunk_verified_3d": true, "trunk_triangle_count": 380, "ai_vision_verified": true, "ai_vision_label": "Park tree trunk near playground", "object_seen": "Park tree trunk near playground", "crown_diameter_m": 2.38, "crown_area_m2": 4.45, "ground_elevation_m": 9.085, "top_elevation_m": 14.085, "trunk_twd97": [295982.302, 2768502.735, 9.085], "trunk_local": [2.891, -6.065, -8.505], "verified_photo": "Image_000027.jpg", "verified_photo_uv": [0.4482, 0.4235], "verified_photo_dist_m": 6.25, "verified_photo_angles": 2, "second_verified_photo": "Image_000813.jpg", "ai_photo_verified": true}, {"id": "T9", "name": "喬木 T9", "height_m": 5.0, "dbh_cm": 24.0, "dbh_method": "pratt_allometric_hybrid", "trunk_verified_3d": true, "trunk_triangle_count": 230, "ai_vision_verified": true, "ai_vision_label": "Dense park woodland tree trunk", "object_seen": "Dense park woodland tree trunk", "crown_diameter_m": 3.61, "crown_area_m2": 10.24, "ground_elevation_m": 11.625, "top_elevation_m": 16.625, "trunk_twd97": [295964.098, 2768542.846, 11.625], "trunk_local": [-15.313, -3.525, -48.616], "verified_photo": "Image_000690.jpg", "verified_photo_uv": [0.5861, 0.3669], "verified_photo_dist_m": 27.48, "verified_photo_angles": 1, "second_verified_photo": null, "ai_photo_verified": true}, {"id": "T10", "name": "喬木 T10", "height_m": 4.92, "dbh_cm": 23.6, "dbh_method": "pratt_allometric_hybrid", "trunk_verified_3d": true, "trunk_triangle_count": 237, "ai_vision_verified": true, "ai_vision_label": "Park tree trunk in grove", "object_seen": "Park tree trunk in grove", "crown_diameter_m": 1.49, "crown_area_m2": 1.75, "ground_elevation_m": 11.067, "top_elevation_m": 15.987, "trunk_twd97": [295965.488, 2768536.483, 11.067], "trunk_local": [-13.923, -4.083, -42.253], "verified_photo": "Image_000693.jpg", "verified_photo_uv": [0.6776, 0.3967], "verified_photo_dist_m": 22.02, "verified_photo_angles": 2, "second_verified_photo": "Image_000842.jpg", "ai_photo_verified": true}, {"id": "T11", "name": "喬木 T11", "height_m": 4.92, "dbh_cm": 23.6, "dbh_method": "trunk_slice_1.3m_hybrid", "trunk_verified_3d": true, "trunk_triangle_count": 287, "ai_vision_verified": true, "ai_vision_label": "Thin park tree trunk near building wall", "object_seen": "Thin park tree trunk near building wall", "crown_diameter_m": 2.06, "crown_area_m2": 3.33, "ground_elevation_m": 9.942, "top_elevation_m": 14.862, "trunk_twd97": [295987.554, 2768524.011, 9.942], "trunk_local": [8.143, -5.208, -29.781], "verified_photo": "Image_000362.jpg", "verified_photo_uv": [0.5488, 0.4477], "verified_photo_dist_m": 6.06, "verified_photo_angles": 2, "second_verified_photo": "Image_000381.jpg", "ai_photo_verified": true}, {"id": "T12", "name": "喬木 T12", "height_m": 4.67, "dbh_cm": 22.4, "dbh_method": "pratt_circle_1.3m_slice", "trunk_verified_3d": true, "trunk_triangle_count": 334, "ai_vision_verified": true, "ai_vision_label": "Park tree trunk in grove", "object_seen": "Park tree trunk in grove", "crown_diameter_m": 3.71, "crown_area_m2": 10.81, "ground_elevation_m": 10.714, "top_elevation_m": 15.384, "trunk_twd97": [295980.371, 2768534.178, 10.714], "trunk_local": [0.96, -4.436, -39.948], "verified_photo": "Image_000689.jpg", "verified_photo_uv": [0.6619, 0.3643], "verified_photo_dist_m": 9.71, "verified_photo_angles": 2, "second_verified_photo": "Image_000874.jpg", "ai_photo_verified": true}, {"id": "T13", "name": "喬木 T13", "height_m": 4.56, "dbh_cm": 21.9, "dbh_method": "pratt_allometric_hybrid", "trunk_verified_3d": true, "trunk_triangle_count": 301, "ai_vision_verified": true, "ai_vision_label": "Park tree trunk in forest", "object_seen": "Park tree trunk in forest", "crown_diameter_m": 3.85, "crown_area_m2": 11.64, "ground_elevation_m": 10.762, "top_elevation_m": 15.322, "trunk_twd97": [295976.437, 2768533.878, 10.762], "trunk_local": [-2.974, -4.388, -39.648], "verified_photo": "Image_000690.jpg", "verified_photo_uv": [0.598, 0.3848], "verified_photo_dist_m": 12.21, "verified_photo_angles": 2, "second_verified_photo": "Image_000877.jpg", "ai_photo_verified": true}, {"id": "T14", "name": "喬木 T14", "height_m": 4.43, "dbh_cm": 21.3, "dbh_method": "pratt_allometric_hybrid", "trunk_verified_3d": true, "trunk_triangle_count": 174, "ai_vision_verified": true, "ai_vision_label": "Park tree trunk near bench", "object_seen": "Park tree trunk near bench", "crown_diameter_m": 1.17, "crown_area_m2": 1.08, "ground_elevation_m": 11.416, "top_elevation_m": 15.846, "trunk_twd97": [295963.183, 2768539.11, 11.416], "trunk_local": [-16.228, -3.734, -44.88], "verified_photo": "Image_000690.jpg", "verified_photo_uv": [0.4578, 0.3769], "verified_photo_dist_m": 26.23, "verified_photo_angles": 2, "second_verified_photo": "Image_000842.jpg", "ai_photo_verified": true}, {"id": "T15", "name": "喬木 T15", "height_m": 4.25, "dbh_cm": 20.4, "dbh_method": "pratt_allometric_hybrid", "trunk_verified_3d": true, "trunk_triangle_count": 625, "ai_vision_verified": true, "ai_vision_label": "Large park tree trunk near playground", "object_seen": "Large park tree trunk near playground", "crown_diameter_m": 3.36, "crown_area_m2": 8.87, "ground_elevation_m": 7.436, "top_elevation_m": 11.686, "trunk_twd97": [295987.831, 2768475.493, 7.436], "trunk_local": [8.42, -7.714, 18.737], "verified_photo": "Image_001770.jpg", "verified_photo_uv": [0.513, 0.5445], "verified_photo_dist_m": 4.5, "verified_photo_angles": 2, "second_verified_photo": "Image_001766.jpg", "ai_photo_verified": true}, {"id": "T16", "name": "喬木 T16", "height_m": 4.16, "dbh_cm": 8.0, "dbh_method": "pratt_circle_1.3m_slice", "trunk_verified_3d": true, "trunk_triangle_count": 85, "ai_vision_verified": true, "ai_vision_label": "Mature tree trunk in park walkway", "object_seen": "Mature tree trunk in park walkway", "crown_diameter_m": 3.54, "crown_area_m2": 9.84, "ground_elevation_m": 7.287, "top_elevation_m": 11.447, "trunk_twd97": [295989.457, 2768475.097, 7.287], "trunk_local": [10.046, -7.863, 19.133], "verified_photo": "Image_001776.jpg", "verified_photo_uv": [0.4496, 0.4866], "verified_photo_dist_m": 5.22, "verified_photo_angles": 2, "second_verified_photo": "Image_001784.jpg", "ai_photo_verified": true}, {"id": "T17", "name": "喬木 T17", "height_m": 4.03, "dbh_cm": 19.3, "dbh_method": "pratt_allometric_hybrid", "trunk_verified_3d": true, "trunk_triangle_count": 25, "ai_vision_verified": true, "ai_vision_label": "Park tree foliage and branches", "object_seen": "Park tree foliage and branches", "crown_diameter_m": 3.43, "crown_area_m2": 9.24, "ground_elevation_m": 11.754, "top_elevation_m": 15.784, "trunk_twd97": [295943.345, 2768509.117, 11.754], "trunk_local": [-36.066, -3.396, -14.887], "verified_photo": "Image_001231.jpg", "verified_photo_uv": [0.5287, 0.3923], "verified_photo_dist_m": 31.24, "verified_photo_angles": 2, "second_verified_photo": "Image_001240.jpg", "ai_photo_verified": true}, {"id": "T18", "name": "喬木 T18", "height_m": 3.87, "dbh_cm": 15.0, "dbh_method": "pratt_circle_1.3m_slice", "trunk_verified_3d": true, "trunk_triangle_count": 199, "ai_vision_verified": true, "ai_vision_label": "Street tree trunk with green canopy", "object_seen": "Street tree trunk with green canopy", "crown_diameter_m": 3.29, "crown_area_m2": 8.5, "ground_elevation_m": 7.704, "top_elevation_m": 11.574, "trunk_twd97": [295984.035, 2768477.05, 7.704], "trunk_local": [4.624, -7.446, 17.18], "verified_photo": "Image_001671.jpg", "verified_photo_uv": [0.483, 0.5329], "verified_photo_dist_m": 4.79, "verified_photo_angles": 2, "second_verified_photo": "Image_001746.jpg", "ai_photo_verified": true}, {"id": "T19", "name": "喬木 T19", "height_m": 3.85, "dbh_cm": 17.3, "dbh_method": "trunk_slice_1.3m_hybrid", "trunk_verified_3d": true, "trunk_triangle_count": 197, "ai_vision_verified": true, "ai_vision_label": "Slender tree trunk in park grove", "object_seen": "Slender tree trunk in park grove", "crown_diameter_m": 3.27, "crown_area_m2": 8.4, "ground_elevation_m": 10.999, "top_elevation_m": 14.849, "trunk_twd97": [295974.308, 2768537.442, 10.999], "trunk_local": [-5.103, -4.151, -43.212], "verified_photo": "Image_000689.jpg", "verified_photo_uv": [0.4937, 0.3574], "verified_photo_dist_m": 16.24, "verified_photo_angles": 2, "second_verified_photo": "Image_000877.jpg", "ai_photo_verified": true}, {"id": "T20", "name": "喬木 T20", "height_m": 3.6, "dbh_cm": 17.3, "dbh_method": "pratt_allometric_hybrid", "trunk_verified_3d": true, "trunk_triangle_count": 289, "ai_vision_verified": true, "ai_vision_label": "Mature tree trunk near playground", "object_seen": "Mature tree trunk near playground", "crown_diameter_m": 3.06, "crown_area_m2": 7.35, "ground_elevation_m": 7.617, "top_elevation_m": 11.217, "trunk_twd97": [295990.16, 2768479.971, 7.617], "trunk_local": [10.749, -7.533, 14.259], "verified_photo": "Image_001771.jpg", "verified_photo_uv": [0.497, 0.4889], "verified_photo_dist_m": 9.35, "verified_photo_angles": 2, "second_verified_photo": "Image_001766.jpg", "ai_photo_verified": true}, {"id": "T21", "name": "喬木 T21", "height_m": 3.21, "dbh_cm": 10.5, "dbh_method": "pratt_circle_1.3m_slice", "trunk_verified_3d": true, "trunk_triangle_count": 36, "ai_vision_verified": true, "ai_vision_label": "Park tree trunk by brick wall", "object_seen": "Park tree trunk by brick wall", "crown_diameter_m": 2.73, "crown_area_m2": 5.85, "ground_elevation_m": 9.234, "top_elevation_m": 12.444, "trunk_twd97": [295992.551, 2768513.827, 9.234], "trunk_local": [13.14, -5.916, -19.597], "verified_photo": "Image_000251.jpg", "verified_photo_uv": [0.4908, 0.4772], "verified_photo_dist_m": 6.91, "verified_photo_angles": 2, "second_verified_photo": "Image_000187.jpg", "ai_photo_verified": true}, {"id": "T22", "name": "喬木 T22", "height_m": 2.86, "dbh_cm": 13.7, "dbh_method": "pratt_allometric_hybrid", "trunk_verified_3d": true, "trunk_triangle_count": 218, "ai_vision_verified": true, "ai_vision_label": "Tree trunk in park walkway", "object_seen": "Tree trunk in park walkway", "crown_diameter_m": 2.43, "crown_area_m2": 4.64, "ground_elevation_m": 10.956, "top_elevation_m": 13.816, "trunk_twd97": [295972.455, 2768536.734, 10.956], "trunk_local": [-6.956, -4.194, -42.504], "verified_photo": "Image_000690.jpg", "verified_photo_uv": [0.5904, 0.3792], "verified_photo_dist_m": 17.12, "verified_photo_angles": 2, "second_verified_photo": "Image_000879.jpg", "ai_photo_verified": true}], "water_bodies": [], "walls": [{"id": "WL1", "name": "擋土牆/垂直牆面 WL1", "subtype": "structural_wall", "length_m": 3.52, "height_m": 6.39, "mean_height_m": 6.39, "max_height_m": 8.7, "vertical_area_m2": 13.21, "coplanarity_rms_m": 0.19, "azimuth_deg": 150.1, "tilt_deg": 4.8, "center_twd97": [296020.945, 2768473.454, 13.599], "center_local": [41.534, -1.551, 20.776], "base_polyline_twd97": [[296020.479, 2768474.263, 13.868], [296020.668, 2768473.887, 14.361], [296020.997, 2768473.314, 15.048], [296021.355, 2768472.67, 15.778], [296021.732, 2768472.021, 15.794]], "top_polyline_twd97": [[296020.479, 2768474.263, 18.295], [296020.668, 2768473.887, 19.072], [296020.997, 2768473.314, 19.512], [296021.355, 2768472.67, 19.298], [296021.732, 2768472.021, 18.09]], "base_polyline_local": [[41.068, -1.282, 19.967], [41.257, -0.789, 20.343], [41.586, -0.102, 20.916], [41.944, 0.628, 21.56], [42.321, 0.644, 22.209]], "top_polyline_local": [[41.068, 3.145, 19.967], [41.257, 3.922, 20.343], [41.586, 4.362, 20.916], [41.944, 4.148, 21.56], [42.321, 2.94, 22.209]], "verified_photo": "Image_001838.jpg", "verified_photo_uv": [0.4606, 0.2466], "verified_photo_dist_m": 18.28, "verified_photo_angles": 2, "second_verified_photo": "Image_001945.jpg", "ai_photo_verified": true}, {"id": "WL2", "name": "擋土牆/垂直牆面 WL2", "subtype": "retaining_wall", "length_m": 5.58, "height_m": 2.0, "mean_height_m": 2.0, "max_height_m": 2.0, "vertical_area_m2": 12.73, "coplanarity_rms_m": 0.1, "azimuth_deg": 61.4, "tilt_deg": 5.4, "center_twd97": [295982.192, 2768519.181, 10.973], "center_local": [2.781, -4.177, -24.951], "base_polyline_twd97": [[295983.822, 2768520.087, 10.366], [295982.984, 2768519.527, 10.604], [295982.022, 2768519.047, 10.721], [295980.972, 2768518.529, 10.529], [295979.775, 2768518.031, 10.427]], "top_polyline_twd97": [[295983.822, 2768520.087, 11.394], [295982.984, 2768519.527, 12.0], [295982.022, 2768519.047, 11.985], [295980.972, 2768518.529, 11.531], [295979.775, 2768518.031, 11.407]], "base_polyline_local": [[4.411, -4.784, -25.857], [3.573, -4.546, -25.297], [2.611, -4.429, -24.817], [1.561, -4.621, -24.299], [0.364, -4.723, -23.801]], "top_polyline_local": [[4.411, -3.756, -25.857], [3.573, -3.15, -25.297], [2.611, -3.165, -24.817], [1.561, -3.619, -24.299], [0.364, -3.743, -23.801]], "verified_photo": "Image_000943.jpg", "verified_photo_uv": [0.5175, 0.4904], "verified_photo_dist_m": 4.05, "verified_photo_angles": 2, "second_verified_photo": "Image_000799.jpg", "ai_photo_verified": true}, {"id": "WL3", "name": "擋土牆/垂直牆面 WL3", "subtype": "retaining_wall", "length_m": 7.97, "height_m": 2.46, "mean_height_m": 2.46, "max_height_m": 3.65, "vertical_area_m2": 11.67, "coplanarity_rms_m": 0.194, "azimuth_deg": 133.6, "tilt_deg": 5.5, "center_twd97": [295977.179, 2768455.536, 13.958], "center_local": [-2.232, -1.192, 38.694], "base_polyline_twd97": [[295980.45, 2768452.972, 12.806], [295978.766, 2768454.201, 13.208], [295977.531, 2768455.153, 13.335], [295976.194, 2768456.481, 13.419], [295975.212, 2768457.401, 13.716]], "top_polyline_twd97": [[295980.45, 2768452.972, 16.456], [295978.766, 2768454.201, 16.756], [295977.531, 2768455.153, 16.77], [295976.194, 2768456.481, 16.768], [295975.212, 2768457.401, 16.765]], "base_polyline_local": [[1.039, -2.344, 41.258], [-0.645, -1.942, 40.029], [-1.88, -1.815, 39.077], [-3.217, -1.731, 37.749], [-4.199, -1.434, 36.829]], "top_polyline_local": [[1.039, 1.306, 41.258], [-0.645, 1.606, 40.029], [-1.88, 1.62, 39.077], [-3.217, 1.618, 37.749], [-4.199, 1.615, 36.829]], "verified_photo": "Image_001708.jpg", "verified_photo_uv": [0.4286, 0.2082], "verified_photo_dist_m": 23.74, "ai_photo_verified": true, "los_unoccluded": true}, {"id": "WL4", "name": "擋土牆/垂直牆面 WL4", "subtype": "retaining_wall", "length_m": 3.57, "height_m": 1.78, "mean_height_m": 1.78, "max_height_m": 1.78, "vertical_area_m2": 6.83, "coplanarity_rms_m": 0.199, "azimuth_deg": 149.7, "tilt_deg": 3.2, "center_twd97": [295977.466, 2768518.567, 10.918], "center_local": [-1.945, -4.232, -24.337], "base_polyline_twd97": [[295976.722, 2768520.074, 10.676], [295976.936, 2768519.366, 10.85], [295977.596, 2768518.509, 10.468], [295977.941, 2768517.885, 10.483], [295978.124, 2768517.575, 10.512]], "top_polyline_twd97": [[295976.722, 2768520.074, 11.995], [295976.936, 2768519.366, 12.63], [295977.596, 2768518.509, 12.248], [295977.941, 2768517.885, 11.624], [295978.124, 2768517.575, 11.615]], "base_polyline_local": [[-2.689, -4.474, -25.844], [-2.475, -4.3, -25.136], [-1.815, -4.682, -24.279], [-1.47, -4.667, -23.655], [-1.287, -4.638, -23.345]], "top_polyline_local": [[-2.689, -3.155, -25.844], [-2.475, -2.52, -25.136], [-1.815, -2.902, -24.279], [-1.47, -3.526, -23.655], [-1.287, -3.535, -23.345]], "verified_photo": "Image_000780.jpg", "verified_photo_uv": [0.5172, 0.4842], "verified_photo_dist_m": 4.05, "ai_photo_verified": true, "los_unoccluded": false}, {"id": "WL5", "name": "擋土牆/垂直牆面 WL5", "subtype": "retaining_wall", "length_m": 3.66, "height_m": 1.86, "mean_height_m": 1.86, "max_height_m": 2.82, "vertical_area_m2": 3.9, "coplanarity_rms_m": 0.231, "azimuth_deg": 132.4, "tilt_deg": 7.0, "center_twd97": [295987.0, 2768449.778, 7.099], "center_local": [7.589, -8.051, 44.452], "base_polyline_twd97": [[295988.379, 2768448.949, 8.629], [295987.906, 2768449.232, 6.914], [295987.085, 2768449.53, 6.633], [295986.178, 2768450.48, 6.768], [295985.866, 2768450.669, 6.935]], "top_polyline_twd97": [[295988.379, 2768448.949, 9.854], [295987.906, 2768449.232, 9.734], [295987.085, 2768449.53, 7.665], [295986.178, 2768450.48, 9.588], [295985.866, 2768450.669, 8.267]], "base_polyline_local": [[8.968, -6.521, 45.281], [8.495, -8.236, 44.998], [7.674, -8.517, 44.7], [6.767, -8.382, 43.75], [6.455, -8.215, 43.561]], "top_polyline_local": [[8.968, -5.296, 45.281], [8.495, -5.416, 44.998], [7.674, -7.485, 44.7], [6.767, -5.562, 43.75], [6.455, -6.883, 43.561]], "verified_photo": "Image_001710.jpg", "verified_photo_uv": [0.4266, 0.4164], "verified_photo_dist_m": 27.47, "ai_photo_verified": true, "los_unoccluded": false}, {"id": "WL6", "name": "擋土牆/垂直牆面 WL6", "subtype": "retaining_wall", "length_m": 3.08, "height_m": 2.34, "mean_height_m": 2.34, "max_height_m": 2.34, "vertical_area_m2": 8.02, "coplanarity_rms_m": 0.123, "azimuth_deg": 150.0, "tilt_deg": 4.2, "center_twd97": [295982.306, 2768516.44, 10.994], "center_local": [2.895, -4.156, -22.21], "base_polyline_twd97": [[295981.753, 2768517.466, 10.578], [295981.813, 2768517.261, 10.539], [295982.293, 2768516.688, 10.488], [295982.556, 2768516.308, 10.398], [295982.807, 2768515.619, 10.266]], "top_polyline_twd97": [[295981.753, 2768517.466, 12.374], [295981.813, 2768517.261, 12.279], [295982.293, 2768516.688, 11.707], [295982.556, 2768516.308, 11.675], [295982.807, 2768515.619, 11.775]], "base_polyline_local": [[2.342, -4.572, -23.236], [2.402, -4.611, -23.031], [2.882, -4.662, -22.458], [3.145, -4.752, -22.078], [3.396, -4.884, -21.389]], "top_polyline_local": [[2.342, -2.776, -23.236], [2.402, -2.871, -23.031], [2.882, -3.443, -22.458], [3.145, -3.475, -22.078], [3.396, -3.375, -21.389]], "verified_photo": "Image_000067.jpg", "verified_photo_uv": [0.4937, 0.6105], "verified_photo_dist_m": 3.38, "ai_photo_verified": true, "los_unoccluded": true}, {"id": "WL7", "name": "擋土牆/垂直牆面 WL7", "subtype": "retaining_wall", "length_m": 2.79, "height_m": 2.42, "mean_height_m": 2.42, "max_height_m": 3.54, "vertical_area_m2": 4.91, "coplanarity_rms_m": 0.089, "azimuth_deg": 150.0, "tilt_deg": 2.4, "center_twd97": [295979.987, 2768509.945, 10.681], "center_local": [0.576, -4.469, -15.715], "base_polyline_twd97": [[295979.423, 2768510.814, 10.18], [295979.556, 2768510.553, 10.742], [295980.032, 2768509.849, 10.281], [295980.453, 2768509.213, 9.891], [295980.632, 2768508.963, 9.86]], "top_polyline_twd97": [[295979.423, 2768510.814, 12.981], [295979.556, 2768510.553, 13.049], [295980.032, 2768509.849, 13.063], [295980.453, 2768509.213, 13.027], [295980.632, 2768508.963, 12.962]], "base_polyline_local": [[0.012, -4.97, -16.584], [0.145, -4.408, -16.323], [0.621, -4.869, -15.619], [1.042, -5.259, -14.983], [1.221, -5.29, -14.733]], "top_polyline_local": [[0.012, -2.169, -16.584], [0.145, -2.101, -16.323], [0.621, -2.087, -15.619], [1.042, -2.123, -14.983], [1.221, -2.188, -14.733]], "verified_photo": "Image_000034.jpg", "verified_photo_uv": [0.395, 0.5684], "verified_photo_dist_m": 7.52, "ai_photo_verified": true, "los_unoccluded": true}, {"id": "WL8", "name": "擋土牆/垂直牆面 WL8", "subtype": "retaining_wall", "length_m": 3.87, "height_m": 1.23, "mean_height_m": 1.23, "max_height_m": 2.02, "vertical_area_m2": 4.77, "coplanarity_rms_m": 0.027, "azimuth_deg": 130.5, "tilt_deg": 3.1, "center_twd97": [295970.004, 2768464.601, 7.905], "center_local": [-9.407, -7.245, 29.629], "base_polyline_twd97": [[295971.276, 2768463.517, 7.865], [295970.909, 2768463.81, 7.938], [295970.082, 2768464.506, 7.95], [295969.341, 2768465.172, 7.896], [295968.972, 2768465.492, 7.95]], "top_polyline_twd97": [[295971.276, 2768463.517, 9.264], [295970.909, 2768463.81, 9.222], [295970.082, 2768464.506, 9.349], [295969.341, 2768465.172, 9.381], [295968.972, 2768465.492, 9.434]], "base_polyline_local": [[-8.135, -7.285, 30.713], [-8.502, -7.212, 30.42], [-9.329, -7.2, 29.724], [-10.07, -7.254, 29.058], [-10.439, -7.2, 28.738]], "top_polyline_local": [[-8.135, -5.886, 30.713], [-8.502, -5.928, 30.42], [-9.329, -5.801, 29.724], [-10.07, -5.769, 29.058], [-10.439, -5.716, 28.738]], "verified_photo": "Image_001688.jpg", "verified_photo_uv": [0.3777, 0.446], "verified_photo_dist_m": 19.58, "ai_photo_verified": true, "los_unoccluded": true}, {"id": "WL9", "name": "擋土牆/垂直牆面 WL9", "subtype": "retaining_wall", "length_m": 3.05, "height_m": 1.37, "mean_height_m": 1.37, "max_height_m": 2.26, "vertical_area_m2": 4.08, "coplanarity_rms_m": 0.063, "azimuth_deg": 122.9, "tilt_deg": 6.3, "center_twd97": [295942.625, 2768488.428, 9.922], "center_local": [-36.786, -5.228, 5.802], "base_polyline_twd97": [[295943.435, 2768487.86, 9.773], [295943.259, 2768487.999, 9.773], [295942.629, 2768488.374, 9.858], [295941.881, 2768488.976, 10.536], [295941.603, 2768489.17, 10.79]], "top_polyline_twd97": [[295943.435, 2768487.86, 11.464], [295943.259, 2768487.999, 11.408], [295942.629, 2768488.374, 11.553], [295941.881, 2768488.976, 11.766], [295941.603, 2768489.17, 11.808]], "base_polyline_local": [[-35.976, -5.377, 6.37], [-36.152, -5.377, 6.231], [-36.782, -5.292, 5.856], [-37.53, -4.614, 5.254], [-37.808, -4.36, 5.06]], "top_polyline_local": [[-35.976, -3.686, 6.37], [-36.152, -3.742, 6.231], [-36.782, -3.597, 5.856], [-37.53, -3.384, 5.254], [-37.808, -3.342, 5.06]], "verified_photo": "Image_001473.jpg", "verified_photo_uv": [0.5321, 0.3784], "verified_photo_dist_m": 18.72, "ai_photo_verified": true, "los_unoccluded": false}, {"id": "WL10", "name": "擋土牆/垂直牆面 WL10", "subtype": "retaining_wall", "length_m": 3.73, "height_m": 1.34, "mean_height_m": 1.34, "max_height_m": 2.21, "vertical_area_m2": 3.44, "coplanarity_rms_m": 0.131, "azimuth_deg": 150.7, "tilt_deg": 4.4, "center_twd97": [295985.792, 2768519.146, 10.485], "center_local": [6.381, -4.665, -24.916], "base_polyline_twd97": [[295985.361, 2768520.034, 10.783], [295985.563, 2768519.706, 10.797], [295985.888, 2768518.752, 10.487], [295986.573, 2768518.067, 10.228], [295986.741, 2768517.504, 10.183]], "top_polyline_twd97": [[295985.361, 2768520.034, 12.178], [295985.563, 2768519.706, 12.199], [295985.888, 2768518.752, 11.36], [295986.573, 2768518.067, 11.965], [295986.741, 2768517.504, 11.403]], "base_polyline_local": [[5.95, -4.367, -25.804], [6.152, -4.353, -25.476], [6.477, -4.663, -24.522], [7.162, -4.922, -23.837], [7.33, -4.967, -23.274]], "top_polyline_local": [[5.95, -2.972, -25.804], [6.152, -2.951, -25.476], [6.477, -3.79, -24.522], [7.162, -3.185, -23.837], [7.33, -3.747, -23.274]], "verified_photo": "Image_001111.jpg", "verified_photo_uv": [0.6505, 0.5902], "verified_photo_dist_m": 2.41, "ai_photo_verified": true, "los_unoccluded": true}, {"id": "WL11", "name": "擋土牆/垂直牆面 WL11", "subtype": "retaining_wall", "length_m": 3.19, "height_m": 2.48, "mean_height_m": 2.48, "max_height_m": 3.5, "vertical_area_m2": 2.75, "coplanarity_rms_m": 0.164, "azimuth_deg": 149.7, "tilt_deg": 8.4, "center_twd97": [295999.253, 2768510.645, 10.464], "center_local": [19.842, -4.686, -16.415], "base_polyline_twd97": [[295998.86, 2768511.429, 9.598], [295999.074, 2768511.156, 9.594], [295999.307, 2768510.552, 9.87], [295999.819, 2768509.54, 10.104], [296000.124, 2768509.086, 10.149]], "top_polyline_twd97": [[295998.86, 2768511.429, 13.098], [295999.074, 2768511.156, 13.094], [295999.307, 2768510.552, 10.42], [295999.819, 2768509.54, 12.586], [296000.124, 2768509.086, 12.631]], "base_polyline_local": [[19.449, -5.552, -17.199], [19.663, -5.556, -16.926], [19.896, -5.28, -16.322], [20.408, -5.046, -15.31], [20.713, -5.001, -14.856]], "top_polyline_local": [[19.449, -2.052, -17.199], [19.663, -2.056, -16.926], [19.896, -4.73, -16.322], [20.408, -2.564, -15.31], [20.713, -2.519, -14.856]], "verified_photo": "Image_000190.jpg", "verified_photo_uv": [0.542, 0.4151], "verified_photo_dist_m": 11.68, "ai_photo_verified": true, "los_unoccluded": true}, {"id": "WL12", "name": "擋土牆/垂直牆面 WL12", "subtype": "retaining_wall", "length_m": 3.28, "height_m": 1.29, "mean_height_m": 1.29, "max_height_m": 2.12, "vertical_area_m2": 2.7, "coplanarity_rms_m": 0.063, "azimuth_deg": 129.5, "tilt_deg": 5.5, "center_twd97": [295956.159, 2768474.421, 12.181], "center_local": [-23.252, -2.969, 19.809], "base_polyline_twd97": [[295957.638, 2768473.122, 12.699], [295957.045, 2768473.639, 12.061], [295956.653, 2768474.029, 12.05], [295956.379, 2768474.267, 12.176], [295955.418, 2768474.986, 12.095]], "top_polyline_twd97": [[295957.638, 2768473.122, 13.674], [295957.045, 2768473.639, 13.674], [295956.653, 2768474.029, 13.716], [295956.379, 2768474.267, 13.753], [295955.418, 2768474.986, 13.677]], "base_polyline_local": [[-21.773, -2.451, 21.108], [-22.366, -3.089, 20.591], [-22.758, -3.1, 20.201], [-23.032, -2.974, 19.963], [-23.993, -3.055, 19.244]], "top_polyline_local": [[-21.773, -1.476, 21.108], [-22.366, -1.476, 20.591], [-22.758, -1.434, 20.201], [-23.032, -1.397, 19.963], [-23.993, -1.473, 19.244]], "verified_photo": "Image_001484.jpg", "verified_photo_uv": [0.4698, 0.132], "verified_photo_dist_m": 5.54, "verified_photo_angles": 2, "second_verified_photo": "Image_001461.jpg", "ai_photo_verified": true}], "buildings": [], "water_tanks": [], "pipes": [], "street_furniture": [{"id": "BL1", "name": "錐形景觀石墩/車阻 BL1 (Conical Plaza Bollard)", "subtype": "conical_bollard", "ifc_class": "IfcDiscreteAccessory", "color": "#94a3b8", "radius_m": 0.25, "diameter_m": 0.5, "height_m": 0.65, "ground_elevation_m": 6.98, "volume_m3": 0.083, "center_twd97": [295987.458, 2768449.208, 7.305], "center_local": [8.047, -7.845, 45.022], "verified_photo": "Image_001709.jpg", "verified_photo_uv": [0.203, 0.4079], "verified_photo_dist_m": 27.98, "ai_photo_verified": true, "los_unoccluded": false}, {"id": "BL2", "name": "錐形景觀石墩/車阻 BL2 (Conical Plaza Bollard)", "subtype": "conical_bollard", "ifc_class": "IfcDiscreteAccessory", "color": "#94a3b8", "radius_m": 0.28, "diameter_m": 0.56, "height_m": 0.65, "ground_elevation_m": 7.162, "volume_m3": 0.106, "center_twd97": [295986.875, 2768449.75, 7.487], "center_local": [7.464, -7.663, 44.48], "verified_photo": "Image_001710.jpg", "verified_photo_uv": [0.4302, 0.4062], "verified_photo_dist_m": 27.46, "ai_photo_verified": true, "los_unoccluded": false}, {"id": "BL3", "name": "錐形景觀石墩/車阻 BL3 (Conical Plaza Bollard)", "subtype": "conical_bollard", "ifc_class": "IfcDiscreteAccessory", "color": "#94a3b8", "radius_m": 0.37, "diameter_m": 0.75, "height_m": 0.65, "ground_elevation_m": 6.895, "volume_m3": 0.185, "center_twd97": [295985.875, 2768450.625, 7.22], "center_local": [6.464, -7.93, 43.605], "verified_photo": "Image_001710.jpg", "verified_photo_uv": [0.4656, 0.4138], "verified_photo_dist_m": 26.61, "ai_photo_verified": true, "los_unoccluded": false}, {"id": "BL4", "name": "錐形景觀石墩/車阻 BL4 (Conical Plaza Bollard)", "subtype": "conical_bollard", "ifc_class": "IfcDiscreteAccessory", "color": "#94a3b8", "radius_m": 0.25, "diameter_m": 0.5, "height_m": 0.65, "ground_elevation_m": 12.282, "volume_m3": 0.083, "center_twd97": [295978.792, 2768454.292, 12.607], "center_local": [-0.619, -2.543, 39.938], "verified_photo": "Image_001709.jpg", "verified_photo_uv": [0.5446, 0.2408], "verified_photo_dist_m": 24.17, "ai_photo_verified": true, "los_unoccluded": true}, {"id": "BL5", "name": "錐形景觀石墩/車阻 BL5 (Conical Plaza Bollard)", "subtype": "conical_bollard", "ifc_class": "IfcDiscreteAccessory", "color": "#94a3b8", "radius_m": 0.37, "diameter_m": 0.75, "height_m": 0.65, "ground_elevation_m": 13.548, "volume_m3": 0.185, "center_twd97": [295977.196, 2768455.625, 13.873], "center_local": [-2.215, -1.277, 38.605], "verified_photo": "Image_001708.jpg", "verified_photo_uv": [0.4295, 0.2105], "verified_photo_dist_m": 23.64, "ai_photo_verified": true, "los_unoccluded": true}, {"id": "BL6", "name": "錐形景觀石墩/車阻 BL6 (Conical Plaza Bollard)", "subtype": "conical_bollard", "ifc_class": "IfcDiscreteAccessory", "color": "#94a3b8", "radius_m": 0.42, "diameter_m": 0.85, "height_m": 0.65, "ground_elevation_m": 8.286, "volume_m3": 0.238, "center_twd97": [295977.931, 2768457.931, 8.611], "center_local": [-1.48, -6.539, 36.299], "verified_photo": "Image_001708.jpg", "verified_photo_uv": [0.4433, 0.3846], "verified_photo_dist_m": 20.83, "ai_photo_verified": true, "los_unoccluded": true}, {"id": "BL7", "name": "錐形景觀石墩/車阻 BL7 (Conical Plaza Bollard)", "subtype": "conical_bollard", "ifc_class": "IfcDiscreteAccessory", "color": "#94a3b8", "radius_m": 0.25, "diameter_m": 0.5, "height_m": 0.65, "ground_elevation_m": 13.455, "volume_m3": 0.083, "center_twd97": [295972.958, 2768459.458, 13.78], "center_local": [-6.453, -1.37, 34.772], "verified_photo": "Image_001690.jpg", "verified_photo_uv": [0.5069, 0.2137], "verified_photo_dist_m": 22.26, "ai_photo_verified": true, "los_unoccluded": true}, {"id": "BL8", "name": "錐形景觀石墩/車阻 BL8 (Conical Plaza Bollard)", "subtype": "conical_bollard", "ifc_class": "IfcDiscreteAccessory", "color": "#94a3b8", "radius_m": 0.25, "diameter_m": 0.5, "height_m": 0.65, "ground_elevation_m": 7.42, "volume_m3": 0.083, "center_twd97": [295975.875, 2768459.625, 7.745], "center_local": [-3.536, -7.405, 34.605], "verified_photo": "Image_001708.jpg", "verified_photo_uv": [0.5627, 0.4157], "verified_photo_dist_m": 20.31, "ai_photo_verified": true, "los_unoccluded": true}], "stockpiles": [], "report_html_url": "/api/reports/categorization_report_rosepark_20260917_east.html", "report_csv_url": "/api/reports/categorization_report_rosepark_20260917_east.csv", "dxf_url": "/api/contours/Civil3D_Categorized_rosepark_20260917_east.dxf", "downloads": {"dxf_url": "/api/contours/Civil3D_Categorized_rosepark_20260917_east.dxf", "report_html_url": "/api/reports/categorization_report_rosepark_20260917_east.html", "report_csv_url": "/api/reports/categorization_report_rosepark_20260917_east.csv"}, "manual_overrides": {"removed_ids": [], "removed_centers": [], "added_trees": [], "added_walls": [], "added_roads": [], "added_water": []}}
+{
+  "ok": true,
+  "status": "ok",
+  "categorization_schema_version": 4,
+  "environment_regime": {
+    "regime": "URBAN_CAMPUS_MULTI_STORY",
+    "modality": "TERRESTRIAL_IPHONE_LIDAR",
+    "footprint_area_m2": 3455.4,
+    "surface_area_3d_m2": 6139.7,
+    "vertical_area_m2": 2552.36,
+    "horizontal_area_m2": 2778.26,
+    "vert_horiz_ratio": 0.919,
+    "vegetation_fraction": 0.678,
+    "relief_z_m": 9.87,
+    "camera_count": 1994
+  },
+  "has_categorization": true,
+  "saved_on_server": true,
+  "from_server_cache": false,
+  "overlay_visible_default": false,
+  "layer_filters": {
+    "roads": true,
+    "trees": true,
+    "water": true,
+    "walls": true,
+    "stockpiles": true,
+    "buildings": true,
+    "tanks": true,
+    "pipes": true
+  },
+  "scan_id": "rosepark_20260917_east",
+  "scan_name": "RosePark_260917",
+  "project_group": "Rose Park",
+  "crs": "TWD97 / TM2 zone 121 + TWVD 2001 height - EPSG:3826+8904 [TWGEOID2018h]",
+  "crs_short": "TWD97 (121) + TWVD2001",
+  "anchor_twd97": {
+    "e": 295979.411,
+    "n": 2768494.23,
+    "h": 15.15
+  },
+  "generated_at": "2026-11-01 14:29:22",
+  "ai_verified": true,
+  "ai_model": "Gemini 3.5 Flash Multimodal + Ground Photo Referee",
+  "ai_summary_zh": "已完成全區 3D 喬木與 1.3m 樹幹胸徑（DBH）量測分析：\n• 喬木與樹幹胸徑：共識別 22 株立木，1.3m 處平均胸徑 DBH 20.7 cm（最大 29.2 cm），平均樹高 4.95 m，樹冠投影面積 812.41 m²。",
+  "ai_summary_en": "Completed 3D Tree & 1.3m Trunk DBH survey:\n• Trees & Trunk DBH: 22 trees detected, mean 1.3m DBH 20.7 cm (max 29.2 cm), mean height 4.95 m, canopy area 812.41 m².",
+  "road_corridor_subtype": "paved_asphalt_concrete",
+  "road_corridor_label_zh": "鋪面道路與步道",
+  "road_corridor_label_en": "Paved Roads and Walkways",
+  "water_body_label_zh": "無水域",
+  "summary": {
+    "roads_count": 3,
+    "roads_planar_area_m2": 318.18,
+    "roads_planar_area_ping": 96.25,
+    "roads_surface_area_3d_m2": 319.77,
+    "trees_count": 22,
+    "trees_mean_dbh_cm": 20.7,
+    "trees_max_dbh_cm": 29.2,
+    "trees_mean_height_m": 4.95,
+    "trees_canopy_area_m2": 812.41,
+    "water_count": 0,
+    "water_planar_area_m2": 0,
+    "water_planar_area_ping": 0.0,
+    "water_level_twvd2001_m": null,
+    "walls_count": 12,
+    "walls_total_length_m": 47.29,
+    "walls_vertical_area_m2": 79.01,
+    "buildings_count": 0,
+    "water_tanks_count": 0,
+    "pipes_count": 0,
+    "street_furniture_count": 8,
+    "stockpiles_count": 0,
+    "bare_earth_area_m2": 662.72,
+    "grass_area_m2": 1343.43,
+    "revetment_area_3d_m2": 335.15,
+    "clutter_area_m2": 111.98,
+    "total_site_planar_area_m2": 3455.4,
+    "total_site_surface_3d_m2": 6139.7,
+    "grid_resolution_m": 0.25,
+    "triangle_count": 1002521,
+    "trees_ai_verified_count": 22
+  },
+  "categories_breakdown": [
+    {
+      "key": "roads",
+      "name_zh": "鋪面道路與步道 (Paved Roads and Walkways)",
+      "name_en": "Paved Roads and Walkways",
+      "color": "#f59e0b",
+      "count": 3,
+      "planar_area_m2": 318.18,
+      "planar_area_ping": 96.25,
+      "surface_area_3d_m2": 319.77,
+      "site_share_pct": 9.2
+    },
+    {
+      "key": "trees",
+      "name_zh": "喬木林冠與胸徑 (Trees & Trunk DBH)",
+      "name_en": "Canopy Trees & 1.3m Trunk DBH",
+      "color": "#10b981",
+      "count": 22,
+      "planar_area_m2": 812.41,
+      "planar_area_ping": 245.75,
+      "surface_area_3d_m2": 2017.92,
+      "site_share_pct": 23.5
+    },
+    {
+      "key": "water_bodies",
+      "name_zh": "水域與未建模水面空洞 (Water & Voids)",
+      "name_en": "Water Bodies & Un-Modelled Water Voids",
+      "color": "#06b6d4",
+      "count": 0,
+      "planar_area_m2": 0,
+      "planar_area_ping": 0.0,
+      "surface_area_3d_m2": 0,
+      "site_share_pct": 0.0
+    },
+    {
+      "key": "walls",
+      "name_zh": "擋土牆與垂直結構面 (Retaining/Building Walls)",
+      "name_en": "Retaining & Structural Vertical Walls",
+      "color": "#f43f5e",
+      "count": 12,
+      "planar_area_m2": 16.55,
+      "planar_area_ping": 5.01,
+      "surface_area_3d_m2": 79.01,
+      "site_share_pct": 1.3
+    },
+    {
+      "key": "bare_earth_stockpiles",
+      "name_zh": "裸露土石/河灘卵石/堆置區 (Bare Earth & Cobble)",
+      "name_en": "Bare Earth, River Cobble & Stockpiles",
+      "color": "#d97706",
+      "count": 0,
+      "planar_area_m2": 662.72,
+      "planar_area_ping": 200.47,
+      "surface_area_3d_m2": 686.31,
+      "site_share_pct": 19.2
+    },
+    {
+      "key": "low_vegetation_grass",
+      "name_zh": "低矮植生與草坡 (Low Veg & Grass)",
+      "name_en": "Low Vegetation, Shrubs & Grass",
+      "color": "#84cc16",
+      "count": 1,
+      "planar_area_m2": 1343.43,
+      "planar_area_ping": 406.39,
+      "surface_area_3d_m2": 1458.25,
+      "site_share_pct": 38.9
+    },
+    {
+      "key": "sloped_revetments",
+      "name_zh": "護岸斜坡與人工邊坡 (Sloped Revetments)",
+      "name_en": "Pitched Revetments & Sloped Banks (30°-68°)",
+      "color": "#a855f7",
+      "count": 1,
+      "planar_area_m2": 200.72,
+      "planar_area_ping": 60.72,
+      "surface_area_3d_m2": 335.15,
+      "site_share_pct": 5.8
+    },
+    {
+      "key": "buildings_structures",
+      "name_zh": "建築屋頂與人造設施 (Buildings & Structures)",
+      "name_en": "Building Roofs & Elevated Structures",
+      "color": "#3b82f6",
+      "count": 1,
+      "planar_area_m2": 35.35,
+      "planar_area_ping": 10.69,
+      "surface_area_3d_m2": 36.4,
+      "site_share_pct": 1.0
+    },
+    {
+      "key": "water_tanks_and_mep",
+      "name_zh": "儲水塔與管線設施 (Water Tanks & MEP Pipes)",
+      "name_en": "Water Storage Tanks & MEP Piping",
+      "color": "#0284c7",
+      "count": 0,
+      "planar_area_m2": 0,
+      "planar_area_ping": 0.0,
+      "surface_area_3d_m2": 0,
+      "site_share_pct": 0.0
+    },
+    {
+      "key": "drainage_curbs",
+      "name_zh": "排水邊溝與緣石 (Drainage & Curbs)",
+      "name_en": "Drainage Channels & Road Curbs",
+      "color": "#64748b",
+      "count": 1,
+      "planar_area_m2": 23.63,
+      "planar_area_ping": 7.15,
+      "surface_area_3d_m2": 44.66,
+      "site_share_pct": 0.7
+    },
+    {
+      "key": "transient_clutter",
+      "name_zh": "施工機具/車輛與雜物 (Vehicles & Clutter)",
+      "name_en": "Vehicles, Equipment & Transient Clutter",
+      "color": "#ec4899",
+      "count": 8,
+      "planar_area_m2": 111.98,
+      "planar_area_ping": 33.87,
+      "surface_area_3d_m2": 564.3,
+      "site_share_pct": 3.2
+    }
+  ],
+  "roads": [
+    {
+      "id": "R1",
+      "name": "鋪面道路與步道 R1 (Paved Roads and Walkways)",
+      "subtype": "paved_asphalt_concrete",
+      "planar_area_m2": 185.56,
+      "planar_area_ping": 56.13,
+      "surface_area_3d_m2": 186.49,
+      "perimeter_m": 112.91,
+      "mean_width_m": 3.35,
+      "mean_slope_pct": 7.4,
+      "elongation_ratio": 3.58,
+      "center_twd97": [
+        295991.801,
+        2768480.429,
+        7.592
+      ],
+      "center_local": [
+        12.39,
+        -7.558,
+        13.801
+      ],
+      "boundary_twd97": [
+        [
+          296001.75,
+          2768469.916,
+          6.64
+        ],
+        [
+          296001.5,
+          2768470.523,
+          6.702
+        ],
+        [
+          296000.166,
+          2768470.75,
+          6.714
+        ],
+        [
+          296000.0,
+          2768472.023,
+          6.813
+        ],
+        [
+          295998.666,
+          2768472.25,
+          6.787
+        ],
+        [
+          295998.548,
+          2768473.5,
+          6.948
+        ],
+        [
+          295997.25,
+          2768474.794,
+          7.109
+        ],
+        [
+          295995.75,
+          2768474.604,
+          7.144
+        ],
+        [
+          295994.25,
+          2768475.598,
+          7.279
+        ],
+        [
+          295991.25,
+          2768475.354,
+          7.253
+        ],
+        [
+          295989.5,
+          2768475.897,
+          7.356
+        ],
+        [
+          295988.5,
+          2768477.773,
+          7.556
+        ],
+        [
+          295985.5,
+          2768477.897,
+          7.66
+        ],
+        [
+          295984.5,
+          2768479.051,
+          7.743
+        ],
+        [
+          295981.0,
+          2768480.394,
+          7.914
+        ],
+        [
+          295978.25,
+          2768482.801,
+          8.129
+        ],
+        [
+          295976.666,
+          2768483.25,
+          8.202
+        ],
+        [
+          295976.646,
+          2768484.0,
+          8.235
+        ],
+        [
+          295977.0,
+          2768484.886,
+          8.262
+        ],
+        [
+          295978.301,
+          2768485.25,
+          8.273
+        ],
+        [
+          295978.599,
+          2768486.0,
+          8.313
+        ],
+        [
+          295978.666,
+          2768487.25,
+          8.385
+        ],
+        [
+          295980.0,
+          2768487.476,
+          8.341
+        ],
+        [
+          295981.25,
+          2768488.893,
+          8.359
+        ],
+        [
+          295981.75,
+          2768488.227,
+          8.059
+        ],
+        [
+          295983.0,
+          2768488.084,
+          8.165
+        ],
+        [
+          295983.227,
+          2768486.75,
+          8.068
+        ],
+        [
+          295984.0,
+          2768486.45,
+          8.047
+        ],
+        [
+          295986.5,
+          2768487.146,
+          8.269
+        ],
+        [
+          295990.0,
+          2768485.856,
+          8.133
+        ],
+        [
+          295990.353,
+          2768485.5,
+          8.112
+        ],
+        [
+          295990.393,
+          2768485.25,
+          8.104
+        ],
+        [
+          295989.653,
+          2768484.5,
+          8.047
+        ],
+        [
+          295989.75,
+          2768482.977,
+          7.878
+        ],
+        [
+          295991.75,
+          2768483.643,
+          7.894
+        ],
+        [
+          295992.5,
+          2768483.401,
+          7.863
+        ],
+        [
+          295993.75,
+          2768483.477,
+          7.764
+        ],
+        [
+          295994.25,
+          2768484.143,
+          7.856
+        ],
+        [
+          295995.853,
+          2768483.0,
+          7.783
+        ],
+        [
+          295995.75,
+          2768481.916,
+          7.743
+        ],
+        [
+          295994.0,
+          2768481.274,
+          7.755
+        ],
+        [
+          295993.477,
+          2768479.0,
+          7.54
+        ],
+        [
+          295995.75,
+          2768479.393,
+          7.498
+        ],
+        [
+          295998.25,
+          2768478.584,
+          7.351
+        ],
+        [
+          295998.334,
+          2768477.75,
+          7.327
+        ],
+        [
+          295997.25,
+          2768477.316,
+          7.334
+        ],
+        [
+          295997.153,
+          2768476.5,
+          7.293
+        ],
+        [
+          295998.75,
+          2768475.2,
+          7.108
+        ],
+        [
+          296000.5,
+          2768475.727,
+          7.057
+        ],
+        [
+          296001.0,
+          2768477.259,
+          7.084
+        ],
+        [
+          296003.25,
+          2768476.202,
+          6.967
+        ],
+        [
+          296007.5,
+          2768480.104,
+          6.881
+        ],
+        [
+          296011.5,
+          2768479.853,
+          6.705
+        ],
+        [
+          296011.853,
+          2768479.5,
+          6.685
+        ],
+        [
+          296012.0,
+          2768478.977,
+          6.623
+        ],
+        [
+          296012.834,
+          2768478.75,
+          6.635
+        ],
+        [
+          296012.75,
+          2768477.166,
+          6.527
+        ],
+        [
+          296010.75,
+          2768477.798,
+          6.771
+        ],
+        [
+          296005.25,
+          2768474.397,
+          6.85
+        ],
+        [
+          296001.75,
+          2768475.023,
+          7.009
+        ],
+        [
+          296001.651,
+          2768472.0,
+          6.809
+        ],
+        [
+          296002.393,
+          2768470.25,
+          6.67
+        ],
+        [
+          296001.75,
+          2768469.916,
+          6.64
+        ]
+      ],
+      "boundary_local": [
+        [
+          22.339,
+          -8.51,
+          24.314
+        ],
+        [
+          22.089,
+          -8.448,
+          23.707
+        ],
+        [
+          20.755,
+          -8.436,
+          23.48
+        ],
+        [
+          20.589,
+          -8.337,
+          22.207
+        ],
+        [
+          19.255,
+          -8.363,
+          21.98
+        ],
+        [
+          19.137,
+          -8.202,
+          20.73
+        ],
+        [
+          17.839,
+          -8.041,
+          19.436
+        ],
+        [
+          16.339,
+          -8.006,
+          19.626
+        ],
+        [
+          14.839,
+          -7.871,
+          18.632
+        ],
+        [
+          11.839,
+          -7.897,
+          18.876
+        ],
+        [
+          10.089,
+          -7.794,
+          18.333
+        ],
+        [
+          9.089,
+          -7.594,
+          16.457
+        ],
+        [
+          6.089,
+          -7.49,
+          16.333
+        ],
+        [
+          5.089,
+          -7.407,
+          15.179
+        ],
+        [
+          1.589,
+          -7.236,
+          13.836
+        ],
+        [
+          -1.161,
+          -7.021,
+          11.429
+        ],
+        [
+          -2.745,
+          -6.948,
+          10.98
+        ],
+        [
+          -2.765,
+          -6.915,
+          10.23
+        ],
+        [
+          -2.411,
+          -6.888,
+          9.344
+        ],
+        [
+          -1.11,
+          -6.877,
+          8.98
+        ],
+        [
+          -0.812,
+          -6.837,
+          8.23
+        ],
+        [
+          -0.745,
+          -6.765,
+          6.98
+        ],
+        [
+          0.589,
+          -6.809,
+          6.754
+        ],
+        [
+          1.839,
+          -6.791,
+          5.337
+        ],
+        [
+          2.339,
+          -7.091,
+          6.003
+        ],
+        [
+          3.589,
+          -6.985,
+          6.146
+        ],
+        [
+          3.816,
+          -7.082,
+          7.48
+        ],
+        [
+          4.589,
+          -7.103,
+          7.78
+        ],
+        [
+          7.089,
+          -6.881,
+          7.084
+        ],
+        [
+          10.589,
+          -7.017,
+          8.374
+        ],
+        [
+          10.942,
+          -7.038,
+          8.73
+        ],
+        [
+          10.982,
+          -7.046,
+          8.98
+        ],
+        [
+          10.242,
+          -7.103,
+          9.73
+        ],
+        [
+          10.339,
+          -7.272,
+          11.253
+        ],
+        [
+          12.339,
+          -7.256,
+          10.587
+        ],
+        [
+          13.089,
+          -7.287,
+          10.829
+        ],
+        [
+          14.339,
+          -7.386,
+          10.753
+        ],
+        [
+          14.839,
+          -7.294,
+          10.087
+        ],
+        [
+          16.442,
+          -7.367,
+          11.23
+        ],
+        [
+          16.339,
+          -7.407,
+          12.314
+        ],
+        [
+          14.589,
+          -7.395,
+          12.956
+        ],
+        [
+          14.066,
+          -7.61,
+          15.23
+        ],
+        [
+          16.339,
+          -7.652,
+          14.837
+        ],
+        [
+          18.839,
+          -7.799,
+          15.646
+        ],
+        [
+          18.923,
+          -7.823,
+          16.48
+        ],
+        [
+          17.839,
+          -7.816,
+          16.914
+        ],
+        [
+          17.742,
+          -7.857,
+          17.73
+        ],
+        [
+          19.339,
+          -8.042,
+          19.03
+        ],
+        [
+          21.089,
+          -8.093,
+          18.503
+        ],
+        [
+          21.589,
+          -8.066,
+          16.971
+        ],
+        [
+          23.839,
+          -8.183,
+          18.028
+        ],
+        [
+          28.089,
+          -8.269,
+          14.126
+        ],
+        [
+          32.089,
+          -8.445,
+          14.377
+        ],
+        [
+          32.442,
+          -8.465,
+          14.73
+        ],
+        [
+          32.589,
+          -8.527,
+          15.253
+        ],
+        [
+          33.423,
+          -8.515,
+          15.48
+        ],
+        [
+          33.339,
+          -8.623,
+          17.064
+        ],
+        [
+          31.339,
+          -8.379,
+          16.432
+        ],
+        [
+          25.839,
+          -8.3,
+          19.833
+        ],
+        [
+          22.339,
+          -8.141,
+          19.207
+        ],
+        [
+          22.24,
+          -8.341,
+          22.23
+        ],
+        [
+          22.982,
+          -8.48,
+          23.98
+        ],
+        [
+          22.339,
+          -8.51,
+          24.314
+        ]
+      ],
+      "holes_twd97": [
+        [
+          [
+            295990.0,
+            2768478.683,
+            7.581
+          ],
+          [
+            295988.933,
+            2768479.75,
+            7.705
+          ],
+          [
+            295989.648,
+            2768481.25,
+            7.822
+          ],
+          [
+            295991.0,
+            2768481.351,
+            7.821
+          ],
+          [
+            295991.101,
+            2768481.25,
+            7.821
+          ],
+          [
+            295991.144,
+            2768481.0,
+            7.804
+          ],
+          [
+            295991.145,
+            2768480.75,
+            7.784
+          ],
+          [
+            295991.112,
+            2768479.75,
+            7.687
+          ],
+          [
+            295990.0,
+            2768478.683,
+            7.581
+          ]
+        ]
+      ],
+      "holes_local": [
+        [
+          [
+            10.589,
+            -7.569,
+            15.547
+          ],
+          [
+            9.522,
+            -7.445,
+            14.48
+          ],
+          [
+            10.237,
+            -7.328,
+            12.98
+          ],
+          [
+            11.589,
+            -7.329,
+            12.879
+          ],
+          [
+            11.69,
+            -7.329,
+            12.98
+          ],
+          [
+            11.733,
+            -7.346,
+            13.23
+          ],
+          [
+            11.734,
+            -7.366,
+            13.48
+          ],
+          [
+            11.701,
+            -7.463,
+            14.48
+          ],
+          [
+            10.589,
+            -7.569,
+            15.547
+          ]
+        ]
+      ],
+      "verified_photo": "Image_001781.jpg",
+      "verified_photo_uv": [
+        0.2952,
+        0.5483
+      ],
+      "verified_photo_dist_m": 8.64,
+      "verified_photo_angles": 2,
+      "second_verified_photo": "Image_001768.jpg",
+      "ai_photo_verified": true,
+      "label_zh": "鋪面道路與步道",
+      "label_en": "Paved Roads and Walkways"
+    },
+    {
+      "id": "R2",
+      "name": "鋪面道路與步道 R2 (Paved Roads and Walkways)",
+      "subtype": "paved_asphalt_concrete",
+      "planar_area_m2": 68.5,
+      "planar_area_ping": 20.72,
+      "surface_area_3d_m2": 68.84,
+      "perimeter_m": 62.61,
+      "mean_width_m": 2.5,
+      "mean_slope_pct": 5.1,
+      "elongation_ratio": 3.34,
+      "center_twd97": [
+        295977.183,
+        2768522.395,
+        10.257
+      ],
+      "center_local": [
+        -2.228,
+        -4.893,
+        -28.165
+      ],
+      "boundary_twd97": [
+        [
+          295971.0,
+          2768516.165,
+          10.113
+        ],
+        [
+          295970.5,
+          2768516.801,
+          10.136
+        ],
+        [
+          295969.416,
+          2768517.25,
+          10.134
+        ],
+        [
+          295969.298,
+          2768519.5,
+          10.353
+        ],
+        [
+          295968.665,
+          2768520.0,
+          10.402
+        ],
+        [
+          295968.604,
+          2768521.0,
+          10.438
+        ],
+        [
+          295969.75,
+          2768522.585,
+          10.45
+        ],
+        [
+          295971.0,
+          2768522.7,
+          10.425
+        ],
+        [
+          295971.5,
+          2768522.949,
+          10.423
+        ],
+        [
+          295971.798,
+          2768523.25,
+          10.439
+        ],
+        [
+          295972.0,
+          2768523.834,
+          10.456
+        ],
+        [
+          295975.25,
+          2768524.202,
+          10.394
+        ],
+        [
+          295975.548,
+          2768524.5,
+          10.422
+        ],
+        [
+          295975.75,
+          2768525.084,
+          10.447
+        ],
+        [
+          295977.25,
+          2768525.202,
+          10.38
+        ],
+        [
+          295978.0,
+          2768525.856,
+          10.412
+        ],
+        [
+          295978.5,
+          2768526.009,
+          10.394
+        ],
+        [
+          295979.0,
+          2768525.403,
+          10.356
+        ],
+        [
+          295981.0,
+          2768525.834,
+          10.332
+        ],
+        [
+          295981.25,
+          2768524.727,
+          10.241
+        ],
+        [
+          295982.25,
+          2768524.653,
+          10.206
+        ],
+        [
+          295982.75,
+          2768525.834,
+          10.284
+        ],
+        [
+          295985.5,
+          2768526.395,
+          10.213
+        ],
+        [
+          295985.898,
+          2768525.25,
+          10.193
+        ],
+        [
+          295985.477,
+          2768523.25,
+          10.105
+        ],
+        [
+          295986.846,
+          2768522.75,
+          10.023
+        ],
+        [
+          295988.5,
+          2768521.474,
+          9.789
+        ],
+        [
+          295990.0,
+          2768521.334,
+          9.718
+        ],
+        [
+          295990.0,
+          2768520.31,
+          9.67
+        ],
+        [
+          295989.0,
+          2768520.987,
+          9.742
+        ],
+        [
+          295987.75,
+          2768520.172,
+          9.828
+        ],
+        [
+          295986.5,
+          2768522.293,
+          10.01
+        ],
+        [
+          295986.25,
+          2768522.361,
+          10.022
+        ],
+        [
+          295985.5,
+          2768522.273,
+          10.043
+        ],
+        [
+          295985.25,
+          2768521.416,
+          9.988
+        ],
+        [
+          295984.5,
+          2768521.397,
+          10.015
+        ],
+        [
+          295982.75,
+          2768523.275,
+          10.159
+        ],
+        [
+          295982.0,
+          2768523.599,
+          10.192
+        ],
+        [
+          295981.25,
+          2768523.548,
+          10.209
+        ],
+        [
+          295978.0,
+          2768522.023,
+          10.225
+        ],
+        [
+          295977.75,
+          2768521.416,
+          10.229
+        ],
+        [
+          295972.5,
+          2768519.773,
+          10.273
+        ],
+        [
+          295972.151,
+          2768518.75,
+          10.241
+        ],
+        [
+          295972.103,
+          2768516.75,
+          10.12
+        ],
+        [
+          295971.0,
+          2768516.165,
+          10.113
+        ]
+      ],
+      "boundary_local": [
+        [
+          -8.411,
+          -5.037,
+          -21.935
+        ],
+        [
+          -8.911,
+          -5.014,
+          -22.571
+        ],
+        [
+          -9.995,
+          -5.016,
+          -23.02
+        ],
+        [
+          -10.113,
+          -4.797,
+          -25.27
+        ],
+        [
+          -10.746,
+          -4.748,
+          -25.77
+        ],
+        [
+          -10.807,
+          -4.712,
+          -26.77
+        ],
+        [
+          -9.661,
+          -4.7,
+          -28.355
+        ],
+        [
+          -8.411,
+          -4.725,
+          -28.47
+        ],
+        [
+          -7.911,
+          -4.727,
+          -28.719
+        ],
+        [
+          -7.613,
+          -4.711,
+          -29.02
+        ],
+        [
+          -7.411,
+          -4.694,
+          -29.604
+        ],
+        [
+          -4.161,
+          -4.756,
+          -29.972
+        ],
+        [
+          -3.863,
+          -4.728,
+          -30.27
+        ],
+        [
+          -3.661,
+          -4.703,
+          -30.854
+        ],
+        [
+          -2.161,
+          -4.77,
+          -30.972
+        ],
+        [
+          -1.411,
+          -4.738,
+          -31.626
+        ],
+        [
+          -0.911,
+          -4.756,
+          -31.779
+        ],
+        [
+          -0.411,
+          -4.794,
+          -31.173
+        ],
+        [
+          1.589,
+          -4.818,
+          -31.604
+        ],
+        [
+          1.839,
+          -4.909,
+          -30.497
+        ],
+        [
+          2.839,
+          -4.944,
+          -30.423
+        ],
+        [
+          3.339,
+          -4.866,
+          -31.604
+        ],
+        [
+          6.089,
+          -4.937,
+          -32.165
+        ],
+        [
+          6.487,
+          -4.957,
+          -31.02
+        ],
+        [
+          6.066,
+          -5.045,
+          -29.02
+        ],
+        [
+          7.435,
+          -5.127,
+          -28.52
+        ],
+        [
+          9.089,
+          -5.361,
+          -27.244
+        ],
+        [
+          10.589,
+          -5.432,
+          -27.104
+        ],
+        [
+          10.589,
+          -5.48,
+          -26.08
+        ],
+        [
+          9.589,
+          -5.408,
+          -26.757
+        ],
+        [
+          8.339,
+          -5.322,
+          -25.942
+        ],
+        [
+          7.089,
+          -5.14,
+          -28.063
+        ],
+        [
+          6.839,
+          -5.128,
+          -28.131
+        ],
+        [
+          6.089,
+          -5.107,
+          -28.043
+        ],
+        [
+          5.839,
+          -5.162,
+          -27.186
+        ],
+        [
+          5.089,
+          -5.135,
+          -27.167
+        ],
+        [
+          3.339,
+          -4.991,
+          -29.045
+        ],
+        [
+          2.589,
+          -4.958,
+          -29.369
+        ],
+        [
+          1.839,
+          -4.941,
+          -29.318
+        ],
+        [
+          -1.411,
+          -4.925,
+          -27.793
+        ],
+        [
+          -1.661,
+          -4.921,
+          -27.186
+        ],
+        [
+          -6.911,
+          -4.877,
+          -25.543
+        ],
+        [
+          -7.26,
+          -4.909,
+          -24.52
+        ],
+        [
+          -7.308,
+          -5.03,
+          -22.52
+        ],
+        [
+          -8.411,
+          -5.037,
+          -21.935
+        ]
+      ],
+      "holes_twd97": [],
+      "holes_local": [],
+      "verified_photo": "Image_000897.jpg",
+      "verified_photo_uv": [
+        0.5047,
+        0.5335
+      ],
+      "verified_photo_dist_m": 5.44,
+      "verified_photo_angles": 2,
+      "second_verified_photo": "Image_000794.jpg",
+      "ai_photo_verified": true,
+      "label_zh": "鋪面道路與步道",
+      "label_en": "Paved Roads and Walkways"
+    },
+    {
+      "id": "R3",
+      "name": "鋪面道路與步道 R3 (Paved Roads and Walkways)",
+      "subtype": "paved_asphalt_concrete",
+      "planar_area_m2": 64.12,
+      "planar_area_ping": 19.4,
+      "surface_area_3d_m2": 64.44,
+      "perimeter_m": 45.94,
+      "mean_width_m": 2.92,
+      "mean_slope_pct": 5.8,
+      "elongation_ratio": 2.04,
+      "center_twd97": [
+        295990.11,
+        2768505.945,
+        9.003
+      ],
+      "center_local": [
+        10.699,
+        -6.147,
+        -11.715
+      ],
+      "boundary_twd97": [
+        [
+          295994.25,
+          2768500.665,
+          8.718
+        ],
+        [
+          295993.25,
+          2768502.275,
+          8.808
+        ],
+        [
+          295991.25,
+          2768502.609,
+          8.929
+        ],
+        [
+          295990.75,
+          2768504.847,
+          9.021
+        ],
+        [
+          295988.5,
+          2768504.108,
+          9.078
+        ],
+        [
+          295988.0,
+          2768504.773,
+          9.083
+        ],
+        [
+          295987.75,
+          2768504.847,
+          9.082
+        ],
+        [
+          295987.0,
+          2768504.8,
+          9.075
+        ],
+        [
+          295986.476,
+          2768504.5,
+          9.064
+        ],
+        [
+          295986.01,
+          2768502.5,
+          9.054
+        ],
+        [
+          295985.5,
+          2768502.663,
+          9.059
+        ],
+        [
+          295985.273,
+          2768503.75,
+          9.048
+        ],
+        [
+          295984.25,
+          2768503.916,
+          9.047
+        ],
+        [
+          295984.166,
+          2768504.0,
+          9.05
+        ],
+        [
+          295984.105,
+          2768504.25,
+          9.054
+        ],
+        [
+          295984.023,
+          2768505.0,
+          9.065
+        ],
+        [
+          295981.897,
+          2768506.0,
+          9.219
+        ],
+        [
+          295981.669,
+          2768507.0,
+          9.326
+        ],
+        [
+          295982.75,
+          2768507.398,
+          9.167
+        ],
+        [
+          295984.5,
+          2768506.728,
+          9.11
+        ],
+        [
+          295984.647,
+          2768507.25,
+          9.158
+        ],
+        [
+          295985.0,
+          2768507.603,
+          9.158
+        ],
+        [
+          295988.0,
+          2768508.973,
+          9.139
+        ],
+        [
+          295989.25,
+          2768510.834,
+          9.138
+        ],
+        [
+          295990.25,
+          2768510.834,
+          9.137
+        ],
+        [
+          295990.477,
+          2768509.75,
+          9.108
+        ],
+        [
+          295992.75,
+          2768508.656,
+          9.052
+        ],
+        [
+          295996.853,
+          2768503.75,
+          8.557
+        ],
+        [
+          295996.834,
+          2768502.5,
+          8.588
+        ],
+        [
+          295996.0,
+          2768502.146,
+          8.633
+        ],
+        [
+          295995.0,
+          2768502.023,
+          8.671
+        ],
+        [
+          295994.834,
+          2768500.75,
+          8.688
+        ],
+        [
+          295994.25,
+          2768500.665,
+          8.718
+        ]
+      ],
+      "boundary_local": [
+        [
+          14.839,
+          -6.432,
+          -6.435
+        ],
+        [
+          13.839,
+          -6.342,
+          -8.045
+        ],
+        [
+          11.839,
+          -6.221,
+          -8.379
+        ],
+        [
+          11.339,
+          -6.129,
+          -10.617
+        ],
+        [
+          9.089,
+          -6.072,
+          -9.878
+        ],
+        [
+          8.589,
+          -6.067,
+          -10.543
+        ],
+        [
+          8.339,
+          -6.068,
+          -10.617
+        ],
+        [
+          7.589,
+          -6.075,
+          -10.57
+        ],
+        [
+          7.065,
+          -6.086,
+          -10.27
+        ],
+        [
+          6.599,
+          -6.096,
+          -8.27
+        ],
+        [
+          6.089,
+          -6.091,
+          -8.433
+        ],
+        [
+          5.862,
+          -6.102,
+          -9.52
+        ],
+        [
+          4.839,
+          -6.103,
+          -9.686
+        ],
+        [
+          4.755,
+          -6.1,
+          -9.77
+        ],
+        [
+          4.694,
+          -6.096,
+          -10.02
+        ],
+        [
+          4.612,
+          -6.085,
+          -10.77
+        ],
+        [
+          2.486,
+          -5.931,
+          -11.77
+        ],
+        [
+          2.258,
+          -5.824,
+          -12.77
+        ],
+        [
+          3.339,
+          -5.983,
+          -13.168
+        ],
+        [
+          5.089,
+          -6.04,
+          -12.498
+        ],
+        [
+          5.236,
+          -5.992,
+          -13.02
+        ],
+        [
+          5.589,
+          -5.992,
+          -13.373
+        ],
+        [
+          8.589,
+          -6.011,
+          -14.743
+        ],
+        [
+          9.839,
+          -6.012,
+          -16.604
+        ],
+        [
+          10.839,
+          -6.013,
+          -16.604
+        ],
+        [
+          11.066,
+          -6.042,
+          -15.52
+        ],
+        [
+          13.339,
+          -6.098,
+          -14.426
+        ],
+        [
+          17.442,
+          -6.593,
+          -9.52
+        ],
+        [
+          17.423,
+          -6.562,
+          -8.27
+        ],
+        [
+          16.589,
+          -6.517,
+          -7.916
+        ],
+        [
+          15.589,
+          -6.479,
+          -7.793
+        ],
+        [
+          15.423,
+          -6.462,
+          -6.52
+        ],
+        [
+          14.839,
+          -6.432,
+          -6.435
+        ]
+      ],
+      "holes_twd97": [],
+      "holes_local": [],
+      "verified_photo": "Image_000224.jpg",
+      "verified_photo_uv": [
+        0.5721,
+        0.5978
+      ],
+      "verified_photo_dist_m": 8.69,
+      "ai_photo_verified": true,
+      "los_unoccluded": true,
+      "label_zh": "鋪面道路與步道",
+      "label_en": "Paved Roads and Walkways"
+    }
+  ],
+  "trees": [
+    {
+      "id": "T1",
+      "name": "喬木 T1",
+      "height_m": 9.76,
+      "dbh_cm": 19.6,
+      "dbh_method": "pratt_circle_1.3m_slice",
+      "trunk_verified_3d": true,
+      "trunk_triangle_count": 85,
+      "ai_vision_verified": true,
+      "ai_vision_label": "large park tree trunk",
+      "object_seen": "large park tree trunk",
+      "crown_diameter_m": 5.51,
+      "crown_area_m2": 23.84,
+      "ground_elevation_m": 7.983,
+      "top_elevation_m": 17.743,
+      "trunk_twd97": [
+        295977.844,
+        2768481.535,
+        7.983
+      ],
+      "trunk_local": [
+        -1.567,
+        -7.167,
+        12.695
+      ],
+      "verified_photo": "Image_001653.jpg",
+      "verified_photo_uv": [
+        0.5195,
+        0.4613
+      ],
+      "verified_photo_dist_m": 4.41,
+      "verified_photo_angles": 2,
+      "second_verified_photo": "Image_001659.jpg",
+      "ai_photo_verified": true
+    },
+    {
+      "id": "T2",
+      "name": "喬木 T2",
+      "height_m": 6.95,
+      "dbh_cm": 24.7,
+      "dbh_method": "pratt_circle_1.3m_slice",
+      "trunk_verified_3d": true,
+      "trunk_triangle_count": 32,
+      "ai_vision_verified": true,
+      "ai_vision_label": "park tree trunk and canopy",
+      "object_seen": "park tree trunk and canopy",
+      "crown_diameter_m": 4.62,
+      "crown_area_m2": 16.76,
+      "ground_elevation_m": 8.651,
+      "top_elevation_m": 15.601,
+      "trunk_twd97": [
+        295972.76,
+        2768489.604,
+        8.651
+      ],
+      "trunk_local": [
+        -6.651,
+        -6.499,
+        4.626
+      ],
+      "verified_photo": "Image_001404.jpg",
+      "verified_photo_uv": [
+        0.3843,
+        0.3821
+      ],
+      "verified_photo_dist_m": 8.61,
+      "verified_photo_angles": 2,
+      "second_verified_photo": "Image_001271.jpg",
+      "ai_photo_verified": true
+    },
+    {
+      "id": "T3",
+      "name": "喬木 T3",
+      "height_m": 6.09,
+      "dbh_cm": 29.2,
+      "dbh_method": "pratt_allometric_hybrid",
+      "trunk_verified_3d": true,
+      "trunk_triangle_count": 301,
+      "ai_vision_verified": true,
+      "ai_vision_label": "slanted park tree trunk",
+      "object_seen": "slanted park tree trunk",
+      "crown_diameter_m": 4.22,
+      "crown_area_m2": 13.99,
+      "ground_elevation_m": 11.134,
+      "top_elevation_m": 17.224,
+      "trunk_twd97": [
+        295976.35,
+        2768542.678,
+        11.134
+      ],
+      "trunk_local": [
+        -3.061,
+        -4.016,
+        -48.448
+      ],
+      "verified_photo": "Image_000532.jpg",
+      "verified_photo_uv": [
+        0.1025,
+        0.2374
+      ],
+      "verified_photo_dist_m": 10.64,
+      "verified_photo_angles": 2,
+      "second_verified_photo": "Image_000687.jpg",
+      "ai_photo_verified": true
+    },
+    {
+      "id": "T4",
+      "name": "喬木 T4",
+      "height_m": 5.97,
+      "dbh_cm": 23.4,
+      "dbh_method": "pratt_circle_1.3m_slice",
+      "trunk_verified_3d": true,
+      "trunk_triangle_count": 247,
+      "ai_vision_verified": true,
+      "ai_vision_label": "mature park tree trunk",
+      "object_seen": "mature park tree trunk",
+      "crown_diameter_m": 3.98,
+      "crown_area_m2": 12.44,
+      "ground_elevation_m": 6.894,
+      "top_elevation_m": 12.864,
+      "trunk_twd97": [
+        295993.554,
+        2768470.59,
+        6.894
+      ],
+      "trunk_local": [
+        14.143,
+        -8.256,
+        23.64
+      ],
+      "verified_photo": "Image_001801.jpg",
+      "verified_photo_uv": [
+        0.4663,
+        0.5523
+      ],
+      "verified_photo_dist_m": 7.32,
+      "verified_photo_angles": 2,
+      "second_verified_photo": "Image_001806.jpg",
+      "ai_photo_verified": true
+    },
+    {
+      "id": "T5",
+      "name": "喬木 T5",
+      "height_m": 5.82,
+      "dbh_cm": 27.9,
+      "dbh_method": "pratt_allometric_hybrid",
+      "trunk_verified_3d": true,
+      "trunk_triangle_count": 226,
+      "ai_vision_verified": true,
+      "ai_vision_label": "forested park tree trunk",
+      "object_seen": "forested park tree trunk",
+      "crown_diameter_m": 3.44,
+      "crown_area_m2": 9.29,
+      "ground_elevation_m": 11.175,
+      "top_elevation_m": 16.995,
+      "trunk_twd97": [
+        295970.68,
+        2768539.49,
+        11.175
+      ],
+      "trunk_local": [
+        -8.731,
+        -3.975,
+        -45.26
+      ],
+      "verified_photo": "Image_000689.jpg",
+      "verified_photo_uv": [
+        0.4494,
+        0.3552
+      ],
+      "verified_photo_dist_m": 20.32,
+      "verified_photo_angles": 2,
+      "second_verified_photo": "Image_000879.jpg",
+      "ai_photo_verified": true
+    },
+    {
+      "id": "T6",
+      "name": "喬木 T6",
+      "height_m": 5.6,
+      "dbh_cm": 23.0,
+      "dbh_method": "trunk_slice_1.3m_hybrid",
+      "trunk_verified_3d": true,
+      "trunk_triangle_count": 84,
+      "ai_vision_verified": true,
+      "ai_vision_label": "Young park tree trunk",
+      "object_seen": "Young park tree trunk",
+      "crown_diameter_m": 4.35,
+      "crown_area_m2": 14.86,
+      "ground_elevation_m": 8.989,
+      "top_elevation_m": 14.589,
+      "trunk_twd97": [
+        295966.939,
+        2768491.286,
+        8.989
+      ],
+      "trunk_local": [
+        -12.472,
+        -6.161,
+        2.944
+      ],
+      "verified_photo": "Image_001395.jpg",
+      "verified_photo_uv": [
+        0.5698,
+        0.3627
+      ],
+      "verified_photo_dist_m": 4.73,
+      "verified_photo_angles": 2,
+      "second_verified_photo": "Image_001296.jpg",
+      "ai_photo_verified": true
+    },
+    {
+      "id": "T7",
+      "name": "喬木 T7",
+      "height_m": 5.31,
+      "dbh_cm": 25.5,
+      "dbh_method": "pratt_allometric_hybrid",
+      "trunk_verified_3d": true,
+      "trunk_triangle_count": 373,
+      "ai_vision_verified": true,
+      "ai_vision_label": "Mature banyan tree trunk",
+      "object_seen": "Mature banyan tree trunk",
+      "crown_diameter_m": 3.45,
+      "crown_area_m2": 9.35,
+      "ground_elevation_m": 9.048,
+      "top_elevation_m": 14.358,
+      "trunk_twd97": [
+        295984.454,
+        2768498.91,
+        9.048
+      ],
+      "trunk_local": [
+        5.043,
+        -6.102,
+        -4.68
+      ],
+      "verified_photo": "Image_000025.jpg",
+      "verified_photo_uv": [
+        0.5103,
+        0.395
+      ],
+      "verified_photo_dist_m": 8.88,
+      "verified_photo_angles": 2,
+      "second_verified_photo": "Image_000225.jpg",
+      "ai_photo_verified": true
+    },
+    {
+      "id": "T8",
+      "name": "喬木 T8",
+      "height_m": 5.0,
+      "dbh_cm": 24.0,
+      "dbh_method": "pratt_allometric_hybrid",
+      "trunk_verified_3d": true,
+      "trunk_triangle_count": 380,
+      "ai_vision_verified": true,
+      "ai_vision_label": "Park tree trunk near playground",
+      "object_seen": "Park tree trunk near playground",
+      "crown_diameter_m": 2.38,
+      "crown_area_m2": 4.45,
+      "ground_elevation_m": 9.085,
+      "top_elevation_m": 14.085,
+      "trunk_twd97": [
+        295982.302,
+        2768502.735,
+        9.085
+      ],
+      "trunk_local": [
+        2.891,
+        -6.065,
+        -8.505
+      ],
+      "verified_photo": "Image_000027.jpg",
+      "verified_photo_uv": [
+        0.4482,
+        0.4235
+      ],
+      "verified_photo_dist_m": 6.25,
+      "verified_photo_angles": 2,
+      "second_verified_photo": "Image_000813.jpg",
+      "ai_photo_verified": true
+    },
+    {
+      "id": "T9",
+      "name": "喬木 T9",
+      "height_m": 5.0,
+      "dbh_cm": 24.0,
+      "dbh_method": "pratt_allometric_hybrid",
+      "trunk_verified_3d": true,
+      "trunk_triangle_count": 230,
+      "ai_vision_verified": true,
+      "ai_vision_label": "Dense park woodland tree trunk",
+      "object_seen": "Dense park woodland tree trunk",
+      "crown_diameter_m": 3.61,
+      "crown_area_m2": 10.24,
+      "ground_elevation_m": 11.625,
+      "top_elevation_m": 16.625,
+      "trunk_twd97": [
+        295964.098,
+        2768542.846,
+        11.625
+      ],
+      "trunk_local": [
+        -15.313,
+        -3.525,
+        -48.616
+      ],
+      "verified_photo": "Image_000690.jpg",
+      "verified_photo_uv": [
+        0.5861,
+        0.3669
+      ],
+      "verified_photo_dist_m": 27.48,
+      "verified_photo_angles": 1,
+      "second_verified_photo": null,
+      "ai_photo_verified": true
+    },
+    {
+      "id": "T10",
+      "name": "喬木 T10",
+      "height_m": 4.92,
+      "dbh_cm": 23.6,
+      "dbh_method": "pratt_allometric_hybrid",
+      "trunk_verified_3d": true,
+      "trunk_triangle_count": 237,
+      "ai_vision_verified": true,
+      "ai_vision_label": "Park tree trunk in grove",
+      "object_seen": "Park tree trunk in grove",
+      "crown_diameter_m": 1.49,
+      "crown_area_m2": 1.75,
+      "ground_elevation_m": 11.067,
+      "top_elevation_m": 15.987,
+      "trunk_twd97": [
+        295965.488,
+        2768536.483,
+        11.067
+      ],
+      "trunk_local": [
+        -13.923,
+        -4.083,
+        -42.253
+      ],
+      "verified_photo": "Image_000693.jpg",
+      "verified_photo_uv": [
+        0.6776,
+        0.3967
+      ],
+      "verified_photo_dist_m": 22.02,
+      "verified_photo_angles": 2,
+      "second_verified_photo": "Image_000842.jpg",
+      "ai_photo_verified": true
+    },
+    {
+      "id": "T11",
+      "name": "喬木 T11",
+      "height_m": 4.92,
+      "dbh_cm": 23.6,
+      "dbh_method": "trunk_slice_1.3m_hybrid",
+      "trunk_verified_3d": true,
+      "trunk_triangle_count": 287,
+      "ai_vision_verified": true,
+      "ai_vision_label": "Thin park tree trunk near building wall",
+      "object_seen": "Thin park tree trunk near building wall",
+      "crown_diameter_m": 2.06,
+      "crown_area_m2": 3.33,
+      "ground_elevation_m": 9.942,
+      "top_elevation_m": 14.862,
+      "trunk_twd97": [
+        295987.554,
+        2768524.011,
+        9.942
+      ],
+      "trunk_local": [
+        8.143,
+        -5.208,
+        -29.781
+      ],
+      "verified_photo": "Image_000362.jpg",
+      "verified_photo_uv": [
+        0.5488,
+        0.4477
+      ],
+      "verified_photo_dist_m": 6.06,
+      "verified_photo_angles": 2,
+      "second_verified_photo": "Image_000381.jpg",
+      "ai_photo_verified": true
+    },
+    {
+      "id": "T12",
+      "name": "喬木 T12",
+      "height_m": 4.67,
+      "dbh_cm": 22.4,
+      "dbh_method": "pratt_circle_1.3m_slice",
+      "trunk_verified_3d": true,
+      "trunk_triangle_count": 334,
+      "ai_vision_verified": true,
+      "ai_vision_label": "Park tree trunk in grove",
+      "object_seen": "Park tree trunk in grove",
+      "crown_diameter_m": 3.71,
+      "crown_area_m2": 10.81,
+      "ground_elevation_m": 10.714,
+      "top_elevation_m": 15.384,
+      "trunk_twd97": [
+        295980.371,
+        2768534.178,
+        10.714
+      ],
+      "trunk_local": [
+        0.96,
+        -4.436,
+        -39.948
+      ],
+      "verified_photo": "Image_000689.jpg",
+      "verified_photo_uv": [
+        0.6619,
+        0.3643
+      ],
+      "verified_photo_dist_m": 9.71,
+      "verified_photo_angles": 2,
+      "second_verified_photo": "Image_000874.jpg",
+      "ai_photo_verified": true
+    },
+    {
+      "id": "T13",
+      "name": "喬木 T13",
+      "height_m": 4.56,
+      "dbh_cm": 21.9,
+      "dbh_method": "pratt_allometric_hybrid",
+      "trunk_verified_3d": true,
+      "trunk_triangle_count": 301,
+      "ai_vision_verified": true,
+      "ai_vision_label": "Park tree trunk in forest",
+      "object_seen": "Park tree trunk in forest",
+      "crown_diameter_m": 3.85,
+      "crown_area_m2": 11.64,
+      "ground_elevation_m": 10.762,
+      "top_elevation_m": 15.322,
+      "trunk_twd97": [
+        295976.437,
+        2768533.878,
+        10.762
+      ],
+      "trunk_local": [
+        -2.974,
+        -4.388,
+        -39.648
+      ],
+      "verified_photo": "Image_000690.jpg",
+      "verified_photo_uv": [
+        0.598,
+        0.3848
+      ],
+      "verified_photo_dist_m": 12.21,
+      "verified_photo_angles": 2,
+      "second_verified_photo": "Image_000877.jpg",
+      "ai_photo_verified": true
+    },
+    {
+      "id": "T14",
+      "name": "喬木 T14",
+      "height_m": 4.43,
+      "dbh_cm": 21.3,
+      "dbh_method": "pratt_allometric_hybrid",
+      "trunk_verified_3d": true,
+      "trunk_triangle_count": 174,
+      "ai_vision_verified": true,
+      "ai_vision_label": "Park tree trunk near bench",
+      "object_seen": "Park tree trunk near bench",
+      "crown_diameter_m": 1.17,
+      "crown_area_m2": 1.08,
+      "ground_elevation_m": 11.416,
+      "top_elevation_m": 15.846,
+      "trunk_twd97": [
+        295963.183,
+        2768539.11,
+        11.416
+      ],
+      "trunk_local": [
+        -16.228,
+        -3.734,
+        -44.88
+      ],
+      "verified_photo": "Image_000690.jpg",
+      "verified_photo_uv": [
+        0.4578,
+        0.3769
+      ],
+      "verified_photo_dist_m": 26.23,
+      "verified_photo_angles": 2,
+      "second_verified_photo": "Image_000842.jpg",
+      "ai_photo_verified": true
+    },
+    {
+      "id": "T15",
+      "name": "喬木 T15",
+      "height_m": 4.25,
+      "dbh_cm": 20.4,
+      "dbh_method": "pratt_allometric_hybrid",
+      "trunk_verified_3d": true,
+      "trunk_triangle_count": 625,
+      "ai_vision_verified": true,
+      "ai_vision_label": "Large park tree trunk near playground",
+      "object_seen": "Large park tree trunk near playground",
+      "crown_diameter_m": 3.36,
+      "crown_area_m2": 8.87,
+      "ground_elevation_m": 7.436,
+      "top_elevation_m": 11.686,
+      "trunk_twd97": [
+        295987.831,
+        2768475.493,
+        7.436
+      ],
+      "trunk_local": [
+        8.42,
+        -7.714,
+        18.737
+      ],
+      "verified_photo": "Image_001770.jpg",
+      "verified_photo_uv": [
+        0.513,
+        0.5445
+      ],
+      "verified_photo_dist_m": 4.5,
+      "verified_photo_angles": 2,
+      "second_verified_photo": "Image_001766.jpg",
+      "ai_photo_verified": true
+    },
+    {
+      "id": "T16",
+      "name": "喬木 T16",
+      "height_m": 4.16,
+      "dbh_cm": 8.0,
+      "dbh_method": "pratt_circle_1.3m_slice",
+      "trunk_verified_3d": true,
+      "trunk_triangle_count": 85,
+      "ai_vision_verified": true,
+      "ai_vision_label": "Mature tree trunk in park walkway",
+      "object_seen": "Mature tree trunk in park walkway",
+      "crown_diameter_m": 3.54,
+      "crown_area_m2": 9.84,
+      "ground_elevation_m": 7.287,
+      "top_elevation_m": 11.447,
+      "trunk_twd97": [
+        295989.457,
+        2768475.097,
+        7.287
+      ],
+      "trunk_local": [
+        10.046,
+        -7.863,
+        19.133
+      ],
+      "verified_photo": "Image_001776.jpg",
+      "verified_photo_uv": [
+        0.4496,
+        0.4866
+      ],
+      "verified_photo_dist_m": 5.22,
+      "verified_photo_angles": 2,
+      "second_verified_photo": "Image_001784.jpg",
+      "ai_photo_verified": true
+    },
+    {
+      "id": "T17",
+      "name": "喬木 T17",
+      "height_m": 4.03,
+      "dbh_cm": 19.3,
+      "dbh_method": "pratt_allometric_hybrid",
+      "trunk_verified_3d": true,
+      "trunk_triangle_count": 25,
+      "ai_vision_verified": true,
+      "ai_vision_label": "Park tree foliage and branches",
+      "object_seen": "Park tree foliage and branches",
+      "crown_diameter_m": 3.43,
+      "crown_area_m2": 9.24,
+      "ground_elevation_m": 11.754,
+      "top_elevation_m": 15.784,
+      "trunk_twd97": [
+        295943.345,
+        2768509.117,
+        11.754
+      ],
+      "trunk_local": [
+        -36.066,
+        -3.396,
+        -14.887
+      ],
+      "verified_photo": "Image_001231.jpg",
+      "verified_photo_uv": [
+        0.5287,
+        0.3923
+      ],
+      "verified_photo_dist_m": 31.24,
+      "verified_photo_angles": 2,
+      "second_verified_photo": "Image_001240.jpg",
+      "ai_photo_verified": true
+    },
+    {
+      "id": "T18",
+      "name": "喬木 T18",
+      "height_m": 3.87,
+      "dbh_cm": 15.0,
+      "dbh_method": "pratt_circle_1.3m_slice",
+      "trunk_verified_3d": true,
+      "trunk_triangle_count": 199,
+      "ai_vision_verified": true,
+      "ai_vision_label": "Street tree trunk with green canopy",
+      "object_seen": "Street tree trunk with green canopy",
+      "crown_diameter_m": 3.29,
+      "crown_area_m2": 8.5,
+      "ground_elevation_m": 7.704,
+      "top_elevation_m": 11.574,
+      "trunk_twd97": [
+        295984.035,
+        2768477.05,
+        7.704
+      ],
+      "trunk_local": [
+        4.624,
+        -7.446,
+        17.18
+      ],
+      "verified_photo": "Image_001671.jpg",
+      "verified_photo_uv": [
+        0.483,
+        0.5329
+      ],
+      "verified_photo_dist_m": 4.79,
+      "verified_photo_angles": 2,
+      "second_verified_photo": "Image_001746.jpg",
+      "ai_photo_verified": true
+    },
+    {
+      "id": "T19",
+      "name": "喬木 T19",
+      "height_m": 3.85,
+      "dbh_cm": 17.3,
+      "dbh_method": "trunk_slice_1.3m_hybrid",
+      "trunk_verified_3d": true,
+      "trunk_triangle_count": 197,
+      "ai_vision_verified": true,
+      "ai_vision_label": "Slender tree trunk in park grove",
+      "object_seen": "Slender tree trunk in park grove",
+      "crown_diameter_m": 3.27,
+      "crown_area_m2": 8.4,
+      "ground_elevation_m": 10.999,
+      "top_elevation_m": 14.849,
+      "trunk_twd97": [
+        295974.308,
+        2768537.442,
+        10.999
+      ],
+      "trunk_local": [
+        -5.103,
+        -4.151,
+        -43.212
+      ],
+      "verified_photo": "Image_000689.jpg",
+      "verified_photo_uv": [
+        0.4937,
+        0.3574
+      ],
+      "verified_photo_dist_m": 16.24,
+      "verified_photo_angles": 2,
+      "second_verified_photo": "Image_000877.jpg",
+      "ai_photo_verified": true
+    },
+    {
+      "id": "T20",
+      "name": "喬木 T20",
+      "height_m": 3.6,
+      "dbh_cm": 17.3,
+      "dbh_method": "pratt_allometric_hybrid",
+      "trunk_verified_3d": true,
+      "trunk_triangle_count": 289,
+      "ai_vision_verified": true,
+      "ai_vision_label": "Mature tree trunk near playground",
+      "object_seen": "Mature tree trunk near playground",
+      "crown_diameter_m": 3.06,
+      "crown_area_m2": 7.35,
+      "ground_elevation_m": 7.617,
+      "top_elevation_m": 11.217,
+      "trunk_twd97": [
+        295990.16,
+        2768479.971,
+        7.617
+      ],
+      "trunk_local": [
+        10.749,
+        -7.533,
+        14.259
+      ],
+      "verified_photo": "Image_001771.jpg",
+      "verified_photo_uv": [
+        0.497,
+        0.4889
+      ],
+      "verified_photo_dist_m": 9.35,
+      "verified_photo_angles": 2,
+      "second_verified_photo": "Image_001766.jpg",
+      "ai_photo_verified": true
+    },
+    {
+      "id": "T21",
+      "name": "喬木 T21",
+      "height_m": 3.21,
+      "dbh_cm": 10.5,
+      "dbh_method": "pratt_circle_1.3m_slice",
+      "trunk_verified_3d": true,
+      "trunk_triangle_count": 36,
+      "ai_vision_verified": true,
+      "ai_vision_label": "Park tree trunk by brick wall",
+      "object_seen": "Park tree trunk by brick wall",
+      "crown_diameter_m": 2.73,
+      "crown_area_m2": 5.85,
+      "ground_elevation_m": 9.234,
+      "top_elevation_m": 12.444,
+      "trunk_twd97": [
+        295992.551,
+        2768513.827,
+        9.234
+      ],
+      "trunk_local": [
+        13.14,
+        -5.916,
+        -19.597
+      ],
+      "verified_photo": "Image_000251.jpg",
+      "verified_photo_uv": [
+        0.4908,
+        0.4772
+      ],
+      "verified_photo_dist_m": 6.91,
+      "verified_photo_angles": 2,
+      "second_verified_photo": "Image_000187.jpg",
+      "ai_photo_verified": true
+    },
+    {
+      "id": "T22",
+      "name": "喬木 T22",
+      "height_m": 2.86,
+      "dbh_cm": 13.7,
+      "dbh_method": "pratt_allometric_hybrid",
+      "trunk_verified_3d": true,
+      "trunk_triangle_count": 218,
+      "ai_vision_verified": true,
+      "ai_vision_label": "Tree trunk in park walkway",
+      "object_seen": "Tree trunk in park walkway",
+      "crown_diameter_m": 2.43,
+      "crown_area_m2": 4.64,
+      "ground_elevation_m": 10.956,
+      "top_elevation_m": 13.816,
+      "trunk_twd97": [
+        295972.455,
+        2768536.734,
+        10.956
+      ],
+      "trunk_local": [
+        -6.956,
+        -4.194,
+        -42.504
+      ],
+      "verified_photo": "Image_000690.jpg",
+      "verified_photo_uv": [
+        0.5904,
+        0.3792
+      ],
+      "verified_photo_dist_m": 17.12,
+      "verified_photo_angles": 2,
+      "second_verified_photo": "Image_000879.jpg",
+      "ai_photo_verified": true
+    }
+  ],
+  "water_bodies": [],
+  "walls": [
+    {
+      "id": "WL1",
+      "name": "擋土牆/垂直牆面 WL1",
+      "subtype": "structural_wall",
+      "length_m": 3.52,
+      "height_m": 6.39,
+      "mean_height_m": 6.39,
+      "max_height_m": 8.7,
+      "vertical_area_m2": 13.21,
+      "coplanarity_rms_m": 0.19,
+      "azimuth_deg": 150.1,
+      "tilt_deg": 4.8,
+      "center_twd97": [
+        296020.945,
+        2768473.454,
+        13.599
+      ],
+      "center_local": [
+        41.534,
+        -1.551,
+        20.776
+      ],
+      "base_polyline_twd97": [
+        [
+          296020.479,
+          2768474.263,
+          13.868
+        ],
+        [
+          296020.668,
+          2768473.887,
+          14.361
+        ],
+        [
+          296020.997,
+          2768473.314,
+          15.048
+        ],
+        [
+          296021.355,
+          2768472.67,
+          15.778
+        ],
+        [
+          296021.732,
+          2768472.021,
+          15.794
+        ]
+      ],
+      "top_polyline_twd97": [
+        [
+          296020.479,
+          2768474.263,
+          18.295
+        ],
+        [
+          296020.668,
+          2768473.887,
+          19.072
+        ],
+        [
+          296020.997,
+          2768473.314,
+          19.512
+        ],
+        [
+          296021.355,
+          2768472.67,
+          19.298
+        ],
+        [
+          296021.732,
+          2768472.021,
+          18.09
+        ]
+      ],
+      "base_polyline_local": [
+        [
+          41.068,
+          -1.282,
+          19.967
+        ],
+        [
+          41.257,
+          -0.789,
+          20.343
+        ],
+        [
+          41.586,
+          -0.102,
+          20.916
+        ],
+        [
+          41.944,
+          0.628,
+          21.56
+        ],
+        [
+          42.321,
+          0.644,
+          22.209
+        ]
+      ],
+      "top_polyline_local": [
+        [
+          41.068,
+          3.145,
+          19.967
+        ],
+        [
+          41.257,
+          3.922,
+          20.343
+        ],
+        [
+          41.586,
+          4.362,
+          20.916
+        ],
+        [
+          41.944,
+          4.148,
+          21.56
+        ],
+        [
+          42.321,
+          2.94,
+          22.209
+        ]
+      ],
+      "verified_photo": "Image_001838.jpg",
+      "verified_photo_uv": [
+        0.4606,
+        0.2466
+      ],
+      "verified_photo_dist_m": 18.28,
+      "verified_photo_angles": 2,
+      "second_verified_photo": "Image_001945.jpg",
+      "ai_photo_verified": true
+    },
+    {
+      "id": "WL2",
+      "name": "擋土牆/垂直牆面 WL2",
+      "subtype": "retaining_wall",
+      "length_m": 5.58,
+      "height_m": 2.0,
+      "mean_height_m": 2.0,
+      "max_height_m": 2.0,
+      "vertical_area_m2": 12.73,
+      "coplanarity_rms_m": 0.1,
+      "azimuth_deg": 61.4,
+      "tilt_deg": 5.4,
+      "center_twd97": [
+        295982.192,
+        2768519.181,
+        10.973
+      ],
+      "center_local": [
+        2.781,
+        -4.177,
+        -24.951
+      ],
+      "base_polyline_twd97": [
+        [
+          295983.822,
+          2768520.087,
+          10.366
+        ],
+        [
+          295982.984,
+          2768519.527,
+          10.604
+        ],
+        [
+          295982.022,
+          2768519.047,
+          10.721
+        ],
+        [
+          295980.972,
+          2768518.529,
+          10.529
+        ],
+        [
+          295979.775,
+          2768518.031,
+          10.427
+        ]
+      ],
+      "top_polyline_twd97": [
+        [
+          295983.822,
+          2768520.087,
+          11.394
+        ],
+        [
+          295982.984,
+          2768519.527,
+          12.0
+        ],
+        [
+          295982.022,
+          2768519.047,
+          11.985
+        ],
+        [
+          295980.972,
+          2768518.529,
+          11.531
+        ],
+        [
+          295979.775,
+          2768518.031,
+          11.407
+        ]
+      ],
+      "base_polyline_local": [
+        [
+          4.411,
+          -4.784,
+          -25.857
+        ],
+        [
+          3.573,
+          -4.546,
+          -25.297
+        ],
+        [
+          2.611,
+          -4.429,
+          -24.817
+        ],
+        [
+          1.561,
+          -4.621,
+          -24.299
+        ],
+        [
+          0.364,
+          -4.723,
+          -23.801
+        ]
+      ],
+      "top_polyline_local": [
+        [
+          4.411,
+          -3.756,
+          -25.857
+        ],
+        [
+          3.573,
+          -3.15,
+          -25.297
+        ],
+        [
+          2.611,
+          -3.165,
+          -24.817
+        ],
+        [
+          1.561,
+          -3.619,
+          -24.299
+        ],
+        [
+          0.364,
+          -3.743,
+          -23.801
+        ]
+      ],
+      "verified_photo": "Image_000943.jpg",
+      "verified_photo_uv": [
+        0.5175,
+        0.4904
+      ],
+      "verified_photo_dist_m": 4.05,
+      "verified_photo_angles": 2,
+      "second_verified_photo": "Image_000799.jpg",
+      "ai_photo_verified": true
+    },
+    {
+      "id": "WL3",
+      "name": "擋土牆/垂直牆面 WL3",
+      "subtype": "retaining_wall",
+      "length_m": 7.97,
+      "height_m": 2.46,
+      "mean_height_m": 2.46,
+      "max_height_m": 3.65,
+      "vertical_area_m2": 11.67,
+      "coplanarity_rms_m": 0.194,
+      "azimuth_deg": 133.6,
+      "tilt_deg": 5.5,
+      "center_twd97": [
+        295977.179,
+        2768455.536,
+        13.958
+      ],
+      "center_local": [
+        -2.232,
+        -1.192,
+        38.694
+      ],
+      "base_polyline_twd97": [
+        [
+          295980.45,
+          2768452.972,
+          12.806
+        ],
+        [
+          295978.766,
+          2768454.201,
+          13.208
+        ],
+        [
+          295977.531,
+          2768455.153,
+          13.335
+        ],
+        [
+          295976.194,
+          2768456.481,
+          13.419
+        ],
+        [
+          295975.212,
+          2768457.401,
+          13.716
+        ]
+      ],
+      "top_polyline_twd97": [
+        [
+          295980.45,
+          2768452.972,
+          16.456
+        ],
+        [
+          295978.766,
+          2768454.201,
+          16.756
+        ],
+        [
+          295977.531,
+          2768455.153,
+          16.77
+        ],
+        [
+          295976.194,
+          2768456.481,
+          16.768
+        ],
+        [
+          295975.212,
+          2768457.401,
+          16.765
+        ]
+      ],
+      "base_polyline_local": [
+        [
+          1.039,
+          -2.344,
+          41.258
+        ],
+        [
+          -0.645,
+          -1.942,
+          40.029
+        ],
+        [
+          -1.88,
+          -1.815,
+          39.077
+        ],
+        [
+          -3.217,
+          -1.731,
+          37.749
+        ],
+        [
+          -4.199,
+          -1.434,
+          36.829
+        ]
+      ],
+      "top_polyline_local": [
+        [
+          1.039,
+          1.306,
+          41.258
+        ],
+        [
+          -0.645,
+          1.606,
+          40.029
+        ],
+        [
+          -1.88,
+          1.62,
+          39.077
+        ],
+        [
+          -3.217,
+          1.618,
+          37.749
+        ],
+        [
+          -4.199,
+          1.615,
+          36.829
+        ]
+      ],
+      "verified_photo": "Image_001708.jpg",
+      "verified_photo_uv": [
+        0.4286,
+        0.2082
+      ],
+      "verified_photo_dist_m": 23.74,
+      "ai_photo_verified": true,
+      "los_unoccluded": true
+    },
+    {
+      "id": "WL4",
+      "name": "擋土牆/垂直牆面 WL4",
+      "subtype": "retaining_wall",
+      "length_m": 3.57,
+      "height_m": 1.78,
+      "mean_height_m": 1.78,
+      "max_height_m": 1.78,
+      "vertical_area_m2": 6.83,
+      "coplanarity_rms_m": 0.199,
+      "azimuth_deg": 149.7,
+      "tilt_deg": 3.2,
+      "center_twd97": [
+        295977.466,
+        2768518.567,
+        10.918
+      ],
+      "center_local": [
+        -1.945,
+        -4.232,
+        -24.337
+      ],
+      "base_polyline_twd97": [
+        [
+          295976.722,
+          2768520.074,
+          10.676
+        ],
+        [
+          295976.936,
+          2768519.366,
+          10.85
+        ],
+        [
+          295977.596,
+          2768518.509,
+          10.468
+        ],
+        [
+          295977.941,
+          2768517.885,
+          10.483
+        ],
+        [
+          295978.124,
+          2768517.575,
+          10.512
+        ]
+      ],
+      "top_polyline_twd97": [
+        [
+          295976.722,
+          2768520.074,
+          11.995
+        ],
+        [
+          295976.936,
+          2768519.366,
+          12.63
+        ],
+        [
+          295977.596,
+          2768518.509,
+          12.248
+        ],
+        [
+          295977.941,
+          2768517.885,
+          11.624
+        ],
+        [
+          295978.124,
+          2768517.575,
+          11.615
+        ]
+      ],
+      "base_polyline_local": [
+        [
+          -2.689,
+          -4.474,
+          -25.844
+        ],
+        [
+          -2.475,
+          -4.3,
+          -25.136
+        ],
+        [
+          -1.815,
+          -4.682,
+          -24.279
+        ],
+        [
+          -1.47,
+          -4.667,
+          -23.655
+        ],
+        [
+          -1.287,
+          -4.638,
+          -23.345
+        ]
+      ],
+      "top_polyline_local": [
+        [
+          -2.689,
+          -3.155,
+          -25.844
+        ],
+        [
+          -2.475,
+          -2.52,
+          -25.136
+        ],
+        [
+          -1.815,
+          -2.902,
+          -24.279
+        ],
+        [
+          -1.47,
+          -3.526,
+          -23.655
+        ],
+        [
+          -1.287,
+          -3.535,
+          -23.345
+        ]
+      ],
+      "verified_photo": "Image_000780.jpg",
+      "verified_photo_uv": [
+        0.5172,
+        0.4842
+      ],
+      "verified_photo_dist_m": 4.05,
+      "ai_photo_verified": true,
+      "los_unoccluded": false
+    },
+    {
+      "id": "WL5",
+      "name": "擋土牆/垂直牆面 WL5",
+      "subtype": "retaining_wall",
+      "length_m": 3.66,
+      "height_m": 1.86,
+      "mean_height_m": 1.86,
+      "max_height_m": 2.82,
+      "vertical_area_m2": 3.9,
+      "coplanarity_rms_m": 0.231,
+      "azimuth_deg": 132.4,
+      "tilt_deg": 7.0,
+      "center_twd97": [
+        295987.0,
+        2768449.778,
+        7.099
+      ],
+      "center_local": [
+        7.589,
+        -8.051,
+        44.452
+      ],
+      "base_polyline_twd97": [
+        [
+          295988.379,
+          2768448.949,
+          8.629
+        ],
+        [
+          295987.906,
+          2768449.232,
+          6.914
+        ],
+        [
+          295987.085,
+          2768449.53,
+          6.633
+        ],
+        [
+          295986.178,
+          2768450.48,
+          6.768
+        ],
+        [
+          295985.866,
+          2768450.669,
+          6.935
+        ]
+      ],
+      "top_polyline_twd97": [
+        [
+          295988.379,
+          2768448.949,
+          9.854
+        ],
+        [
+          295987.906,
+          2768449.232,
+          9.734
+        ],
+        [
+          295987.085,
+          2768449.53,
+          7.665
+        ],
+        [
+          295986.178,
+          2768450.48,
+          9.588
+        ],
+        [
+          295985.866,
+          2768450.669,
+          8.267
+        ]
+      ],
+      "base_polyline_local": [
+        [
+          8.968,
+          -6.521,
+          45.281
+        ],
+        [
+          8.495,
+          -8.236,
+          44.998
+        ],
+        [
+          7.674,
+          -8.517,
+          44.7
+        ],
+        [
+          6.767,
+          -8.382,
+          43.75
+        ],
+        [
+          6.455,
+          -8.215,
+          43.561
+        ]
+      ],
+      "top_polyline_local": [
+        [
+          8.968,
+          -5.296,
+          45.281
+        ],
+        [
+          8.495,
+          -5.416,
+          44.998
+        ],
+        [
+          7.674,
+          -7.485,
+          44.7
+        ],
+        [
+          6.767,
+          -5.562,
+          43.75
+        ],
+        [
+          6.455,
+          -6.883,
+          43.561
+        ]
+      ],
+      "verified_photo": "Image_001710.jpg",
+      "verified_photo_uv": [
+        0.4266,
+        0.4164
+      ],
+      "verified_photo_dist_m": 27.47,
+      "ai_photo_verified": true,
+      "los_unoccluded": false
+    },
+    {
+      "id": "WL6",
+      "name": "擋土牆/垂直牆面 WL6",
+      "subtype": "retaining_wall",
+      "length_m": 3.08,
+      "height_m": 2.34,
+      "mean_height_m": 2.34,
+      "max_height_m": 2.34,
+      "vertical_area_m2": 8.02,
+      "coplanarity_rms_m": 0.123,
+      "azimuth_deg": 150.0,
+      "tilt_deg": 4.2,
+      "center_twd97": [
+        295982.306,
+        2768516.44,
+        10.994
+      ],
+      "center_local": [
+        2.895,
+        -4.156,
+        -22.21
+      ],
+      "base_polyline_twd97": [
+        [
+          295981.753,
+          2768517.466,
+          10.578
+        ],
+        [
+          295981.813,
+          2768517.261,
+          10.539
+        ],
+        [
+          295982.293,
+          2768516.688,
+          10.488
+        ],
+        [
+          295982.556,
+          2768516.308,
+          10.398
+        ],
+        [
+          295982.807,
+          2768515.619,
+          10.266
+        ]
+      ],
+      "top_polyline_twd97": [
+        [
+          295981.753,
+          2768517.466,
+          12.374
+        ],
+        [
+          295981.813,
+          2768517.261,
+          12.279
+        ],
+        [
+          295982.293,
+          2768516.688,
+          11.707
+        ],
+        [
+          295982.556,
+          2768516.308,
+          11.675
+        ],
+        [
+          295982.807,
+          2768515.619,
+          11.775
+        ]
+      ],
+      "base_polyline_local": [
+        [
+          2.342,
+          -4.572,
+          -23.236
+        ],
+        [
+          2.402,
+          -4.611,
+          -23.031
+        ],
+        [
+          2.882,
+          -4.662,
+          -22.458
+        ],
+        [
+          3.145,
+          -4.752,
+          -22.078
+        ],
+        [
+          3.396,
+          -4.884,
+          -21.389
+        ]
+      ],
+      "top_polyline_local": [
+        [
+          2.342,
+          -2.776,
+          -23.236
+        ],
+        [
+          2.402,
+          -2.871,
+          -23.031
+        ],
+        [
+          2.882,
+          -3.443,
+          -22.458
+        ],
+        [
+          3.145,
+          -3.475,
+          -22.078
+        ],
+        [
+          3.396,
+          -3.375,
+          -21.389
+        ]
+      ],
+      "verified_photo": "Image_000067.jpg",
+      "verified_photo_uv": [
+        0.4937,
+        0.6105
+      ],
+      "verified_photo_dist_m": 3.38,
+      "ai_photo_verified": true,
+      "los_unoccluded": true
+    },
+    {
+      "id": "WL7",
+      "name": "擋土牆/垂直牆面 WL7",
+      "subtype": "retaining_wall",
+      "length_m": 2.79,
+      "height_m": 2.42,
+      "mean_height_m": 2.42,
+      "max_height_m": 3.54,
+      "vertical_area_m2": 4.91,
+      "coplanarity_rms_m": 0.089,
+      "azimuth_deg": 150.0,
+      "tilt_deg": 2.4,
+      "center_twd97": [
+        295979.987,
+        2768509.945,
+        10.681
+      ],
+      "center_local": [
+        0.576,
+        -4.469,
+        -15.715
+      ],
+      "base_polyline_twd97": [
+        [
+          295979.423,
+          2768510.814,
+          10.18
+        ],
+        [
+          295979.556,
+          2768510.553,
+          10.742
+        ],
+        [
+          295980.032,
+          2768509.849,
+          10.281
+        ],
+        [
+          295980.453,
+          2768509.213,
+          9.891
+        ],
+        [
+          295980.632,
+          2768508.963,
+          9.86
+        ]
+      ],
+      "top_polyline_twd97": [
+        [
+          295979.423,
+          2768510.814,
+          12.981
+        ],
+        [
+          295979.556,
+          2768510.553,
+          13.049
+        ],
+        [
+          295980.032,
+          2768509.849,
+          13.063
+        ],
+        [
+          295980.453,
+          2768509.213,
+          13.027
+        ],
+        [
+          295980.632,
+          2768508.963,
+          12.962
+        ]
+      ],
+      "base_polyline_local": [
+        [
+          0.012,
+          -4.97,
+          -16.584
+        ],
+        [
+          0.145,
+          -4.408,
+          -16.323
+        ],
+        [
+          0.621,
+          -4.869,
+          -15.619
+        ],
+        [
+          1.042,
+          -5.259,
+          -14.983
+        ],
+        [
+          1.221,
+          -5.29,
+          -14.733
+        ]
+      ],
+      "top_polyline_local": [
+        [
+          0.012,
+          -2.169,
+          -16.584
+        ],
+        [
+          0.145,
+          -2.101,
+          -16.323
+        ],
+        [
+          0.621,
+          -2.087,
+          -15.619
+        ],
+        [
+          1.042,
+          -2.123,
+          -14.983
+        ],
+        [
+          1.221,
+          -2.188,
+          -14.733
+        ]
+      ],
+      "verified_photo": "Image_000034.jpg",
+      "verified_photo_uv": [
+        0.395,
+        0.5684
+      ],
+      "verified_photo_dist_m": 7.52,
+      "ai_photo_verified": true,
+      "los_unoccluded": true
+    },
+    {
+      "id": "WL8",
+      "name": "擋土牆/垂直牆面 WL8",
+      "subtype": "retaining_wall",
+      "length_m": 3.87,
+      "height_m": 1.23,
+      "mean_height_m": 1.23,
+      "max_height_m": 2.02,
+      "vertical_area_m2": 4.77,
+      "coplanarity_rms_m": 0.027,
+      "azimuth_deg": 130.5,
+      "tilt_deg": 3.1,
+      "center_twd97": [
+        295970.004,
+        2768464.601,
+        7.905
+      ],
+      "center_local": [
+        -9.407,
+        -7.245,
+        29.629
+      ],
+      "base_polyline_twd97": [
+        [
+          295971.276,
+          2768463.517,
+          7.865
+        ],
+        [
+          295970.909,
+          2768463.81,
+          7.938
+        ],
+        [
+          295970.082,
+          2768464.506,
+          7.95
+        ],
+        [
+          295969.341,
+          2768465.172,
+          7.896
+        ],
+        [
+          295968.972,
+          2768465.492,
+          7.95
+        ]
+      ],
+      "top_polyline_twd97": [
+        [
+          295971.276,
+          2768463.517,
+          9.264
+        ],
+        [
+          295970.909,
+          2768463.81,
+          9.222
+        ],
+        [
+          295970.082,
+          2768464.506,
+          9.349
+        ],
+        [
+          295969.341,
+          2768465.172,
+          9.381
+        ],
+        [
+          295968.972,
+          2768465.492,
+          9.434
+        ]
+      ],
+      "base_polyline_local": [
+        [
+          -8.135,
+          -7.285,
+          30.713
+        ],
+        [
+          -8.502,
+          -7.212,
+          30.42
+        ],
+        [
+          -9.329,
+          -7.2,
+          29.724
+        ],
+        [
+          -10.07,
+          -7.254,
+          29.058
+        ],
+        [
+          -10.439,
+          -7.2,
+          28.738
+        ]
+      ],
+      "top_polyline_local": [
+        [
+          -8.135,
+          -5.886,
+          30.713
+        ],
+        [
+          -8.502,
+          -5.928,
+          30.42
+        ],
+        [
+          -9.329,
+          -5.801,
+          29.724
+        ],
+        [
+          -10.07,
+          -5.769,
+          29.058
+        ],
+        [
+          -10.439,
+          -5.716,
+          28.738
+        ]
+      ],
+      "verified_photo": "Image_001688.jpg",
+      "verified_photo_uv": [
+        0.3777,
+        0.446
+      ],
+      "verified_photo_dist_m": 19.58,
+      "ai_photo_verified": true,
+      "los_unoccluded": true
+    },
+    {
+      "id": "WL9",
+      "name": "擋土牆/垂直牆面 WL9",
+      "subtype": "retaining_wall",
+      "length_m": 3.05,
+      "height_m": 1.37,
+      "mean_height_m": 1.37,
+      "max_height_m": 2.26,
+      "vertical_area_m2": 4.08,
+      "coplanarity_rms_m": 0.063,
+      "azimuth_deg": 122.9,
+      "tilt_deg": 6.3,
+      "center_twd97": [
+        295942.625,
+        2768488.428,
+        9.922
+      ],
+      "center_local": [
+        -36.786,
+        -5.228,
+        5.802
+      ],
+      "base_polyline_twd97": [
+        [
+          295943.435,
+          2768487.86,
+          9.773
+        ],
+        [
+          295943.259,
+          2768487.999,
+          9.773
+        ],
+        [
+          295942.629,
+          2768488.374,
+          9.858
+        ],
+        [
+          295941.881,
+          2768488.976,
+          10.536
+        ],
+        [
+          295941.603,
+          2768489.17,
+          10.79
+        ]
+      ],
+      "top_polyline_twd97": [
+        [
+          295943.435,
+          2768487.86,
+          11.464
+        ],
+        [
+          295943.259,
+          2768487.999,
+          11.408
+        ],
+        [
+          295942.629,
+          2768488.374,
+          11.553
+        ],
+        [
+          295941.881,
+          2768488.976,
+          11.766
+        ],
+        [
+          295941.603,
+          2768489.17,
+          11.808
+        ]
+      ],
+      "base_polyline_local": [
+        [
+          -35.976,
+          -5.377,
+          6.37
+        ],
+        [
+          -36.152,
+          -5.377,
+          6.231
+        ],
+        [
+          -36.782,
+          -5.292,
+          5.856
+        ],
+        [
+          -37.53,
+          -4.614,
+          5.254
+        ],
+        [
+          -37.808,
+          -4.36,
+          5.06
+        ]
+      ],
+      "top_polyline_local": [
+        [
+          -35.976,
+          -3.686,
+          6.37
+        ],
+        [
+          -36.152,
+          -3.742,
+          6.231
+        ],
+        [
+          -36.782,
+          -3.597,
+          5.856
+        ],
+        [
+          -37.53,
+          -3.384,
+          5.254
+        ],
+        [
+          -37.808,
+          -3.342,
+          5.06
+        ]
+      ],
+      "verified_photo": "Image_001473.jpg",
+      "verified_photo_uv": [
+        0.5321,
+        0.3784
+      ],
+      "verified_photo_dist_m": 18.72,
+      "ai_photo_verified": true,
+      "los_unoccluded": false
+    },
+    {
+      "id": "WL10",
+      "name": "擋土牆/垂直牆面 WL10",
+      "subtype": "retaining_wall",
+      "length_m": 3.73,
+      "height_m": 1.34,
+      "mean_height_m": 1.34,
+      "max_height_m": 2.21,
+      "vertical_area_m2": 3.44,
+      "coplanarity_rms_m": 0.131,
+      "azimuth_deg": 150.7,
+      "tilt_deg": 4.4,
+      "center_twd97": [
+        295985.792,
+        2768519.146,
+        10.485
+      ],
+      "center_local": [
+        6.381,
+        -4.665,
+        -24.916
+      ],
+      "base_polyline_twd97": [
+        [
+          295985.361,
+          2768520.034,
+          10.783
+        ],
+        [
+          295985.563,
+          2768519.706,
+          10.797
+        ],
+        [
+          295985.888,
+          2768518.752,
+          10.487
+        ],
+        [
+          295986.573,
+          2768518.067,
+          10.228
+        ],
+        [
+          295986.741,
+          2768517.504,
+          10.183
+        ]
+      ],
+      "top_polyline_twd97": [
+        [
+          295985.361,
+          2768520.034,
+          12.178
+        ],
+        [
+          295985.563,
+          2768519.706,
+          12.199
+        ],
+        [
+          295985.888,
+          2768518.752,
+          11.36
+        ],
+        [
+          295986.573,
+          2768518.067,
+          11.965
+        ],
+        [
+          295986.741,
+          2768517.504,
+          11.403
+        ]
+      ],
+      "base_polyline_local": [
+        [
+          5.95,
+          -4.367,
+          -25.804
+        ],
+        [
+          6.152,
+          -4.353,
+          -25.476
+        ],
+        [
+          6.477,
+          -4.663,
+          -24.522
+        ],
+        [
+          7.162,
+          -4.922,
+          -23.837
+        ],
+        [
+          7.33,
+          -4.967,
+          -23.274
+        ]
+      ],
+      "top_polyline_local": [
+        [
+          5.95,
+          -2.972,
+          -25.804
+        ],
+        [
+          6.152,
+          -2.951,
+          -25.476
+        ],
+        [
+          6.477,
+          -3.79,
+          -24.522
+        ],
+        [
+          7.162,
+          -3.185,
+          -23.837
+        ],
+        [
+          7.33,
+          -3.747,
+          -23.274
+        ]
+      ],
+      "verified_photo": "Image_001111.jpg",
+      "verified_photo_uv": [
+        0.6505,
+        0.5902
+      ],
+      "verified_photo_dist_m": 2.41,
+      "ai_photo_verified": true,
+      "los_unoccluded": true
+    },
+    {
+      "id": "WL11",
+      "name": "擋土牆/垂直牆面 WL11",
+      "subtype": "retaining_wall",
+      "length_m": 3.19,
+      "height_m": 2.48,
+      "mean_height_m": 2.48,
+      "max_height_m": 3.5,
+      "vertical_area_m2": 2.75,
+      "coplanarity_rms_m": 0.164,
+      "azimuth_deg": 149.7,
+      "tilt_deg": 8.4,
+      "center_twd97": [
+        295999.253,
+        2768510.645,
+        10.464
+      ],
+      "center_local": [
+        19.842,
+        -4.686,
+        -16.415
+      ],
+      "base_polyline_twd97": [
+        [
+          295998.86,
+          2768511.429,
+          9.598
+        ],
+        [
+          295999.074,
+          2768511.156,
+          9.594
+        ],
+        [
+          295999.307,
+          2768510.552,
+          9.87
+        ],
+        [
+          295999.819,
+          2768509.54,
+          10.104
+        ],
+        [
+          296000.124,
+          2768509.086,
+          10.149
+        ]
+      ],
+      "top_polyline_twd97": [
+        [
+          295998.86,
+          2768511.429,
+          13.098
+        ],
+        [
+          295999.074,
+          2768511.156,
+          13.094
+        ],
+        [
+          295999.307,
+          2768510.552,
+          10.42
+        ],
+        [
+          295999.819,
+          2768509.54,
+          12.586
+        ],
+        [
+          296000.124,
+          2768509.086,
+          12.631
+        ]
+      ],
+      "base_polyline_local": [
+        [
+          19.449,
+          -5.552,
+          -17.199
+        ],
+        [
+          19.663,
+          -5.556,
+          -16.926
+        ],
+        [
+          19.896,
+          -5.28,
+          -16.322
+        ],
+        [
+          20.408,
+          -5.046,
+          -15.31
+        ],
+        [
+          20.713,
+          -5.001,
+          -14.856
+        ]
+      ],
+      "top_polyline_local": [
+        [
+          19.449,
+          -2.052,
+          -17.199
+        ],
+        [
+          19.663,
+          -2.056,
+          -16.926
+        ],
+        [
+          19.896,
+          -4.73,
+          -16.322
+        ],
+        [
+          20.408,
+          -2.564,
+          -15.31
+        ],
+        [
+          20.713,
+          -2.519,
+          -14.856
+        ]
+      ],
+      "verified_photo": "Image_000190.jpg",
+      "verified_photo_uv": [
+        0.542,
+        0.4151
+      ],
+      "verified_photo_dist_m": 11.68,
+      "ai_photo_verified": true,
+      "los_unoccluded": true
+    },
+    {
+      "id": "WL12",
+      "name": "擋土牆/垂直牆面 WL12",
+      "subtype": "retaining_wall",
+      "length_m": 3.28,
+      "height_m": 1.29,
+      "mean_height_m": 1.29,
+      "max_height_m": 2.12,
+      "vertical_area_m2": 2.7,
+      "coplanarity_rms_m": 0.063,
+      "azimuth_deg": 129.5,
+      "tilt_deg": 5.5,
+      "center_twd97": [
+        295956.159,
+        2768474.421,
+        12.181
+      ],
+      "center_local": [
+        -23.252,
+        -2.969,
+        19.809
+      ],
+      "base_polyline_twd97": [
+        [
+          295957.638,
+          2768473.122,
+          12.699
+        ],
+        [
+          295957.045,
+          2768473.639,
+          12.061
+        ],
+        [
+          295956.653,
+          2768474.029,
+          12.05
+        ],
+        [
+          295956.379,
+          2768474.267,
+          12.176
+        ],
+        [
+          295955.418,
+          2768474.986,
+          12.095
+        ]
+      ],
+      "top_polyline_twd97": [
+        [
+          295957.638,
+          2768473.122,
+          13.674
+        ],
+        [
+          295957.045,
+          2768473.639,
+          13.674
+        ],
+        [
+          295956.653,
+          2768474.029,
+          13.716
+        ],
+        [
+          295956.379,
+          2768474.267,
+          13.753
+        ],
+        [
+          295955.418,
+          2768474.986,
+          13.677
+        ]
+      ],
+      "base_polyline_local": [
+        [
+          -21.773,
+          -2.451,
+          21.108
+        ],
+        [
+          -22.366,
+          -3.089,
+          20.591
+        ],
+        [
+          -22.758,
+          -3.1,
+          20.201
+        ],
+        [
+          -23.032,
+          -2.974,
+          19.963
+        ],
+        [
+          -23.993,
+          -3.055,
+          19.244
+        ]
+      ],
+      "top_polyline_local": [
+        [
+          -21.773,
+          -1.476,
+          21.108
+        ],
+        [
+          -22.366,
+          -1.476,
+          20.591
+        ],
+        [
+          -22.758,
+          -1.434,
+          20.201
+        ],
+        [
+          -23.032,
+          -1.397,
+          19.963
+        ],
+        [
+          -23.993,
+          -1.473,
+          19.244
+        ]
+      ],
+      "verified_photo": "Image_001484.jpg",
+      "verified_photo_uv": [
+        0.4698,
+        0.132
+      ],
+      "verified_photo_dist_m": 5.54,
+      "verified_photo_angles": 2,
+      "second_verified_photo": "Image_001461.jpg",
+      "ai_photo_verified": true
+    }
+  ],
+  "buildings": [],
+  "water_tanks": [],
+  "pipes": [],
+  "street_furniture": [
+    {
+      "id": "BL1",
+      "name": "錐形景觀石墩/車阻 BL1 (Conical Plaza Bollard)",
+      "subtype": "conical_bollard",
+      "ifc_class": "IfcDiscreteAccessory",
+      "color": "#94a3b8",
+      "radius_m": 0.25,
+      "diameter_m": 0.5,
+      "height_m": 0.65,
+      "ground_elevation_m": 6.98,
+      "volume_m3": 0.083,
+      "center_twd97": [
+        295987.458,
+        2768449.208,
+        7.305
+      ],
+      "center_local": [
+        8.047,
+        -7.845,
+        45.022
+      ],
+      "verified_photo": "Image_001709.jpg",
+      "verified_photo_uv": [
+        0.203,
+        0.4079
+      ],
+      "verified_photo_dist_m": 27.98,
+      "ai_photo_verified": true,
+      "los_unoccluded": false
+    },
+    {
+      "id": "BL2",
+      "name": "錐形景觀石墩/車阻 BL2 (Conical Plaza Bollard)",
+      "subtype": "conical_bollard",
+      "ifc_class": "IfcDiscreteAccessory",
+      "color": "#94a3b8",
+      "radius_m": 0.28,
+      "diameter_m": 0.56,
+      "height_m": 0.65,
+      "ground_elevation_m": 7.162,
+      "volume_m3": 0.106,
+      "center_twd97": [
+        295986.875,
+        2768449.75,
+        7.487
+      ],
+      "center_local": [
+        7.464,
+        -7.663,
+        44.48
+      ],
+      "verified_photo": "Image_001710.jpg",
+      "verified_photo_uv": [
+        0.4302,
+        0.4062
+      ],
+      "verified_photo_dist_m": 27.46,
+      "ai_photo_verified": true,
+      "los_unoccluded": false
+    },
+    {
+      "id": "BL3",
+      "name": "錐形景觀石墩/車阻 BL3 (Conical Plaza Bollard)",
+      "subtype": "conical_bollard",
+      "ifc_class": "IfcDiscreteAccessory",
+      "color": "#94a3b8",
+      "radius_m": 0.37,
+      "diameter_m": 0.75,
+      "height_m": 0.65,
+      "ground_elevation_m": 6.895,
+      "volume_m3": 0.185,
+      "center_twd97": [
+        295985.875,
+        2768450.625,
+        7.22
+      ],
+      "center_local": [
+        6.464,
+        -7.93,
+        43.605
+      ],
+      "verified_photo": "Image_001710.jpg",
+      "verified_photo_uv": [
+        0.4656,
+        0.4138
+      ],
+      "verified_photo_dist_m": 26.61,
+      "ai_photo_verified": true,
+      "los_unoccluded": false
+    },
+    {
+      "id": "BL4",
+      "name": "錐形景觀石墩/車阻 BL4 (Conical Plaza Bollard)",
+      "subtype": "conical_bollard",
+      "ifc_class": "IfcDiscreteAccessory",
+      "color": "#94a3b8",
+      "radius_m": 0.25,
+      "diameter_m": 0.5,
+      "height_m": 0.65,
+      "ground_elevation_m": 12.282,
+      "volume_m3": 0.083,
+      "center_twd97": [
+        295978.792,
+        2768454.292,
+        12.607
+      ],
+      "center_local": [
+        -0.619,
+        -2.543,
+        39.938
+      ],
+      "verified_photo": "Image_001709.jpg",
+      "verified_photo_uv": [
+        0.5446,
+        0.2408
+      ],
+      "verified_photo_dist_m": 24.17,
+      "ai_photo_verified": true,
+      "los_unoccluded": true
+    },
+    {
+      "id": "BL5",
+      "name": "錐形景觀石墩/車阻 BL5 (Conical Plaza Bollard)",
+      "subtype": "conical_bollard",
+      "ifc_class": "IfcDiscreteAccessory",
+      "color": "#94a3b8",
+      "radius_m": 0.37,
+      "diameter_m": 0.75,
+      "height_m": 0.65,
+      "ground_elevation_m": 13.548,
+      "volume_m3": 0.185,
+      "center_twd97": [
+        295977.196,
+        2768455.625,
+        13.873
+      ],
+      "center_local": [
+        -2.215,
+        -1.277,
+        38.605
+      ],
+      "verified_photo": "Image_001708.jpg",
+      "verified_photo_uv": [
+        0.4295,
+        0.2105
+      ],
+      "verified_photo_dist_m": 23.64,
+      "ai_photo_verified": true,
+      "los_unoccluded": true
+    },
+    {
+      "id": "BL6",
+      "name": "錐形景觀石墩/車阻 BL6 (Conical Plaza Bollard)",
+      "subtype": "conical_bollard",
+      "ifc_class": "IfcDiscreteAccessory",
+      "color": "#94a3b8",
+      "radius_m": 0.42,
+      "diameter_m": 0.85,
+      "height_m": 0.65,
+      "ground_elevation_m": 8.286,
+      "volume_m3": 0.238,
+      "center_twd97": [
+        295977.931,
+        2768457.931,
+        8.611
+      ],
+      "center_local": [
+        -1.48,
+        -6.539,
+        36.299
+      ],
+      "verified_photo": "Image_001708.jpg",
+      "verified_photo_uv": [
+        0.4433,
+        0.3846
+      ],
+      "verified_photo_dist_m": 20.83,
+      "ai_photo_verified": true,
+      "los_unoccluded": true
+    },
+    {
+      "id": "BL7",
+      "name": "錐形景觀石墩/車阻 BL7 (Conical Plaza Bollard)",
+      "subtype": "conical_bollard",
+      "ifc_class": "IfcDiscreteAccessory",
+      "color": "#94a3b8",
+      "radius_m": 0.25,
+      "diameter_m": 0.5,
+      "height_m": 0.65,
+      "ground_elevation_m": 13.455,
+      "volume_m3": 0.083,
+      "center_twd97": [
+        295972.958,
+        2768459.458,
+        13.78
+      ],
+      "center_local": [
+        -6.453,
+        -1.37,
+        34.772
+      ],
+      "verified_photo": "Image_001690.jpg",
+      "verified_photo_uv": [
+        0.5069,
+        0.2137
+      ],
+      "verified_photo_dist_m": 22.26,
+      "ai_photo_verified": true,
+      "los_unoccluded": true
+    },
+    {
+      "id": "BL8",
+      "name": "錐形景觀石墩/車阻 BL8 (Conical Plaza Bollard)",
+      "subtype": "conical_bollard",
+      "ifc_class": "IfcDiscreteAccessory",
+      "color": "#94a3b8",
+      "radius_m": 0.25,
+      "diameter_m": 0.5,
+      "height_m": 0.65,
+      "ground_elevation_m": 7.42,
+      "volume_m3": 0.083,
+      "center_twd97": [
+        295975.875,
+        2768459.625,
+        7.745
+      ],
+      "center_local": [
+        -3.536,
+        -7.405,
+        34.605
+      ],
+      "verified_photo": "Image_001708.jpg",
+      "verified_photo_uv": [
+        0.5627,
+        0.4157
+      ],
+      "verified_photo_dist_m": 20.31,
+      "ai_photo_verified": true,
+      "los_unoccluded": true
+    }
+  ],
+  "stockpiles": [],
+  "report_html_url": "/api/reports/categorization_report_rosepark_20260917_east.html",
+  "report_csv_url": "/api/reports/categorization_report_rosepark_20260917_east.csv",
+  "dxf_url": "/api/contours/Civil3D_Categorized_rosepark_20260917_east.dxf",
+  "downloads": {
+    "dxf_url": "/api/contours/Civil3D_Categorized_rosepark_20260917_east.dxf",
+    "report_html_url": "/api/reports/categorization_report_rosepark_20260917_east.html",
+    "report_csv_url": "/api/reports/categorization_report_rosepark_20260917_east.csv"
+  },
+  "manual_overrides": {
+    "removed_ids": [],
+    "removed_centers": [],
+    "added_trees": [],
+    "added_walls": [],
+    "added_roads": [],
+    "added_water": []
+  }
+}
