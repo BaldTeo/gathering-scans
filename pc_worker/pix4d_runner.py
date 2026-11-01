@@ -1504,9 +1504,12 @@ def postprocess_obj_to_tileset(
     if progress_callback:
         progress_callback(93.0, "Website Processing (35%): Building 9-Level Native Octree 3D Tileset...")
 
-    # Prefer PIX4Dmatic's native 9-level Scalable Mesh octree (processing/meshes/*/content/<level>_<x>_<y>_<z>.glb)
+    # Prefer PIX4Dmatic's native 9-level Scalable Mesh octree (**/processing/meshes/*/content/<level>_<x>_<y>_<z>.glb)
     # whenever available (and no island-split override filtered the OBJ) so all 9 LOD levels + 4K leaf atlases are preserved.
-    native_scalable_glbs = glob.glob(os.path.join(proj_dir, "processing", "meshes", "*", "content", "*_*_*_*.glb"))
+    native_scalable_glbs = glob.glob(
+        os.path.join(proj_dir, "**", "processing", "meshes", "*", "content", "*_*_*_*.glb"),
+        recursive=True,
+    )
     if native_scalable_glbs and not dominant_island_info:
         try:
             from pc_worker.native_octree_builder import build_native_octree_from_scalable_tileset

@@ -1127,3 +1127,83 @@ def build_tileset_from_pix4d_native_octree(
         return stats
     finally:
         shutil.rmtree(tmp_work_dir, ignore_errors=True)
+
+
+def build_native_octree_from_scalable_tileset(
+    scan_id: str,
+    proj_dir: str,
+    progress_callback: Optional[Callable[[float, str], None]] = None,
+) -> Dict[str, Any]:
+    """
+    Build a 9-level native octree 3D Tileset (`tileset/tileset.json`) directly from PIX4Dmatic's
+    Scalable Mesh `.glb` octree cells (`**/processing/meshes/*/content/<lvl>_<x>_<y>_<z>.glb`).
+    Automatically preserves any existing 3D crop mask (`occ_mask`) when rebuilding a cropped or
+    derived scan whose existing `tileset.json` covers a smaller XY footprint than the raw octree.
+    """
+    content_glbs = glob.glob(
+        os.path.join(proj_dir, "**", "processing", "meshes", "*", "content", "*_*_*_*.glb"),
+        recursive=True,
+    )
+    if not content_glbs:
+        raise FileNotFoundError(f"No native Pix4Dmatic octree .glb cells found under {proj_dir}")
+
+    # Resolve 64-bit TWD97 offset.xyz
+    ox, oy, oz = 0.0, 0.0, 0.0
+    for off_cand in (
+        os.path.join(proj_dir, "exports", "obj_mesh", "offset.xyz"),
+        os.path.join(proj_dir, "tileset", "offset.xyz"),
+        os.path.join(proj_dir, "tileset_backup", "offset.xyz"),
+    ):
+        if os.path.isfile(off_cand):
+            try:
+                with open(off_cand, "r", encoding="utf-8") as f:
+                    parts = [float(x) for x in f.read().strip().split()]
+                if len(parts) >= 3:
+                    ox, oy, oz = parts[0], parts[1], parts[2]
+                    break
+            except Exception:
+                pass
+
+    # Detect whether existing tileset/ represents a user-cropped subset of the raw Pix4Dmatic octree
+    occ_mask: Optional[Dict[str, Any]] = None
+    existing_ts_dir = os.path.join(proj_dir, "tileset")
+    existing_ts_json = os.path.join(existing_ts_dir, "tileset.json")
+    if os.path.isfile(existing_ts_json):
+        try:
+            with open(existing_ts_json, "r", encoding="utf-8") as f:
+                ts_obj = json.load(f)
+            rbox = ((ts_obj.get("root") or {}).get("boundingVolume") or {}).get("box")
+            if isinstance(rbox, list) and len(rbox) >= 12:
+                ts_hx = abs(float(rbox[3])) + abs(float(rbox[6])) + abs(float(rbox[9]))
+                ts_hy = abs(float(rbox[4])) + abs(float(rbox[7])) + abs(float(rbox[10]))
+                # Compare against L2 raw octree XY span
+                l2_xs: List[float] = []
+                l2_ys: List[float] = []
+                for fp in content_glbs:
+                    bn = os.path.splitext(os.path.basename(fp))[0]
+                    toks = bn.split("_")
+                    if len(toks) == 4 and toks[0] == "2":
+                        with open(fp, "rb") as gf:
+                            hdr = gf.read(4096)
+                        jlen = struct.unpack_from("<I", hdr, 12)[0]
+                        if 20 + jlen <= len(hdr):
+                            gj = json.loads(hdr[20 : 20 + jlen].decode("utf-8"))
+                            acc = gj["accessors"][1]
+                            l2_xs.extend([float(acc["min"][0]), float(acc["max"][0])])
+                            l2_ys.extend([float(acc["min"][1]), float(acc["max"][1])])
+                if l2_xs and l2_ys:
+                    raw_hx = 0.5 * (max(l2_xs) - min(l2_xs))
+                    raw_hy = 0.5 * (max(l2_ys) - min(l2_ys))
+                    if ts_hx < raw_hx * 0.88 or ts_hy < raw_hy * 0.88:
+                        occ_mask = build_3d_occupancy_mask_from_tileset(existing_ts_dir, (ox, oy, oz))
+        except Exception as mask_err:
+            print(f"[NativeOctreeBuilder] Warning checking crop occupancy mask for {scan_id}: {mask_err}")
+
+    return build_tileset_from_pix4d_native_octree(
+        src_proj_dir=proj_dir,
+        target_proj_dir=proj_dir,
+        occ_mask=occ_mask,
+        focal_bbox_local=None,
+        progress_callback=progress_callback,
+    )
+

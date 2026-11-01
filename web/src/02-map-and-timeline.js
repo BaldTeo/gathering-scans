@@ -1882,23 +1882,23 @@
       tr._maxActiveTiles = 16;
     } else if (lodMode === "max" && !isEmbed) {
       tr.maxDepth = Infinity;
-      tr.errorTarget = isPreview ? 1.0 : isMobOrTab ? 2.5 : 0.25;
-      tr._maxActiveTiles = isIOS || isPhone ? 120 : isMobOrTab ? 140 : isPreview ? 180 : 600;
+      tr.errorTarget = isPreview ? 0.5 : isMobOrTab ? 1.5 : 0.05;
+      tr._maxActiveTiles = isIOS || isPhone ? 140 : isMobOrTab ? 180 : isPreview ? 240 : 800;
     } else {
-      // Auto mode: NO depth cap (maxDepth = Infinity) so close-up zooming refines all the way to leaf tiles,
-      // while capping active in-frustum leaf tiles (_maxActiveTiles) and culling out-of-frustum tiles.
+      // Auto mode: progressive view-dependent LOD — refines close-up focal tiles to deepest leaf level
+      // while keeping mid-range and background tiles at intermediate LOD until zoomed in or switched to Max.
       tr.maxDepth = Infinity;
       if (isIOS || isPhone) {
         tr._maxActiveTiles = 85;
-        tr.errorTarget = 3.0;
+        tr.errorTarget = 6.0;
       } else if (isMobOrTab) {
         tr._maxActiveTiles = 110;
-        tr.errorTarget = 2.5;
+        tr.errorTarget = 4.0;
       } else if (isEmbed || isPreview || isCompareOrAlign) {
         tr._maxActiveTiles = 135;
-        tr.errorTarget = 2.0;
+        tr.errorTarget = 3.0;
       } else {
-        tr._maxActiveTiles = 200;
+        tr._maxActiveTiles = 220;
         tr.errorTarget = 1.2;
       }
     }
