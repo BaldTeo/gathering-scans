@@ -3399,6 +3399,106 @@ class GatheringScansTestSuite(unittest.TestCase):
         self.assertIn("!isLibraryFolderGroup(STATE.activeProjectGroup)", js01)
         self.assertIn("const mapOnlyScans = getMapScansOnly(STATE.scans);", js01)
 
+    def test_41_scan_to_bim_v4_daan_ground_truth_and_3d_exports(self):
+        """
+        Verify Scan-to-BIM & Classification v4 Ground-Truth Parity and 3D Solid Exports:
+        1. Both Daan Park scans (`edited_daan_cleared_292061` and `catch_DaAn`) extract:
+           - 3 circular pavilion roofs (`B1` Green, `B2` Yellow, `B3` Pink, `subtype == 'circular_roof'`, `IfcRoof`)
+           - 3 coupled cylindrical walls (`CW_B1`, `CW_B2`, `CW_B3`, `subtype == 'cylindrical_wall'`, `IfcWall`)
+           - 1 circular wooden slat fence (`CF1`, `subtype == 'circular_wooden_fence'`, `IfcRailing`)
+           - 4 cylindrical water storage tanks (`WT1..WT4`, `subtype == 'water_tank'`, `IfcTank`)
+           - >= 6 tubular pipes & steel pipe trusses (`IfcFlowSegment`)
+        2. Non-Daan benchmark scans (`QuChi261016_Trees`, `rosepark_20260918_merged`, `ntudorm_20260915_baseline`,
+           `edited_qihu_unified_merged_scan_4_scans__edited_372953`) have 0 false-positive water tanks (`water_tanks == []`)
+           and 0 false-positive forest/subterranean pipes (`pipes == []`).
+        3. `fit_scan_to_bim_primitives` on Daan Park generates watertight 3D solid meshes (`vertices_twd97`, `faces`),
+           and exports valid IFC4 SPF (`IFCFACETEDBREP`), 3D DXF (`3DFACE`), and Wavefront OBJ+MTL.
+        4. Studio 3D BIM UI (`11-scan-to-bim-primitives.js`) implements 50% scan mesh transparency (`setScanMeshOpacityForBim(0.50)`),
+           100% opacity restoration on close (`setScanMeshOpacityForBim(1.0)`), `#chkKeepBimOverlay`, and `normalizeBimCat`.
+        """
+        from pc_worker.surveying_engine import SurveyingEngine
+
+        survey = SurveyingEngine(self.db)
+
+        for daan_sid in ("edited_daan_cleared_292061", "catch_DaAn"):
+            cat_res = survey.categorize_scan_surfaces_and_objects({"scan_id": daan_sid, "force_recompute": False})
+            self.assertEqual(cat_res.get("status"), "ok", f"Failed categorization for {daan_sid}")
+            blds = cat_res.get("buildings") or []
+            circ_roofs = [b for b in blds if b.get("subtype") == "circular_roof"]
+            self.assertEqual(len(circ_roofs), 3, f"Expected 3 circular roofs on {daan_sid}, got {len(circ_roofs)}")
+            roof_colors = {b.get("color") for b in circ_roofs}
+            self.assertEqual(roof_colors, {"#10b981", "#f59e0b", "#f43f5e"}, f"Expected green/yellow/pink roofs on {daan_sid}")
+
+            tanks = cat_res.get("water_tanks") or []
+            self.assertEqual(len(tanks), 4, f"Expected 4 cylindrical water tanks on {daan_sid}, got {len(tanks)}")
+            for wt in tanks:
+                self.assertEqual(wt.get("ifc_class"), "IfcTank")
+                self.assertTrue(0.45 <= float(wt.get("radius_m") or 0) <= 1.25)
+
+            walls = cat_res.get("walls") or []
+            cyl_walls = [w for w in walls if w.get("subtype") == "cylindrical_wall"]
+            self.assertEqual(len(cyl_walls), 3, f"Expected 3 coupled cylindrical walls on {daan_sid}")
+            wood_fences = [w for w in walls if w.get("subtype") == "circular_wooden_fence"]
+            self.assertGreaterEqual(len(wood_fences), 1, f"Expected circular wooden slat fence on {daan_sid}")
+
+            pipes = cat_res.get("pipes") or []
+            self.assertGreaterEqual(len(pipes), 6, f"Expected >= 6 water manifold & truss pipes on {daan_sid}")
+
+        # Verify zero false-positive water tanks or fake pipes on non-Daan benchmark scans
+        for non_daan_sid in (
+            "QuChi261016_Trees",
+            "rosepark_20260918_merged",
+            "ntudorm_20260915_baseline",
+            "edited_qihu_unified_merged_scan_4_scans__edited_372953",
+        ):
+            nd_res = survey.categorize_scan_surfaces_and_objects({"scan_id": non_daan_sid, "force_recompute": False})
+            self.assertEqual(len(nd_res.get("water_tanks") or []), 0, f"Expected 0 water tanks on {non_daan_sid}")
+            self.assertEqual(len(nd_res.get("pipes") or []), 0, f"Expected 0 pipes on {non_daan_sid}")
+            nd_circ = [b for b in (nd_res.get("buildings") or []) if b.get("subtype") == "circular_roof"]
+            self.assertEqual(len(nd_circ), 0, f"Expected 0 circular roofs on {non_daan_sid}")
+
+        # Verify Scan-to-BIM 3D Solid Primitives & IFC4 / DXF / OBJ Exports on Daan Park
+        bim_res = survey.fit_scan_to_bim_primitives({"scan_id": "edited_daan_cleared_292061"})
+        self.assertEqual(bim_res.get("status"), "ok")
+        prims = bim_res.get("primitives") or []
+        self.assertGreaterEqual(len(prims), 20)
+        cats_present = {p.get("category") for p in prims}
+        for req_cat in ("buildings", "walls", "tanks", "pipes", "roads"):
+            self.assertIn(req_cat, cats_present, f"Missing BIM category {req_cat} on Daan Park")
+
+        bim_full = survey.fit_scan_to_bim_primitives({"scan_id": "catch_DaAn"})
+        self.assertIn("trees", {p.get("category") for p in (bim_full.get("primitives") or [])})
+
+        res_exp = survey.export_scan_to_bim({
+            "scan_id": "edited_daan_cleared_292061",
+            "formats": ["ifc", "dxf", "obj"],
+        })
+        self.assertTrue(res_exp.get("ok"))
+        written = res_exp.get("written_files") or []
+        ifc_path = next(fp for fp in written if fp.endswith(".ifc"))
+        dxf_path = next(fp for fp in written if fp.endswith(".dxf"))
+        obj_path = next(fp for fp in written if fp.endswith(".obj"))
+
+        with open(ifc_path, "r", encoding="utf-8") as f:
+            ifc_txt = f.read()
+        self.assertIn("IFCFACETEDBREP", ifc_txt)
+        self.assertIn("IFCTANK", ifc_txt)
+        self.assertIn("IFCROOF", ifc_txt)
+
+        with open(dxf_path, "r", encoding="utf-8") as f:
+            dxf_txt = f.read()
+        self.assertIn("3DFACE", dxf_txt)
+
+        with open(obj_path, "r", encoding="utf-8") as f:
+            obj_txt = f.read()
+        self.assertIn("mtllib", obj_txt)
+
+        with open(os.path.join(BASE_DIR, "web", "src", "11-scan-to-bim-primitives.js"), "r", encoding="utf-8") as f:
+            js11 = f.read()
+        self.assertIn("setScanMeshOpacityForBim", js11)
+        self.assertIn("chkKeepBimOverlay", js11)
+        self.assertIn("normalizeBimCat", js11)
+
 
 if __name__ == "__main__":
     unittest.main()

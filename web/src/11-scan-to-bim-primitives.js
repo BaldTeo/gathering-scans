@@ -520,6 +520,10 @@
     }
   }
 
+  function normalizeBimCat(cat) {
+    return cat === "equipment" ? "tanks" : cat;
+  }
+
   /**
    * Update scrollable list of fitted primitives
    */
@@ -527,7 +531,7 @@
     const listContainer = document.getElementById("bimElementsList");
     if (!listContainer) return;
 
-    const visiblePrims = BIM_STATE.primitives.filter((p) => BIM_STATE.selectedCategories.has(p.category));
+    const visiblePrims = BIM_STATE.primitives.filter((p) => BIM_STATE.selectedCategories.has(normalizeBimCat(p.category)));
 
     if (visiblePrims.length === 0) {
       listContainer.innerHTML = `
@@ -652,7 +656,7 @@
     // Apply 50% (or user-selected) scan mesh transparency on all material instances
     setScanMeshOpacityForBim(BIM_STATE.scanOpacity ?? 0.50);
 
-    const visiblePrims = BIM_STATE.primitives.filter((p) => BIM_STATE.selectedCategories.has(p.category));
+    const visiblePrims = BIM_STATE.primitives.filter((p) => BIM_STATE.selectedCategories.has(normalizeBimCat(p.category)));
 
     visiblePrims.forEach((prim) => {
       const meshData = prim.mesh;

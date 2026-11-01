@@ -2578,7 +2578,11 @@
           <span style="font-size:10.5px;font-weight:800;color:#34d399;">✨ ${escapeHtml(localizedAiModel)}</span>
           <span style="font-size:9.5px;padding:1px 6px;border-radius:99px;background:rgba(6,182,212,0.18);color:#22d3ee;font-weight:700;">${tr("RTK + 3D 幾何驗證", "RTK + 3D Verified")}</span>
         </div>
-        <div style="font-size:11px;color:var(--ui-text-primary);line-height:1.42;margin-bottom:3px;">${escapeHtml(tr(res.ai_summary_zh || res.ai_summary_en || "", res.ai_summary_en || res.ai_summary_zh || ""))}</div>
+        <div style="font-size:11px;color:var(--ui-text-primary);line-height:1.42;margin-bottom:5px;">${escapeHtml(tr(res.ai_summary_zh || res.ai_summary_en || "", res.ai_summary_en || res.ai_summary_zh || ""))}</div>
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:6px;flex-wrap:wrap;padding-top:5px;border-top:1px solid rgba(16,185,129,0.22);">
+          <span style="font-size:10px;color:#cbd5e1;font-weight:600;">BIM v4 · ${tr("建築/圓頂", "Roofs")} ${(res.buildings || []).length} · ${tr("圓柱儲水塔", "Water Tanks")} ${(res.water_tanks || []).length} · ${tr("管線", "Pipes")} ${(res.pipes || []).length}</span>
+          <button type="button" class="btn-xs primary" id="btnCatLaunchScanToBim" style="padding:2px 8px;font-size:10px;">${tr("開啟 3D Scan-to-BIM 實體模型 (50% 半透明)", "Open 3D Scan-to-BIM Solids (50% Opacity)")}</button>
+        </div>
       </div>
 
       <div class="gs-metric-grid" style="grid-template-columns:1fr 1fr;gap:6px;margin-bottom:8px;">
@@ -2684,6 +2688,10 @@
     `;
     box.innerHTML = typeof window.translateDynamicHtml === "function" ? window.translateDynamicHtml(rawCatHtml) : rawCatHtml;
 
+    document.getElementById("btnCatLaunchScanToBim")?.addEventListener("click", () => {
+      if (typeof window.setActiveStudioTool === "function") window.setActiveStudioTool("bim");
+      if (typeof window.openScanToBimInspector === "function") window.openScanToBimInspector();
+    });
     document.getElementById("chkCategorizeMasterVis")?.addEventListener("change", (ev) => {
       setCategorizeOverlayVisibility(Boolean(ev.target.checked));
       renderCategorizePanelContent(res);

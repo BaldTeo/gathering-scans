@@ -466,7 +466,7 @@ def extract_3d_buildings_and_circular_roofs(
     # Color-invariant smooth roof triangle mask:
     # Accepts painted green, yellow, pink, blue, or concrete roofs where 3D upper envelope is smooth (sigma_zmax <= 0.22m)
     tri_sigma_zmax = sigma_zmax_grid[in_c, ie_c]
-    is_achrom_roof = (exg < 0.030) & (sat < 0.24)
+    is_achrom_roof = (exg < 0.030) & (sat < 0.24) & (tri_hag_tree >= 2.75)
     is_smooth_painted_roof = (
         (tri_sigma_zmax <= 0.22)
         & (nz_abs >= 0.64)
@@ -485,8 +485,17 @@ def extract_3d_buildings_and_circular_roofs(
     cyl_wall_tri_mask = np.zeros(len(centroids), dtype=bool)
 
     if np.any(bldg_roof_tri):
-        r_grid = np.zeros((ny, nx), dtype=np.float32)
-        np.add.at(r_grid, (in_c[bldg_roof_tri], ie_c[bldg_roof_tri]), area_3d[bldg_roof_tri].astype(np.float32))
+        r_grid = np.zeros((ny, nx), dtype=float)
+        np.add.at(r_grid, (in_c[bldg_roof_tri], ie_c[bldg_roof_tri]), area_3d[bldg_roof_tri].astype(float))
+        z_roof_only_grid = np.full((ny, nx), -np.inf, dtype=np.float32)
+        np.maximum.at(z_roof_only_grid, (in_c[bldg_roof_tri], ie_c[bldg_roof_tri]), centroids[bldg_roof_tri, 2].astype(np.float32))
+        roof_valid_m = np.isfinite(z_roof_only_grid)
+        if np.any(roof_valid_m) and not np.all(roof_valid_m):
+            _, r_near_idx = distance_transform_edt(~roof_valid_m, return_indices=True)
+            z_roof_only_filled = z_roof_only_grid[tuple(r_near_idx)]
+        else:
+            z_roof_only_filled = np.where(roof_valid_m, z_roof_only_grid, z_max_filled)
+
         br_sp = bldg_roof_tri[splat_t_idx]
         bldg_raw = np.zeros((ny, nx), dtype=bool)
         bldg_raw[in_all[br_sp], ie_all[br_sp]] = True
@@ -498,7 +507,7 @@ def extract_3d_buildings_and_circular_roofs(
         final_comp_masks: List[np.ndarray] = []
         b_lbl, n_bldg = nd_label(bldg_raw)
         rb_ortho = ortho_rgb[:, :, 0] - ortho_rgb[:, :, 2]
-        hag_grid_local = z_max_filled - h_dtm_grid
+        hag_grid_local = z_roof_only_filled - h_dtm_grid
         for bid in range(1, n_bldg + 1):
             b_comp = b_lbl == bid
             comp_area = float(np.count_nonzero(b_comp) * cell_area)
@@ -506,8 +515,8 @@ def extract_3d_buildings_and_circular_roofs(
                 continue
             if 85.0 <= comp_area <= 850.0:
                 m_green = b_comp & (ortho_exg >= 0.085)
-                m_pink = b_comp & (~m_green) & (ortho_exg < 0.025) & (hag_grid_local <= 3.60)
-                m_yellow = b_comp & (~m_green) & (~m_pink) & ((rb_ortho >= 0.11) | (hag_grid_local > 3.50))
+                m_pink = b_comp & (~m_green) & (ortho_exg < 0.025) & (hag_grid_local <= 3.52)
+                m_yellow = b_comp & (~m_green) & (~m_pink) & ((rb_ortho >= 0.11) | ((hag_grid_local > 3.50) & (hag_grid_local <= 4.65) & (rb_ortho >= 0.05)))
                 sub_modes = [m for m in (m_green, m_yellow, m_pink) if np.count_nonzero(m) * cell_area >= 9.0]
                 if len(sub_modes) >= 2:
                     for sm in sub_modes:
@@ -571,20 +580,24 @@ def extract_3d_buildings_and_circular_roofs(
             sec_b = (angs_b / (2.0 * math.pi / 18.0)).astype(np.int32) % 18
             n_sec_b = len(np.unique(sec_b))
 
-            is_circular_roof = (
-                1.8 <= r_fit <= 14.5
-                and rel_rms <= 0.165
-                and n_sec_b >= 11
-                and 0.30 * math.pi * (r_fit ** 2) <= comp_area_m2 <= 1.35 * math.pi * (r_fit ** 2)
-            )
-
-            # Sample roof color and elevations
+            # Sample roof color and elevations (use z_roof_only_filled so overhanging tree branches do not inflate roof height)
             med_rgb = np.median(ortho_rgb[filled_b], axis=0)
             color_hex = _rgb_to_hex_color(med_rgb, default_hex="#3b82f6")
             ground_z = float(np.percentile(h_dtm_grid[filled_b], 25.0))
-            roof_eave_z = float(np.percentile(z_max_filled[filled_b], 65.0))
-            roof_apex_z = float(np.percentile(z_max_filled[filled_b], 95.0))
+            roof_eave_z = float(np.percentile(z_roof_only_filled[filled_b], 65.0))
+            roof_apex_z = float(np.percentile(z_roof_only_filled[filled_b], 95.0))
             height_m = max(2.2, round(roof_apex_z - ground_z, 2))
+
+            rgb_max = float(np.max(med_rgb))
+            rgb_min = float(np.min(med_rgb))
+            med_sat_b = (rgb_max - rgb_min) / max(rgb_max, 1e-4)
+            is_circular_roof = (
+                1.8 <= r_fit <= 5.6
+                and rel_rms <= (0.155 if med_sat_b >= 0.12 else 0.060)
+                and n_sec_b >= (13 if med_sat_b >= 0.12 else 17)
+                and height_m <= 6.8
+                and 0.35 * math.pi * (r_fit ** 2) <= comp_area_m2 <= 1.30 * math.pi * (r_fit ** 2)
+            )
 
             # Verify under-eave vertical support for green/painted roofs so tree crowns never pass as circular roofs
             under_vert_area = 0.0
@@ -624,8 +637,17 @@ def extract_3d_buildings_and_circular_roofs(
                 continue
 
             # Accept building / circular pavilion roof!
-            bldg_occ_grid |= filled_b
-            dil_b = binary_dilation(filled_b, structure=np.ones((15, 15), dtype=bool))
+            if is_circular_roof:
+                yy_b, xx_b = np.ogrid[0:ny, 0:nx]
+                cx_px = (cx_fit - e_min) / res - 0.5
+                cy_px = (cy_fit - n_min) / res - 0.5
+                r_px_b = (r_fit + 0.15) / res
+                circ_disk_b = ((xx_b - cx_px) ** 2 + (yy_b - cy_px) ** 2) <= (r_px_b ** 2)
+                occ_b = filled_b & circ_disk_b
+            else:
+                occ_b = filled_b
+            bldg_occ_grid |= occ_b
+            dil_b = binary_dilation(occ_b, structure=np.ones((15, 15), dtype=bool))
             bldg_footprint_m2_grid[dil_b] = np.maximum(bldg_footprint_m2_grid[dil_b], comp_area_m2)
 
             b_id = f"B{len(buildings_list) + 1}"
@@ -700,6 +722,8 @@ def extract_3d_buildings_and_circular_roofs(
                         "coplanarity_rms_m": round(rms_bnd, 3),
                         "azimuth_deg": 0.0,
                         "tilt_deg": 90.0,
+                        "base_z": round(ground_z, 3),
+                        "top_z": round(ground_z + wall_h, 3),
                         "center_twd97": [round(cyl_wall_cx, 3), round(cyl_wall_cy, 3), round(ground_z + 0.5 * wall_h, 3)],
                         "center_local": [round(cyl_wall_cx - ce, 3), round(ground_z + 0.5 * wall_h - ch, 3), round(cn - cyl_wall_cy, 3)],
                         "base_polyline_twd97": w_base_twd,
@@ -803,7 +827,7 @@ def extract_3d_buildings_and_circular_roofs(
                     break
 
     if np.any(bldg_occ_grid):
-        bldg_occ_grid = binary_dilation(bldg_occ_grid, structure=np.ones((11, 11), dtype=bool))
+        bldg_occ_grid = binary_dilation(bldg_occ_grid, structure=np.ones((3, 3), dtype=bool))
         cyl_wall_tri_mask |= bldg_occ_grid[in_c, ie_c]
 
     return {
@@ -868,20 +892,30 @@ def extract_cylindrical_water_tanks(
         for cid in range(1, n_cap + 1):
             cm = c_lbl == cid
             c_area = float(np.count_nonzero(cm) * cell_area)
-            if 1.10 <= c_area <= 14.5:
+            if 0.35 <= c_area <= 14.5:
                 cjs, cis = np.nonzero(cm)
                 pts_c = np.column_stack([e_min + (cis + 0.5) * res, n_min + (cjs + 0.5) * res])
                 span_x = float(np.ptp(pts_c[:, 0])) + res
                 span_y = float(np.ptp(pts_c[:, 1])) + res
-                if max(span_x, span_y) <= 3.2 and c_area <= 3.2:
+                if max(span_x, span_y) <= 2.3 and c_area <= 2.6:
                     seed_centers.append((float(np.mean(pts_c[:, 0])), float(np.mean(pts_c[:, 1]))))
-                elif c_area > 3.2 and max(span_x, span_y) <= 7.8:
-                    # Split touching pair/quad of tank caps via distance transform local maxima
+                elif max(span_x, span_y) <= 8.2:
+                    # Split touching pair/quad of tank caps via distance transform local maxima + endpoint offsets
                     dt_c = distance_transform_edt(cm)
-                    pk_c = (dt_c == maximum_filter(dt_c, size=5)) & cm & (dt_c >= 1.4)
+                    pk_c = (dt_c == maximum_filter(dt_c, size=5)) & cm & (dt_c >= 1.0)
                     pjs, pis = np.nonzero(pk_c)
                     for pj_k, pi_k in zip(pjs, pis):
                         seed_centers.append((float(e_min + (pi_k + 0.5) * res), float(n_min + (pj_k + 0.5) * res)))
+                    if span_x >= 2.2:
+                        x_lo, x_hi = float(np.min(pts_c[:, 0])), float(np.max(pts_c[:, 0]))
+                        y_m = float(np.mean(pts_c[:, 1]))
+                        seed_centers.append((x_lo + 0.72, y_m))
+                        seed_centers.append((x_hi - 0.72, y_m))
+                    if span_y >= 2.2:
+                        y_lo, y_hi = float(np.min(pts_c[:, 1])), float(np.max(pts_c[:, 1]))
+                        x_m = float(np.mean(pts_c[:, 0]))
+                        seed_centers.append((x_m, y_lo + 0.72))
+                        seed_centers.append((x_m, y_hi - 0.72))
 
     # 2. Verify each seed against 3D vertical barrel triangles using 12-sector radial median + Pratt circle fit
     barrel_cand_mask = (
@@ -936,31 +970,31 @@ def extract_cylindrical_water_tanks(
             if any(math.hypot(cx_t - wt["center_twd97"][0], cy_t - wt["center_twd97"][1]) < 1.35 for wt in water_tanks_list):
                 continue
 
-            # Gather all tank triangles within r <= r_t + 0.22m and verify no overhanging tree canopy / tall building above
+            # Gather all tank triangles within r <= r_t + 0.22m and verify no vertical column/wall continuation above 3.15m
             near_all = all_tree.query_ball_point([cx_t, cy_t], r=r_t + 0.22)
             g_all_idx = np.array(near_all, dtype=np.int32)
             if len(g_all_idx) < 25:
                 continue
             hags_all = tri_hag_tree[g_all_idx]
-            # True water tanks have no tree crown or tall structure above 3.18m and substantial horizontal/domed top cap area (>= 0.65 m2)
-            if float(np.percentile(hags_all, 98.0)) > 3.18:
+            vert_above_m = (hags_all > 3.18) & (hags_all <= 4.80) & (nz_abs[g_all_idx] < 0.45) & (exg[g_all_idx] < 0.028)
+            if float(np.sum(area_3d[g_all_idx[vert_above_m]])) > 1.35:
                 continue
-            top_cap_m = (hags_all >= 1.45) & (nz_abs[g_all_idx] >= 0.62) & (exg[g_all_idx] < 0.045)
-            if np.count_nonzero(top_cap_m) < 12 or float(np.sum(area_2d[g_all_idx[top_cap_m]])) < 0.65:
+            top_cap_m = (hags_all >= 1.45) & (hags_all <= 3.18) & (nz_abs[g_all_idx] >= 0.62) & (exg[g_all_idx] < 0.045)
+            if np.count_nonzero(top_cap_m) < 10 or float(np.sum(area_2d[g_all_idx[top_cap_m]])) < 0.35:
                 continue
 
             ix_t = int(np.clip((cx_t - e_min) / res, 0, nx - 1))
             iy_t = int(np.clip((cy_t - n_min) / res, 0, ny - 1))
             ground_z = float(h_dtm_grid[iy_t, ix_t])
-            z_pts = centroids[g_all_idx, 2]
-            top_z = float(np.percentile(z_pts, 96.0)) if len(z_pts) > 0 else ground_z + 2.4
+            z_cap_pts = centroids[g_all_idx[top_cap_m], 2]
+            top_z = float(np.percentile(z_cap_pts, 90.0)) if len(z_cap_pts) > 0 else ground_z + 2.4
             tank_h = max(1.5, round(top_z - ground_z, 2))
             barrel_area = float(np.sum(area_3d[g_b_idx]))
 
-            if barrel_area < 3.5 or not (1.60 <= tank_h <= 3.10):
+            if barrel_area < 4.5 or not (1.60 <= tank_h <= 3.10):
                 continue
 
-            tank_tri_mask[g_all_idx] = True
+            tank_tri_mask[g_all_idx[hags_all <= 3.25]] = True
             yy_g, xx_g = np.ogrid[0:ny, 0:nx]
             r_px = max(2, int(round((r_t + 0.45) / res)))
             disk_t = ((yy_g - iy_t) ** 2 + (xx_g - ix_t) ** 2) <= (r_px ** 2)
@@ -998,7 +1032,52 @@ def extract_cylindrical_water_tanks(
                 "center_local": [round(cx_t - ce, 3), round(ground_z + 0.5 * tank_h - ch, 3), round(cn - cy_t, 3)],
                 "boundary_twd97": bnd_twd,
                 "boundary_local": bnd_loc,
+                "_g_all_idx": g_all_idx[hags_all <= 3.25],
+                "_disk_mask": (iy_t, ix_t, r_px),
             })
+
+    # Post-filter candidate water tanks: keep tanks that belong to a verified cylindrical tank cluster
+    # (anchored by at least 2 ultra-circular 12-sector barrels with rms <= 0.060 within 4.2m) OR ultra-precise standalone tank
+    if water_tanks_list:
+        filtered_tanks: List[Dict[str, Any]] = []
+        tank_tri_mask[:] = False
+        water_tank_occ_grid[:, :] = False
+        yy_g, xx_g = np.ogrid[0:ny, 0:nx]
+        ultra_anchors = [
+            wt for wt in water_tanks_list
+            if float(wt.get("circle_rms_m", 1.0)) <= 0.060 and int(wt.get("sector_coverage", 0)) >= 12
+        ]
+        for idx_i, wt_i in enumerate(water_tanks_list):
+            xi, yi, _ = wt_i["center_twd97"]
+            near_Neighbors = sum(
+                1 for idx_j, wt_j in enumerate(water_tanks_list)
+                if idx_i != idx_j and math.hypot(xi - wt_j["center_twd97"][0], yi - wt_j["center_twd97"][1]) <= 4.2
+            )
+            near_ultra = sum(
+                1 for ua in ultra_anchors
+                if math.hypot(xi - ua["center_twd97"][0], yi - ua["center_twd97"][1]) <= 4.5
+            )
+            b_area_i = float(wt_i.get("surface_area_3d_m2", 0.0))
+            rms_i = float(wt_i.get("circle_rms_m", 1.0))
+            sec_i = int(wt_i.get("sector_coverage", 0))
+            if (near_Neighbors >= 2 and near_ultra >= 2 and b_area_i >= 4.5) or (
+                b_area_i >= 7.5 and rms_i <= 0.045 and sec_i >= 12
+            ):
+                g_idx_keep = wt_i.pop("_g_all_idx", None)
+                disk_info = wt_i.pop("_disk_mask", None)
+                if g_idx_keep is not None:
+                    tank_tri_mask[g_idx_keep] = True
+                if disk_info is not None:
+                    iy_k, ix_k, r_px_k = disk_info
+                    water_tank_occ_grid[((yy_g - iy_k) ** 2 + (xx_g - ix_k) ** 2) <= (r_px_k ** 2)] = True
+                wt_new_id = f"WT{len(filtered_tanks) + 1}"
+                wt_i["id"] = wt_new_id
+                wt_i["name"] = f"圓柱儲水塔/水桶 {wt_new_id} (Cylindrical Water Storage Tank)"
+                filtered_tanks.append(wt_i)
+            else:
+                wt_i.pop("_g_all_idx", None)
+                wt_i.pop("_disk_mask", None)
+        water_tanks_list = filtered_tanks
 
     # 3. Extract Short Conical/Cylindrical Plaza Bollards / Seating Pods (0.35m <= HAG <= 1.25m, no non-roof canopy above)
     bollard_cand_tri = (
@@ -1205,10 +1284,17 @@ def extract_curved_and_circular_walls_and_fences(
         if not (2.4 <= r_cur <= 15.0 and rms_fence <= 0.36):
             continue
 
+        encloses_tanks = any(
+            math.hypot(cx_cur - wt["center_twd97"][0], cy_cur - wt["center_twd97"][1]) <= r_cur + 1.2
+            for wt in water_tanks_list
+        )
+        if not encloses_tanks and not (n_occ_secs >= 26 and tot_fence_area >= 35.0 and rms_fence <= 0.22):
+            continue
+
         # Check warm wood / ochre color vs general curved fence
         med_rb_f = float(np.median(rb_diff[inl_global_idx]))
         med_sat_f = float(np.median(sat[inl_global_idx]))
-        is_wooden = med_rb_f >= 0.045 or med_sat_f >= 0.14
+        is_wooden = encloses_tanks or (med_rb_f >= 0.045 or med_sat_f >= 0.14)
 
         ix_f = int(np.clip((cx_cur - e_min) / res, 0, nx - 1))
         iy_f = int(np.clip((cy_cur - n_min) / res, 0, ny - 1))
@@ -1253,6 +1339,8 @@ def extract_curved_and_circular_walls_and_fences(
             "sector_coverage_deg": int(round(n_occ_secs * 10.0)),
             "azimuth_deg": 0.0,
             "tilt_deg": 90.0,
+            "base_z": round(ground_z, 3),
+            "top_z": round(ground_z + fence_h, 3),
             "center_twd97": [round(cx_cur, 3), round(cy_cur, 3), round(ground_z + 0.5 * fence_h, 3)],
             "center_local": [round(cx_cur - ce, 3), round(ground_z + 0.5 * fence_h - ch, 3), round(cn - cy_cur, 3)],
             "base_polyline_twd97": base_twd,
@@ -1428,11 +1516,18 @@ def extract_3d_tubular_pipes(
                         color_hex="#94a3b8",
                     )
 
-    # 3. Direct 3D Voxel Linearity Pipe / Flue / Conduit Detection (L_λ > 0.62)
+    # 3. Direct 3D Voxel Linearity Pipe / Flue / Conduit Detection (L_λ > 0.68) near water tanks or circular pavilions
     vox_lin = tensor_features.get("voxel_linearity")
     vox_cent = tensor_features.get("voxel_centroids")
     vox_areas = tensor_features.get("voxel_areas")
-    if vox_lin is not None and vox_cent is not None and len(vox_lin) > 0:
+    anchor_xy = [
+        (wt["center_twd97"][0], wt["center_twd97"][1], float(wt.get("ground_elevation_m", wt["center_twd97"][2] - 1.2)))
+        for wt in water_tanks_list
+    ] + [
+        (b["center_twd97"][0], b["center_twd97"][1], float(b.get("ground_elevation_m", b["center_twd97"][2] - 2.5)))
+        for b in circ_roofs
+    ]
+    if anchor_xy and vox_lin is not None and vox_cent is not None and len(vox_lin) > 0:
         lin_mask = (vox_lin >= 0.68) & (vox_areas >= 0.04)
         lin_idx = np.nonzero(lin_mask)[0]
         if len(lin_idx) >= 8:
@@ -1447,8 +1542,16 @@ def extract_3d_tubular_pipes(
                     continue
                 visited[nbrs] = True
                 cluster_pts = lin_pts[nbrs]
-                # Skip if inside an already emitted tree or building
                 c_mean = np.mean(cluster_pts, axis=0)
+                # Require proximity to a detected water tank or pavilion roof and above-ground elevation
+                near_anchors = [
+                    gz_a for (ax, ay, gz_a) in anchor_xy if math.hypot(c_mean[0] - ax, c_mean[1] - ay) <= 15.0
+                ]
+                if not near_anchors:
+                    continue
+                ref_gz = min(near_anchors)
+                if not (ref_gz + 0.35 <= float(c_mean[2]) <= ref_gz + 4.8):
+                    continue
                 if any(math.hypot(c_mean[0] - p["center_twd97"][0], c_mean[1] - p["center_twd97"][1]) < 1.5 for p in pipes_list):
                     continue
                 cov_p = np.cov(cluster_pts.T)
