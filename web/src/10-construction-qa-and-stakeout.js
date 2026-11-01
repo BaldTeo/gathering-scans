@@ -418,7 +418,7 @@
       }
       const spanU = Math.max(0.4, maxU - minU);
       const spanV = Math.max(0.4, maxV - minV);
-      const normalMargin = Math.max(2.5, Math.max(spanU, spanV) * 0.45);
+      const normalMargin = Math.min(2.2, Math.max(0.5, Math.max(spanU, spanV) * 0.25));
       minX -= normalMargin; maxX += normalMargin;
       minY -= normalMargin; maxY += normalMargin;
       minZ -= normalMargin; maxZ += normalMargin;
@@ -439,6 +439,8 @@
       const cellSumY = new Float64Array(totalGridCells);
       const cellSumZ = new Float64Array(totalGridCells);
       const cellCount = new Uint32Array(totalGridCells);
+      const cellFrontN = new Float32Array(totalGridCells);
+      cellFrontN.fill(-1e9);
       let activeCellCount = 0;
 
       for (let r = 0; r < rows; r++) {
@@ -502,8 +504,8 @@
       const binLocalPoint = (lx, ly, lz) => {
         if (lx < minX || lx > maxX || ly < minY || ly > maxY || lz < minZ || lz > maxZ) return;
         const dx = lx - c0.x, dy = ly - c0.y, dz = lz - c0.z;
-        const distN = Math.abs(dx * n0.x + dy * n0.y + dz * n0.z);
-        if (distN > normalMargin) return;
+        const signedN = dx * n0.x + dy * n0.y + dz * n0.z;
+        if (Math.abs(signedN) > normalMargin) return;
         const pu = dx * u0.x + dy * u0.y + dz * u0.z;
         const pv = dx * v0.x + dy * v0.y + dz * v0.z;
         if (pu < minU || pu > maxU || pv < minV || pv > maxV) return;
@@ -511,6 +513,23 @@
         const r = Math.min(rows - 1, Math.max(0, Math.floor((pv - minV) / dv)));
         const idx = r * cols + c;
         if (!cellInside[idx]) return;
+        // If a significantly closer front surface (by > 0.18m) is found in this cell, replace back-wall samples
+        if (cellCount[idx] > 0) {
+          if (signedN > cellFrontN[idx] + 0.18) {
+            cellSumX[idx] = lx;
+            cellSumY[idx] = ly;
+            cellSumZ[idx] = lz;
+            cellCount[idx] = 1;
+            cellFrontN[idx] = signedN;
+            return;
+          }
+          if (signedN < cellFrontN[idx] - 0.18) {
+            return;
+          }
+        } else {
+          cellFrontN[idx] = signedN;
+        }
+        if (signedN > cellFrontN[idx]) cellFrontN[idx] = signedN;
         cellSumX[idx] += lx;
         cellSumY[idx] += ly;
         cellSumZ[idx] += lz;
@@ -539,6 +558,19 @@
       const vA = THREE ? new THREE.Vector3() : { x: 0, y: 0, z: 0 };
       const vB = THREE ? new THREE.Vector3() : { x: 0, y: 0, z: 0 };
       const vC = THREE ? new THREE.Vector3() : { x: 0, y: 0, z: 0 };
+
+      const scheduleNextChunk = () => {
+        let fired = false;
+        const runOnce = () => {
+          if (fired) return;
+          fired = true;
+          processChunk();
+        };
+        if (typeof requestAnimationFrame === "function") {
+          requestAnimationFrame(runOnce);
+        }
+        setTimeout(runOnce, 4);
+      };
 
       const processChunk = () => {
         if (cancelToken && cancelToken.cancelled) {
@@ -576,9 +608,21 @@
               continue;
             }
 
+            // Skip opposite-facing back-wall or floor surfaces when sampling a steep/vertical polygon
+            const e1x = vB.x - vA.x, e1y = vB.y - vA.y, e1z = vB.z - vA.z;
+            const e2x = vC.x - vA.x, e2y = vC.y - vA.y, e2z = vC.z - vA.z;
+            const tnx = e1y * e2z - e1z * e2y;
+            const tny = e1z * e2x - e1x * e2z;
+            const tnz = e1x * e2y - e1y * e2x;
+            const tnLen = Math.hypot(tnx, tny, tnz);
+            if (tnLen > 1e-6) {
+              const cosAngle = Math.abs(tnx * n0.x + tny * n0.y + tnz * n0.z) / tnLen;
+              if (cosAngle < 0.35) continue;
+            }
+
             // Bin vertices and centroid
             binLocalPoint(vA.x, vA.y, vA.z);
-            binLocalPoint(vB.x, vB.y, vC.z);
+            binLocalPoint(vB.x, vB.y, vB.z);
             binLocalPoint(vC.x, vC.y, vC.z);
             const mx = (vA.x + vB.x + vC.x) / 3.0;
             const my = (vA.y + vB.y + vC.y) / 3.0;
@@ -586,7 +630,7 @@
             binLocalPoint(mx, my, mz);
 
             // Sub-sample larger triangles so grid cells never have gaps
-            const e1 = Math.hypot(vB.x - vA.x, vB.y - vA.y, vB.z - vA.z);
+            const e1 = Math.hypot(e1x, e1y, e1z);
             const e2 = Math.hypot(vC.x - vB.x, vC.y - vB.y, vC.z - vB.z);
             const maxEdge = Math.max(e1, e2);
             if (maxEdge > du * 0.85) {
@@ -642,7 +686,7 @@
         }
 
         if (meshIdx < meshes.length || ptCloudIdx < pointClouds.length) {
-          requestAnimationFrame(processChunk);
+          scheduleNextChunk();
           return;
         }
 
@@ -776,7 +820,7 @@
         });
       };
 
-      requestAnimationFrame(processChunk);
+      scheduleNextChunk();
     });
   }
 
@@ -1091,6 +1135,12 @@
     if (typeof showSidePanel !== "function") return;
     if (typeof setActiveStudioTool === "function" && (!window.STATE || window.STATE.activeTool !== "flatness")) {
       setActiveStudioTool("flatness");
+    }
+
+    const curScanId = (window.STATE && window.STATE.activeScanId) || "scan";
+    if (QA_STATE.flatnessCache && QA_STATE.flatnessCache.scanId && QA_STATE.flatnessCache.scanId !== curScanId) {
+      QA_STATE.flatnessCache = null;
+      QA_STATE.surfaceQaLastResult = null;
     }
 
     const tolMm = QA_STATE.flatnessToleranceMm || 3.0;

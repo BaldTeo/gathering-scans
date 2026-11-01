@@ -3611,8 +3611,12 @@ class GatheringScansTestSuite(unittest.TestCase):
             "lacking_volume_liters",
             "net_volume_liters",
             "est_mortar_bags_25kg",
+            "binLocalPoint(vB.x, vB.y, vB.z);",
+            "cellFrontN",
+            "QA_STATE.flatnessCache.scanId !== curScanId",
         ):
             self.assertIn(required_token, js10, f"Missing {required_token} in 10-construction-qa-and-stakeout.js")
+        self.assertNotIn("binLocalPoint(vB.x, vB.y, vC.z);", js10)
 
 
 if __name__ == "__main__":

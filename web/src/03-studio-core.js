@@ -2816,8 +2816,8 @@
       const aCat = Boolean(a.isCategorize || a.el?.classList?.contains("is-categorize-badge"));
       const bCat = Boolean(b.isCategorize || b.el?.classList?.contains("is-categorize-badge"));
       if (aCat !== bCat) return aCat ? 1 : -1;
-      const aPri = a.isFocused ? 1000 : Number(a.priority ?? 50);
-      const bPri = b.isFocused ? 1000 : Number(b.priority ?? 50);
+      const aPri = (a.isFocused ? 200 : 0) + Number(a.priority ?? 50);
+      const bPri = (b.isFocused ? 200 : 0) + Number(b.priority ?? 50);
       return bPri - aPri;
     });
 
@@ -2854,6 +2854,7 @@
         b.el.style.top = `${Math.round(y)}px`;
         b.el.classList.toggle("flip-left", x > w - 245);
         b.el.classList.toggle("flip-down", y < 95);
+        placedRects.push([x - 36, y - 20, x + 36, y + 20]);
         return;
       }
       if (!isCat) {
@@ -2900,7 +2901,7 @@
         return;
       }
 
-      if (visibleCatBadges >= 11 && !b.isFocused) {
+      if (visibleCatBadges >= 16) {
         b.el.style.display = "none";
         return;
       }

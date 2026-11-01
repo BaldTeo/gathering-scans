@@ -1967,7 +1967,7 @@
       const minSameCatSep =
         opts.minSep ??
         (catKey === "trees"
-          ? Math.max(3.5, Math.min(7.5, camDist * 0.065))
+          ? 1.65
           : 11.5);
       for (const prev of catArr) {
         if (anchorVec3.distanceTo(prev) < minSameCatSep) {
@@ -1995,7 +1995,7 @@
     // TREES & 1.3m BREAST-HEIGHT DBH (Coaxial 3D Trunk Cylinders + 1.3m DBH Ring + Emerald Canopy Domes + Crown Ring #10b981)
     if (flt.trees && Array.isArray(res.trees)) {
       let treeBadgesAdded = 0;
-      const maxTreeBadges = 24;
+      const maxTreeBadges = 64;
       const treePriorityBase = 95;
       const upVec = new THREE.Vector3(0, 1, 0);
       const treeVecs = res.trees.map((t) => twd97PointToStudioVec3(t.trunk_twd97, t.trunk_local, originTwd));
@@ -2004,7 +2004,7 @@
         const treeH = Math.max(2.2, Number(t.height_m || 6.0));
         const dbhCm = Math.max(8.0, Number(t.dbh_cm || 30.0));
         const crownD = Math.max(1.6, Number(t.crown_diameter_m || 4.0));
-        const rTrunk = Math.max(0.085, Math.min(0.65, (dbhCm / 200.0) * 1.15));
+        const rTrunk = Math.max(0.11, Math.min(0.65, (dbhCm / 200.0) * 1.28));
         const trunkHDefault = Math.max(1.6, Math.min(2.4, treeH * 0.50));
 
         const bPt = Array.isArray(t.trunk_base_twd97)
@@ -2018,28 +2018,42 @@
         const trunkH = Math.max(1.4, stemVec.length() || trunkHDefault);
         const stemDir = stemVec.lengthSq() > 1e-4 ? stemVec.clone().normalize() : upVec.clone();
         const midPt = new THREE.Vector3().addVectors(bPt, tPt).multiplyScalar(0.5);
+        const camBias = new THREE.Vector3();
+        if (studioThree?.camera) {
+          camBias.subVectors(studioThree.camera.position, midPt);
+          camBias.y = 0;
+          if (camBias.lengthSq() > 1e-4) {
+            camBias.normalize().multiplyScalar(0.14);
+          }
+        }
 
         const trunkGeo = new THREE.CylinderGeometry(rTrunk * 0.88, rTrunk * 1.12, trunkH, 12);
         const trunkMat = new THREE.MeshBasicMaterial({
           color: 0xb45309,
           transparent: true,
           opacity: 0.88,
+          polygonOffset: true,
+          polygonOffsetFactor: -8,
+          polygonOffsetUnits: -8,
         });
         const trunkMesh = new THREE.Mesh(trunkGeo, trunkMat);
-        trunkMesh.position.copy(midPt);
+        trunkMesh.position.copy(midPt).add(camBias);
         trunkMesh.quaternion.setFromUnitVectors(upVec, stemDir);
         trunkMesh.renderOrder = 995;
         grp.add(trunkMesh);
 
         // 1.3m Breast-Height (DBH) bright measurement collar ring aligned coaxially with the 3D stem
         const dbhFrac = Math.max(0.2, Math.min(0.9, 1.3 / Math.max(tPt.y - bPt.y, 1.4)));
-        const dbhPt = new THREE.Vector3().lerpVectors(bPt, tPt, dbhFrac);
+        const dbhPt = new THREE.Vector3().lerpVectors(bPt, tPt, dbhFrac).add(camBias);
         const dbhRingGeo = new THREE.RingGeometry(rTrunk * 1.05, rTrunk * 1.65, 24);
         dbhRingGeo.rotateX(-Math.PI / 2);
         const dbhRingMat = new THREE.MeshBasicMaterial({
           color: 0xfef08a,
           side: THREE.DoubleSide,
           depthTest: true,
+          polygonOffset: true,
+          polygonOffsetFactor: -10,
+          polygonOffsetUnits: -10,
         });
         const dbhRing = new THREE.Mesh(dbhRingGeo, dbhRingMat);
         dbhRing.position.copy(dbhPt);
@@ -2083,13 +2097,13 @@
 
         if (treeBadgesAdded < maxTreeBadges) {
           const isTwin = treeVecs.some((ov, oIdx) => oIdx !== idx && Math.hypot(ov.x - basePt.x, ov.z - basePt.z) <= 1.15);
-          const topPt = new THREE.Vector3(tPt.x, bPt.y + Math.min(treeH * 0.65, 5.2), tPt.z);
+          const topPt = new THREE.Vector3(tPt.x, bPt.y + Math.min(trunkH * 1.05, 2.4), tPt.z);
           const added = tryAddCategorizeBadge(
             topPt,
             `<span style="color:#34d399;font-weight:800;">🌳 ${escapeHtml(t.id)}</span> · DBH <b>${dbhCm.toFixed(1)} cm</b> · H ${treeH.toFixed(1)}m`,
             "#10b981",
             {
-              offsetY: isTwin ? (idx % 2 === 0 ? -18 : 4) : -10,
+              offsetY: isTwin ? (idx % 2 === 0 ? -24 : 14) : -10,
               priority: treePriorityBase - idx,
               featureId: t.id,
               catKey: "trees",
