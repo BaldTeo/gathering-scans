@@ -390,7 +390,25 @@
     ["撤銷", "Revoke"],
     ["離線快取已更新", "Offline cache updated"],
     ["快取此掃描供離線瀏覽", "Cache Scan for Offline Viewing"],
-    ["已快取", "Cached"]
+    ["已快取", "Cached"],
+    ["品管", "QA"],
+    ["±3mm 粉光", "±3mm Trowel"],
+    ["±6mm 粉刷", "±6mm Plaster"],
+    ["±10mm 粗底", "±10mm Form"],
+    ["±15mm 鋪面", "±15mm Paving"],
+    ["第09611章 整體粉光地坪 (±3mm / 3m)", "Ch. 09611 Monolithic Troweled Floor (±3mm / 3m)"],
+    ["第09220章 水泥砂漿粉刷 (±6mm / 3m)", "Ch. 09220 Cement Mortar Plastering (±6mm / 3m)"],
+    ["第03310章 結構用混凝土 (±10mm / 3m)", "Ch. 03310 Structural Concrete (±10mm / 3m)"],
+    ["第02742章 瀝青混凝土鋪面 (±15mm / 3m)", "Ch. 02742 Asphalt Concrete Pavement (±15mm / 3m)"],
+    ["內政部國土管理署施工綱要規範 PDF", "NLMA Construction Spec PDF"],
+    ["色塊", "Tiles"],
+    ["點雲", "Points"],
+    ["僅填至高點", "Fill Only"],
+    ["擬合平面 (挖+填)", "Best-Fit (Cut+Fill)"],
+    ["自訂基準高程", "Custom Z"],
+    ["切換全區", "Full Scan"],
+    ["平整度檢核", "Flatness QA"],
+    ["排水坡度檢核", "Drainage QA"]
   ];
 
   // Technical parenthetical tokens that are NOT bilingual translations and must NEVER be stripped

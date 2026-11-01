@@ -2472,12 +2472,33 @@
     const areaM2 = Math.abs(area2) * 0.5;
     const areaPing = areaM2 * 0.3025;
     const centroid = lockedPts.reduce((acc, p) => acc.add(p.clone()), new THREE.Vector3()).divideScalar(lockedPts.length);
-    add2DBadge(
+    const flatSvg = `<svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12h18"/><path d="M3 6h18"/><path d="M3 18h18"/></svg>`;
+    const drainSvg = `<svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2.69l5.66 5.66a8 8 0 1 1-11.31 0z"/></svg>`;
+    const btnStyle = `display:inline-flex;align-items:center;justify-content:center;width:19px;height:18px;padding:0;margin-left:3px;border:1px solid rgba(56,189,248,0.45);border-radius:4px;background:rgba(2,132,199,0.22);color:#38bdf8;cursor:pointer;pointer-events:auto;vertical-align:middle;`;
+    const badgeObj = add2DBadge(
       centroid,
-      `Area: <b>${areaM2.toFixed(2)} m²</b> (${areaPing.toFixed(2)} 坪) · Perim: ${perim.toFixed(2)}m`,
+      `Area: <b>${areaM2.toFixed(2)} m²</b> (${areaPing.toFixed(2)} 坪) · Perim: ${perim.toFixed(2)}m <span style="display:inline-flex;align-items:center;margin-left:4px;pointer-events:auto;"><button type="button" data-area-qa-jump="flatness" title="${tr("以此多邊形執行表面平整度分析", "Analyze Surface Flatness in this polygon")}" style="${btnStyle}">${flatSvg}</button><button type="button" data-area-qa-jump="drainage" title="${tr("以此多邊形執行坡度與排水分析", "Analyze Slope & Drainage in this polygon")}" style="${btnStyle}">${drainSvg}</button></span>`,
       "#cbd5e1",
       { isArea: true }
     );
+    if (badgeObj && badgeObj.el) {
+      badgeObj.el.querySelectorAll("[data-area-qa-jump]").forEach((btn) => {
+        btn.addEventListener("pointerdown", (ev) => ev.stopPropagation());
+        btn.addEventListener("click", (ev) => {
+          ev.preventDefault();
+          ev.stopPropagation();
+          const mode = btn.getAttribute("data-area-qa-jump");
+          const clonedPoly = lockedPts.map((p) => p.clone());
+          if (mode === "flatness" && typeof window.openSurfaceFlatnessQaInspector === "function") {
+            window.openSurfaceFlatnessQaInspector();
+            if (typeof window.lockFlatnessPolygonAndAnalyze === "function") window.lockFlatnessPolygonAndAnalyze(clonedPoly);
+          } else if (mode === "drainage" && typeof window.openDrainageAndSlopeInspector === "function") {
+            STATE.drainagePolygonPoints = clonedPoly;
+            window.openDrainageAndSlopeInspector();
+          }
+        });
+      });
+    }
   }
   window.renderClosedAreaPolygon = renderClosedAreaPolygon;
 
@@ -2543,7 +2564,10 @@
     if (Array.isArray(STATE.cutFillPolygonPoints) && STATE.cutFillPolygonPoints.length >= 3 && STATE.measurePoints.length === 0) {
       evalPolyEdges(STATE.cutFillPolygonPoints, { source: "cutFillPolygonPoints", measId: "__cut_fill__", measType: "volume", closed: true });
     }
-    if (Array.isArray(STATE.measurePoints) && STATE.measurePoints.length >= 2 && (STATE.activeTool === "area" || STATE.activeTool === "volume")) {
+    if (Array.isArray(STATE.flatnessPolygonPoints) && STATE.flatnessPolygonPoints.length >= 3 && STATE.measurePoints.length === 0) {
+      evalPolyEdges(STATE.flatnessPolygonPoints, { source: "flatnessPolygonPoints", measId: "__flatness__", measType: "flatness", closed: true });
+    }
+    if (Array.isArray(STATE.measurePoints) && STATE.measurePoints.length >= 2 && (STATE.activeTool === "area" || STATE.activeTool === "volume" || STATE.activeTool === "flatness")) {
       evalPolyEdges(STATE.measurePoints, { source: "measurePoints", measId: "__in_progress__", measType: STATE.activeTool, closed: false });
     }
     return best;
@@ -2566,6 +2590,11 @@
       if (Array.isArray(STATE.maskBoundaryPoints)) STATE.maskBoundaryPoints.splice(idx, 0, newPt.clone());
       if (typeof rebuildAllCompletedMeasurements3D === "function") rebuildAllCompletedMeasurements3D();
       return { point: newPt, source: "cutFillPolygonPoints", measId: "__cut_fill__", measType: "volume", pointIndex: idx, label: `Volume V${idx + 1}`, editable: true };
+    }
+    if (edgeDesc.source === "flatnessPolygonPoints" && Array.isArray(STATE.flatnessPolygonPoints)) {
+      STATE.flatnessPolygonPoints.splice(idx, 0, newPt);
+      if (typeof rebuildAllCompletedMeasurements3D === "function") rebuildAllCompletedMeasurements3D();
+      return { point: newPt, source: "flatnessPolygonPoints", measId: "__flatness__", measType: "flatness", pointIndex: idx, label: `Flatness V${idx + 1}`, editable: true };
     }
     if (edgeDesc.source === "measurePoints" && Array.isArray(STATE.measurePoints)) {
       STATE.measurePoints.splice(idx, 0, newPt);
@@ -2618,6 +2647,16 @@
       STATE.cutFillPolygonPoints = [];
       rebuild();
       showToast(tr("已清除土方多邊形", "Cleared volume polygon"));
+      return true;
+    }
+    if (vDesc.source === "flatnessPolygonPoints" && Array.isArray(STATE.flatnessPolygonPoints)) {
+      if (STATE.flatnessPolygonPoints.length > 3 && Number.isFinite(vDesc.pointIndex)) {
+        STATE.flatnessPolygonPoints.splice(vDesc.pointIndex, 1);
+        if (typeof window.lockFlatnessPolygonAndAnalyze === "function") window.lockFlatnessPolygonAndAnalyze(STATE.flatnessPolygonPoints);
+        showToast(tr(`已刪除平整度頂點 (${vDesc.label})`, `Deleted flatness vertex (${vDesc.label})`));
+        return true;
+      }
+      document.getElementById("btnResetSurfaceQa")?.click();
       return true;
     }
     if (vDesc.source === "profileEndpoints") {
@@ -4808,177 +4847,96 @@
       nCtx.font = "10.5px monospace";
       nCtx.fillStyle = "rgba(248, 250, 252, 0.85)";
       for (let gi = 1; gi <= 4; gi++) {
-        const frac = gi / 5;
-        const gxPx = frac * nW;
-        const gzPx = frac * nH;
-        const lxVal = cx - halfSpanX + frac * 2 * halfSpanX;
-        const lzVal = cz - halfSpanZ + frac * 2 * halfSpanZ;
-        nCtx.beginPath();
-        nCtx.moveTo(gxPx, 0);
-        nCtx.lineTo(gxPx, nH);
-        nCtx.stroke();
-        nCtx.beginPath();
-        nCtx.moveTo(0, gzPx);
-        nCtx.lineTo(nW, gzPx);
-        nCtx.stroke();
-        nCtx.textAlign = "center";
-        nCtx.textBaseline = "top";
-        nCtx.fillText(`E:${(ce + lxVal).toFixed(1)}`, gxPx, 6);
-        nCtx.textAlign = "left";
-        nCtx.textBaseline = "middle";
-        nCtx.fillText(`N:${(cn - lzVal).toFixed(1)}`, 6, gzPx - 8);
+        const frac = gi / 5, gxPx = frac * nW, gzPx = frac * nH;
+        const lxVal = cx - halfSpanX + frac * 2 * halfSpanX, lzVal = cz - halfSpanZ + frac * 2 * halfSpanZ;
+        nCtx.beginPath(); nCtx.moveTo(gxPx, 0); nCtx.lineTo(gxPx, nH); nCtx.stroke();
+        nCtx.beginPath(); nCtx.moveTo(0, gzPx); nCtx.lineTo(nW, gzPx); nCtx.stroke();
+        nCtx.textAlign = "center"; nCtx.textBaseline = "top"; nCtx.fillText(`E:${(ce + lxVal).toFixed(1)}`, gxPx, 6);
+        nCtx.textAlign = "left"; nCtx.textBaseline = "middle"; nCtx.fillText(`N:${(cn - lzVal).toFixed(1)}`, 6, gzPx - 8);
       }
 
-      // Semi-transparent Cut (#ef4444) and Fill (#0ea5e9) cell shading across 100% of interior cells
       const cells = volumeRes && Array.isArray(volumeRes.heatmap_cells) ? volumeRes.heatmap_cells : [];
-      const pxPerMeterX = nW / (2 * halfSpanX);
-      const pxPerMeterZ = nH / (2 * halfSpanZ);
+      const pxPerMeterX = nW / (2 * halfSpanX), pxPerMeterZ = nH / (2 * halfSpanZ);
       cells.forEach((cell) => {
         const dz = Number(cell.dz || 0);
         const stepX = Number(volumeRes.cell_dx || cell.step_x || volumeRes.cell_step_m || 0.5);
         const stepZ = Number(volumeRes.cell_dz || cell.step_z || volumeRes.cell_step_m || 0.5);
         const [cxPx, czPx] = toNadirXY(Number(cell.lx || 0), Number(cell.lz || 0));
-        const cw = Math.max(2, stepX * pxPerMeterX * 0.96);
-        const chPx = Math.max(2, stepZ * pxPerMeterZ * 0.96);
+        const cw = Math.max(2, stepX * pxPerMeterX * 0.96), chPx = Math.max(2, stepZ * pxPerMeterZ * 0.96);
         nCtx.fillStyle = dz >= 0 ? "rgba(14, 165, 233, 0.36)" : "rgba(239, 68, 68, 0.36)";
         nCtx.fillRect(cxPx - cw * 0.5, czPx - chPx * 0.5, cw, chPx);
       });
 
-      // Thick, high-contrast polygon boundary (lineWidth = 4.5, #0ea5e9 over #0f172a halo)
       nCtx.beginPath();
       pts.forEach((pt, idx) => {
         const [px, py] = toNadirXY(pt.x, pt.z);
-        if (idx === 0) nCtx.moveTo(px, py);
-        else nCtx.lineTo(px, py);
+        if (idx === 0) nCtx.moveTo(px, py); else nCtx.lineTo(px, py);
       });
       nCtx.closePath();
-      nCtx.strokeStyle = "#0f172a";
-      nCtx.lineWidth = 8.0;
-      nCtx.lineJoin = "round";
-      nCtx.stroke();
-      nCtx.strokeStyle = "#0ea5e9";
-      nCtx.lineWidth = 4.5;
-      nCtx.stroke();
+      nCtx.strokeStyle = "#0f172a"; nCtx.lineWidth = 8.0; nCtx.lineJoin = "round"; nCtx.stroke();
+      nCtx.strokeStyle = "#0ea5e9"; nCtx.lineWidth = 4.5; nCtx.stroke();
 
-      // Edge length labels (m)
       for (let i = 0; i < pts.length; i++) {
-        const a = pts[i];
-        const b = pts[(i + 1) % pts.length];
-        const segLen = a.distanceTo(b);
-        const [ax, ay] = toNadirXY(a.x, a.z);
-        const [bx, by] = toNadirXY(b.x, b.z);
-        const mx = 0.5 * (ax + bx);
-        const my = 0.5 * (ay + by);
-        const edgeTxt = `${segLen.toFixed(2)}m`;
+        const a = pts[i], b = pts[(i + 1) % pts.length], segLen = a.distanceTo(b);
+        const [ax, ay] = toNadirXY(a.x, a.z), [bx, by] = toNadirXY(b.x, b.z);
+        const mx = 0.5 * (ax + bx), my = 0.5 * (ay + by), edgeTxt = `${segLen.toFixed(2)}m`;
         nCtx.font = "bold 11px monospace";
         const etw = nCtx.measureText(edgeTxt).width + 8;
-        nCtx.fillStyle = "rgba(15, 23, 42, 0.85)";
-        nCtx.fillRect(mx - etw * 0.5, my - 9, etw, 18);
-        nCtx.fillStyle = "#fbbf24";
-        nCtx.textAlign = "center";
-        nCtx.textBaseline = "middle";
-        nCtx.fillText(edgeTxt, mx, my);
+        nCtx.fillStyle = "rgba(15, 23, 42, 0.85)"; nCtx.fillRect(mx - etw * 0.5, my - 9, etw, 18);
+        nCtx.fillStyle = "#fbbf24"; nCtx.textAlign = "center"; nCtx.textBaseline = "middle"; nCtx.fillText(edgeTxt, mx, my);
       }
 
-      // All vertex point markers & callout labels V1, V2, ..., Vn with their elevation (H:+XX.XXm) and collision avoidance
       const placedBoxes = [];
       pts.forEach((pt, idx) => {
-        const [px, py] = toNadirXY(pt.x, pt.z);
-        const hVal = ch + pt.y;
-        nCtx.beginPath();
-        nCtx.arc(px, py, 7, 0, Math.PI * 2);
-        nCtx.fillStyle = idx === 0 ? "#ff3b30" : "#0084ff";
-        nCtx.fill();
-        nCtx.lineWidth = 2.2;
-        nCtx.strokeStyle = "#ffffff";
-        nCtx.stroke();
-
+        const [px, py] = toNadirXY(pt.x, pt.z), hVal = ch + pt.y;
+        nCtx.beginPath(); nCtx.arc(px, py, 7, 0, Math.PI * 2);
+        nCtx.fillStyle = idx === 0 ? "#ff3b30" : "#0084ff"; nCtx.fill();
+        nCtx.lineWidth = 2.2; nCtx.strokeStyle = "#ffffff"; nCtx.stroke();
         const vLbl = `V${idx + 1} (H:+${hVal.toFixed(2)}m)`;
         nCtx.font = "bold 11.5px monospace";
         const vtw = nCtx.measureText(vLbl).width + 12;
-        let bx = Math.max(6, Math.min(nW - vtw - 6, px - vtw * 0.5));
-        let by = py > 44 ? py - 30 : py + 12;
+        let bx = Math.max(6, Math.min(nW - vtw - 6, px - vtw * 0.5)), by = py > 44 ? py - 30 : py + 12;
         for (let pass = 0; pass < 4; pass++) {
-          const hit = placedBoxes.find(
-            (b) => !(bx + vtw < b.x - 3 || bx > b.x + b.w + 3 || by + 20 < b.y - 2 || by > b.y + b.h + 2)
-          );
+          const hit = placedBoxes.find((b) => !(bx + vtw < b.x - 3 || bx > b.x + b.w + 3 || by + 20 < b.y - 2 || by > b.y + b.h + 2));
           if (!hit) break;
           by = hit.y > py ? Math.max(6, hit.y - 24) : Math.min(nH - 26, hit.y + hit.h + 4);
         }
         placedBoxes.push({ x: bx, y: by, w: vtw, h: 20 });
-        nCtx.fillStyle = "rgba(15, 23, 42, 0.92)";
-        nCtx.fillRect(bx, by, vtw, 20);
-        nCtx.strokeStyle = idx === 0 ? "#ff3b30" : "#38bdf8";
-        nCtx.lineWidth = 1.4;
-        nCtx.strokeRect(bx, by, vtw, 20);
-        nCtx.fillStyle = "#ffffff";
-        nCtx.textAlign = "center";
-        nCtx.textBaseline = "middle";
-        nCtx.fillText(vLbl, bx + vtw * 0.5, by + 10);
+        nCtx.fillStyle = "rgba(15, 23, 42, 0.92)"; nCtx.fillRect(bx, by, vtw, 20);
+        nCtx.strokeStyle = idx === 0 ? "#ff3b30" : "#38bdf8"; nCtx.lineWidth = 1.4; nCtx.strokeRect(bx, by, vtw, 20);
+        nCtx.fillStyle = "#ffffff"; nCtx.textAlign = "center"; nCtx.textBaseline = "middle"; nCtx.fillText(vLbl, bx + vtw * 0.5, by + 10);
       });
 
-      // North arrow & metric scale bar
-      nCtx.fillStyle = "rgba(15, 23, 42, 0.88)";
-      nCtx.fillRect(nW - 62, 16, 46, 54);
-      nCtx.strokeStyle = "#cbd5e1";
-      nCtx.lineWidth = 1.2;
-      nCtx.strokeRect(nW - 62, 16, 46, 54);
-      nCtx.fillStyle = "#38bdf8";
-      nCtx.beginPath();
-      nCtx.moveTo(nW - 39, 24);
-      nCtx.lineTo(nW - 47, 44);
-      nCtx.lineTo(nW - 39, 39);
-      nCtx.lineTo(nW - 31, 44);
-      nCtx.closePath();
-      nCtx.fill();
-      nCtx.fillStyle = "#ffffff";
-      nCtx.font = "bold 12px sans-serif";
-      nCtx.textAlign = "center";
-      nCtx.fillText("N", nW - 39, 58);
+      nCtx.fillStyle = "rgba(15, 23, 42, 0.88)"; nCtx.fillRect(nW - 62, 16, 46, 54);
+      nCtx.strokeStyle = "#cbd5e1"; nCtx.lineWidth = 1.2; nCtx.strokeRect(nW - 62, 16, 46, 54);
+      nCtx.fillStyle = "#38bdf8"; nCtx.beginPath();
+      nCtx.moveTo(nW - 39, 24); nCtx.lineTo(nW - 47, 44); nCtx.lineTo(nW - 39, 39); nCtx.lineTo(nW - 31, 44);
+      nCtx.closePath(); nCtx.fill();
+      nCtx.fillStyle = "#ffffff"; nCtx.font = "bold 12px sans-serif"; nCtx.textAlign = "center"; nCtx.fillText("N", nW - 39, 58);
 
-      const rawBarMeters = Math.max(1, Math.round((2 * halfSpanX * 0.18) * 2) / 2);
-      const barPx = rawBarMeters * pxPerMeterX;
-      nCtx.fillStyle = "rgba(15, 23, 42, 0.88)";
-      nCtx.fillRect(16, nH - 42, barPx + 28, 28);
-      nCtx.strokeStyle = "#cbd5e1";
-      nCtx.lineWidth = 1.2;
-      nCtx.strokeRect(16, nH - 42, barPx + 28, 28);
-      nCtx.strokeStyle = "#ffffff";
-      nCtx.lineWidth = 3;
-      nCtx.beginPath();
-      nCtx.moveTo(28, nH - 22);
-      nCtx.lineTo(28 + barPx, nH - 22);
-      nCtx.moveTo(28, nH - 27);
-      nCtx.lineTo(28, nH - 17);
-      nCtx.moveTo(28 + barPx, nH - 27);
-      nCtx.lineTo(28 + barPx, nH - 17);
+      const rawBarMeters = Math.max(1, Math.round((2 * halfSpanX * 0.18) * 2) / 2), barPx = rawBarMeters * pxPerMeterX;
+      nCtx.fillStyle = "rgba(15, 23, 42, 0.88)"; nCtx.fillRect(16, nH - 42, barPx + 28, 28);
+      nCtx.strokeStyle = "#cbd5e1"; nCtx.lineWidth = 1.2; nCtx.strokeRect(16, nH - 42, barPx + 28, 28);
+      nCtx.strokeStyle = "#ffffff"; nCtx.lineWidth = 3; nCtx.beginPath();
+      nCtx.moveTo(28, nH - 22); nCtx.lineTo(28 + barPx, nH - 22);
+      nCtx.moveTo(28, nH - 27); nCtx.lineTo(28, nH - 17);
+      nCtx.moveTo(28 + barPx, nH - 27); nCtx.lineTo(28 + barPx, nH - 17);
       nCtx.stroke();
-      nCtx.font = "bold 11px monospace";
-      nCtx.fillStyle = "#38bdf8";
-      nCtx.textAlign = "center";
+      nCtx.font = "bold 11px monospace"; nCtx.fillStyle = "#38bdf8"; nCtx.textAlign = "center";
       nCtx.fillText(`${rawBarMeters} m`, 28 + barPx * 0.5, nH - 32);
-
       nadirImgDataUrl = nCanvas.toDataURL("image/png");
     } catch (err) {
       console.warn("[GatheringScans] captureVolumeReportFigures warning:", err);
     } finally {
-      // Restore camera & controls synchronously
-      cam.position.copy(prevPos);
-      cam.quaternion.copy(prevQuat);
-      cam.up.copy(prevUp);
+      cam.position.copy(prevPos); cam.quaternion.copy(prevQuat); cam.up.copy(prevUp);
       if (studioThree.controls?.target) {
         studioThree.controls.target.copy(prevTarget);
         studioThree.controls.update();
       }
-      cam.updateMatrixWorld(true);
-      cam.updateProjectionMatrix();
+      cam.updateMatrixWorld(true); cam.updateProjectionMatrix();
       studioThree.renderer.render(studioThree.scene, cam);
-      updateZoomInvariantElements();
-      update2DBadgePositions();
+      updateZoomInvariantElements(); update2DBadgePositions();
     }
-
     return { perspectiveImgDataUrl, nadirImgDataUrl };
   }
   window.captureVolumeReportFigures = captureVolumeReportFigures;
-
-

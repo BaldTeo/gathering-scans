@@ -1873,6 +1873,12 @@
       }
     }
 
+    if (Array.isArray(STATE.drainagePolygonPoints) && STATE.drainagePolygonPoints.length >= 3) {
+      const polyBoundXZ = STATE.drainagePolygonPoints.map((p) => [Number(p.x) || 0, Number(p.z) || 0]);
+      const boundedArrows = arrows.filter((a) => isPointInPolygon2D(a.x, a.z, polyBoundXZ));
+      return { cellStep: Math.min(stepX, stepZ), arrows: boundedArrows };
+    }
+
     return { cellStep: Math.min(stepX, stepZ), arrows };
   }
 
@@ -1922,6 +1928,19 @@
     const grp = new THREE.Group();
     studioThree.drainageGroup = grp;
     studioThree.overlayGroup.add(grp);
+
+    if (Array.isArray(STATE.drainagePolygonPoints) && STATE.drainagePolygonPoints.length >= 3) {
+      const polyPts = STATE.drainagePolygonPoints.map((p) => new THREE.Vector3(Number(p.x) || 0, Number(p.y) || 0, Number(p.z) || 0));
+      const loopGeo = new THREE.BufferGeometry().setFromPoints([...polyPts, polyPts[0]]);
+      const loopLine = new THREE.Line(loopGeo, new THREE.LineBasicMaterial({ color: 0x0284c7, depthTest: false }));
+      loopLine.renderOrder = 997;
+      grp.add(loopLine);
+      polyPts.forEach((p, idx) => {
+        if (typeof add3DPinMarker === "function") {
+          add3DPinMarker(p, idx === 0 ? 0xff3b30 : 0x0284c7, grp);
+        }
+      });
+    }
 
     const { cellStep, arrows } = buildFastStudioSurfaceArrows(gridSize, excludeWalls, densityPerM2);
 
@@ -2139,12 +2158,19 @@
       const total = Math.max(1, Number(s.arrow_count) || 0);
       const dVal = Math.max(0.04, Math.min(2.0, Number(STATE.drainageDensityPerM2) || 0.25));
       const aScale = Math.max(0.2, Math.min(3.0, Number(STATE.drainageArrowScale) || 1.0));
+      const hasPoly = Array.isArray(STATE.drainagePolygonPoints) && STATE.drainagePolygonPoints.length >= 3;
       return `
-      <div style="font-size:11px;color:var(--ui-text-secondary);margin-bottom:8px;line-height:1.45;">
-        ${tr(
-          "於真實 3D 掃描地表配置排水流向箭頭（自動排除未建模空洞與水域）：箭頭指向下坡方向，長度與階梯色彩代表坡度比 (1:N)。",
-          "Places 3D downhill drainage arrows strictly on scanned terrain (automatically excludes un-scanned voids & water bodies)."
-        )}
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:6px;font-size:11px;color:var(--ui-text-secondary);margin-bottom:8px;">
+        <span>${
+          hasPoly
+            ? tr("分析範圍：已鎖定多邊形區域", "Scope: Locked Polygon Area")
+            : tr("3D 地表坡度比 (1:N) 與下坡排水流向", "3D Surface Slope (1:N) & Runoff Flow")
+        }</span>
+        ${
+          hasPoly
+            ? `<button type="button" class="btn-xs" id="btnResetDrainageFullScan" style="padding:2px 7px;font-size:10px;">${tr("切換全區", "Full Scan")}</button>`
+            : ""
+        }
       </div>
       <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-bottom:10px;">
         <div class="gs-metric-box" style="border-left:3px solid #10b981;">
@@ -2164,7 +2190,7 @@
       <!-- Stepped 1:N Slope Color & Arrow Length Legend -->
       <div style="background:var(--ui-bg-subtle);border:1px solid var(--ui-border);border-radius:8px;padding:8px 10px;margin-bottom:10px;">
         <div style="display:flex;align-items:center;justify-content:space-between;font-size:11px;font-weight:700;margin-bottom:6px;">
-          <span>${tr("階梯坡度比圖例 (Stepped 1:N Legend)", "Stepped Slope Ratio Legend (1:N)")}</span>
+          <span>${tr("坡度分級圖例 (1:N)", "Slope Ratio Legend (1:N)")}</span>
           <span id="lblDrainageArrowTotalCount" style="color:var(--ui-text-secondary);font-family:var(--font-mono);">${s.arrow_count} ${tr("支箭頭", "arrows")}</span>
         </div>
         <div id="boxDrainageTierRows" style="display:flex;flex-direction:column;gap:5px;font-size:11px;">
@@ -2189,7 +2215,7 @@
       <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:10px;font-size:11.5px;background:var(--ui-bg-pill);border:1px solid var(--ui-border-strong);border-radius:8px;padding:8px 10px;">
         <div>
           <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:4px;">
-            <span style="font-weight:700;">${tr("箭頭分佈密度 (arrows / m²)", "Arrow Density (arrows / m²)")}</span>
+            <span style="font-weight:700;">${tr("箭頭密度", "Arrow Density")}</span>
             <span id="lblDrainageDensityVal" style="font-family:var(--font-mono);color:var(--ui-accent);font-weight:700;">${dVal.toFixed(2)} / m²</span>
           </div>
           <div style="display:flex;align-items:center;gap:8px;">
@@ -2205,22 +2231,22 @@
         </div>
         <div>
           <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:4px;">
-            <span style="font-weight:700;">${tr("箭頭長度比例 (Arrow Length)", "Arrow Length Scale")}</span>
+            <span style="font-weight:700;">${tr("箭頭尺寸", "Arrow Scale")}</span>
             <span id="lblDrainageArrowSizeVal" style="font-family:var(--font-mono);color:var(--ui-accent);font-weight:700;">${aScale.toFixed(1)}x</span>
           </div>
           <input type="range" id="rngDrainageArrowSize" class="gs-input" min="0.2" max="3.0" step="0.1" value="${aScale.toFixed(1)}" style="width:100%;" />
         </div>
         <label style="display:flex;align-items:center;gap:6px;cursor:pointer;">
           <input type="checkbox" id="chkDrainageShowLabels" ${STATE.drainageShowLabels !== false ? "checked" : ""} />
-          <span>${tr("於箭頭上方顯示 1:N 坡度比標籤", "Show 1:N Slope Ratio Labels on Arrows")}</span>
+          <span>${tr("顯示 1:N 坡度比標籤", "Show 1:N Ratio Labels")}</span>
         </label>
         <label style="display:flex;align-items:center;gap:6px;cursor:pointer;">
           <input type="checkbox" id="chkDrainageExcludeWalls" ${STATE.drainageExcludeWalls !== false ? "checked" : ""} />
-          <span>${tr("排除垂直牆面與樹幹 (> 1:1 / 45°)", "Exclude Vertical Walls & Trunks (> 1:1 / 45°)")}</span>
+          <span>${tr("排除垂直牆面 (> 45°)", "Exclude Walls (> 45°)")}</span>
         </label>
       </div>
       <button type="button" class="gs-top-btn" id="btnClearDrainageVisuals" style="width:100%;justify-content:center;">
-        <span>${tr("清除坡度與排水箭頭", "Clear Slope & Drainage Arrows")}</span>
+        <span>${tr("清除排水箭頭", "Clear Arrows")}</span>
       </button>
       `;
     };
@@ -2265,14 +2291,19 @@
       });
       document.getElementById("chkDrainageShowLabels")?.addEventListener("change", () => refreshVisInPlace(null));
       document.getElementById("chkDrainageExcludeWalls")?.addEventListener("change", () => refreshVisInPlace(null));
+      document.getElementById("btnResetDrainageFullScan")?.addEventListener("click", () => {
+        STATE.drainagePolygonPoints = null;
+        openDrainageAndSlopeInspector();
+      });
       document.getElementById("btnClearDrainageVisuals")?.addEventListener("click", () => {
+        STATE.drainagePolygonPoints = null;
         clearDrainageVisuals3D();
         showToast(tr("已清除 3D 坡度與排水箭頭", "Cleared 3D Slope & Drainage arrows"));
       });
     };
 
     showSidePanel(
-      `<span>${tr("坡度比 (1:N) 與排水箭頭分析", "Slope (1:N) & Drainage Arrows")}</span>`,
+      `<span>${tr("坡度與排水分析", "Slope & Drainage")}</span>`,
       renderPanelHtml(localStats)
     );
     bindDrainageControls();

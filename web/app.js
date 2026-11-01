@@ -2934,6 +2934,8 @@
           else if (STATE.activeTool === "optimizer") openMeshCompressionInspector();
           else if (STATE.activeTool === "crs") openCoordinateSystemInspector();
           else if (STATE.activeTool === "generate_scan") openGenerateScanInspector();
+          else if (STATE.activeTool === "flatness" && typeof window.openSurfaceFlatnessQaInspector === "function") window.openSurfaceFlatnessQaInspector();
+          else if (STATE.activeTool === "drainage" && typeof openDrainageAndSlopeInspector === "function") openDrainageAndSlopeInspector();
           else if (STATE.activeTool === "align_merge" || STATE.multiAlign?.active) renderAlignMergeInspectorContent();
         }
       }

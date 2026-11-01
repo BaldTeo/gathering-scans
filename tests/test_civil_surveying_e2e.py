@@ -2829,6 +2829,57 @@ class TestModularArchitectureCompliance(unittest.TestCase):
                 f"File {fp} exceeded 5,000-line modular ceiling ({count} lines >= 5000)!"
             )
 
+    def test_02_flatness_and_drainage_qa_seven_refinements(self):
+        """
+        Verify all 7 Surface Flatness & Drainage QA refinements:
+        1. Red/blue cones removed from renderPolygonFlatness3DOverlay.
+        2. Flatness polygon uses add3DPinMarker identical to Area tool, supports vertex snap/drag/insert/delete,
+           and Area tool 2D badge includes quick-jump buttons for flatness & drainage.
+        3. Flatness (#btnDockFlatness) and Drainage (#btnDockDrainage) grouped inside unified #bimDockQaWrap (品管 / QA) drop-up container.
+        4. Concise menu text, clickable .gov.tw regulation PDF bubble (#lnkFlatnessRegPdf), and full English translation of tolerance presets.
+        5. Regular local grid alignment (orthogonalized u0/v0 basis + snapped cell centers) & higher opacity (0.94 tiles / 0.96 points).
+        6. Points vs. Tiles 3D visualization toggle (flatnessDisplayMode = "tiles" | "points").
+        7. Fill Only (fill_only) volume calculation baseline alongside best_fit and custom.
+        """
+        with open(os.path.join(BASE_DIR, "web", "src", "10-construction-qa-and-stakeout.js"), "r", encoding="utf-8") as f:
+            qa_js = f.read()
+        with open(os.path.join(BASE_DIR, "web", "src", "04-studio-lasso-and-edits.js"), "r", encoding="utf-8") as f:
+            lasso_js = f.read()
+        with open(os.path.join(BASE_DIR, "web", "src", "08-advanced-surveying-and-qa.js"), "r", encoding="utf-8") as f:
+            adv_js = f.read()
+        with open(os.path.join(BASE_DIR, "web", "index.html"), "r", encoding="utf-8") as f:
+            index_html = f.read()
+
+        # 1. No ConeGeometry in renderPolygonFlatness3DOverlay
+        overlay_fn = qa_js.split("function renderPolygonFlatness3DOverlay")[1].split("function updateFlatnessRegulationBubbleUI")[0]
+        self.assertNotIn("ConeGeometry", overlay_fn)
+        self.assertIn("add3DPinMarker", overlay_fn)
+        self.assertIn('opacity: displayMode === "points" ? 0.96 : 0.94', overlay_fn)
+
+        # 2. Area 2D label QA jump buttons & flatness vertex editing
+        self.assertIn('data-area-qa-jump="flatness"', lasso_js)
+        self.assertIn('data-area-qa-jump="drainage"', lasso_js)
+        self.assertIn('source: "flatnessPolygonPoints"', lasso_js)
+        self.assertIn("drainagePolygonPoints", adv_js)
+
+        # 3. Unified QA drop-up container in index.html
+        self.assertIn('id="bimDockQaWrap"', index_html)
+        self.assertIn('id="btnDockQaGroup"', index_html)
+        self.assertIn('id="bimDockQaMenu"', index_html)
+
+        # 4–7. Regulation PDF link, English preset labels, regular grid, tiles/points toggle, and fill_only baseline
+        self.assertIn("getFlatnessRegulationSpec", qa_js)
+        self.assertIn("lnkFlatnessRegPdf", qa_js)
+        self.assertIn("nlma.gov.tw", qa_js)
+        self.assertIn('±3mm Trowel', qa_js)
+        self.assertIn('±6mm Plaster', qa_js)
+        self.assertIn('±10mm Form', qa_js)
+        self.assertIn('±15mm Paving', qa_js)
+        self.assertIn('data-flatness-disp-mode="tiles"', qa_js)
+        self.assertIn('data-flatness-disp-mode="points"', qa_js)
+        self.assertIn('value="fill_only"', qa_js)
+
 
 if __name__ == "__main__":
     unittest.main()
+

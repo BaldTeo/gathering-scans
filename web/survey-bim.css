@@ -1605,3 +1605,52 @@ body.theme-dark .subtab-btn.active {
   flex-shrink: 0;
 }
 
+/* Unified QA (品管) Bottom Dock Drop-Up Container */
+.bim-dock-dropup-wrap {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+.bim-dock-dropup-caret {
+  position: absolute;
+  top: -5px;
+  right: -6px;
+  font-size: 9px;
+  line-height: 1;
+  color: var(--ui-text-muted);
+  opacity: 0.85;
+}
+
+.bim-dock-dropup-menu {
+  position: fixed;
+  display: none;
+  flex-direction: row;
+  align-items: center;
+  gap: 4px;
+  padding: 5px 6px;
+  border-radius: 11px;
+  background: var(--ui-bg-glass, rgba(255, 255, 255, 0.92));
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid var(--ui-border-strong, #cbd5e1);
+  box-shadow: var(--ui-shadow-window, 0 8px 24px rgba(15, 23, 42, 0.16));
+  z-index: 260;
+  transform: translateX(-50%);
+}
+
+.bim-dock-dropup-menu.open {
+  display: flex;
+}
+
+.bim-dock-dropup-menu::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -10px;
+  height: 10px;
+}
+
+

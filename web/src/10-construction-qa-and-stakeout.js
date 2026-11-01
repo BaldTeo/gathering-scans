@@ -77,6 +77,7 @@
     flatnessPlaneMode: "best_fit_3d",
     flatnessToleranceMm: 3.0,
     flatnessVolumeMode: "threshold",
+    flatnessDisplayMode: "tiles",
     flatnessShowPass3D: false,
     flatnessCache: null,
     flatnessCancelToken: null,
@@ -87,6 +88,40 @@
     stakeoutLastResult: null,
     isPickingStakeoutPoint: false,
   };
+
+  function getFlatnessRegulationSpec(tolMm) {
+    const tol = Number(tolMm) || 3.0;
+    if (tol <= 4.5) {
+      return {
+        code: "PCC 09611",
+        zh: "施工綱要規範 第09611章 整體粉光地坪 (3m直規 ±3mm)",
+        en: "PCC Spec Ch.09611 Monolithic Floor Troweling (3m ±3mm)",
+        url: "https://www.nlma.gov.tw/filesys/file/chinese/dept/bw2/09611.pdf",
+      };
+    }
+    if (tol <= 8.0) {
+      return {
+        code: "PCC 09220",
+        zh: "施工綱要規範 第09220章 水泥砂漿粉刷 (3m直規 ±6mm)",
+        en: "PCC Spec Ch.09220 Cement Mortar Plastering (3m ±6mm)",
+        url: "https://www.nlma.gov.tw/uploads/files/b540c458d9a9ace031fb2cec987593c0.pdf",
+      };
+    }
+    if (tol <= 12.5) {
+      return {
+        code: "PCC 03310",
+        zh: "施工綱要規範 第03310章 結構用混凝土模板粗底 (±10mm)",
+        en: "PCC Spec Ch.03310 Structural Concrete Formwork (±10mm)",
+        url: "https://www.nlma.gov.tw/uploads/files/896a8dbb1440cce3f17b09e0a4b8dcff.pdf",
+      };
+    }
+    return {
+      code: "PCC 02742",
+      zh: `施工綱要規範 第02742章 道路與鋪面基層公差 (±${Number(tol.toFixed(1))}mm)`,
+      en: `PCC Spec Ch.02742 Road & Pavement Base (±${Number(tol.toFixed(1))}mm)`,
+      url: "https://www.nlma.gov.tw/uploads/files/5ee2ba58e7e83d1d4345b233fb71d7eb.pdf",
+    };
+  }
 
   function clear3DGroup(grp) {
     if (!grp) return null;
@@ -941,8 +976,26 @@
         const fittedPlane = fitFlatnessReferencePlane(sampledCells, planeMode);
         const fc = fittedPlane.center;
         const fn = fittedPlane.normal;
-        const fu = fittedPlane.uAxis;
-        const fv = fittedPlane.vAxis;
+        // Lock fittedPlane in-plane basis (fu, fv) to the orthogonal projection of the grid basis (u0, v0) onto fn
+        // so that every cell (r, c) sits on a strictly uniform, axis-aligned orthogonal lattice with zero rotation mismatch.
+        const u0DotN = vecDot(u0, fn);
+        let fu = vecNorm({
+          x: u0.x - u0DotN * fn.x,
+          y: u0.y - u0DotN * fn.y,
+          z: u0.z - u0DotN * fn.z,
+        });
+        let fv = vecNorm(vecCross(fn, fu));
+        if (vecDot(fv, v0) < 0) {
+          fv = { x: -fv.x, y: -fv.y, z: -fv.z };
+        }
+        fittedPlane.uAxis = fu;
+        fittedPlane.vAxis = fv;
+
+        const c0DistN = (c0.x - fc.x) * fn.x + (c0.y - fc.y) * fn.y + (c0.z - fc.z) * fn.z;
+        const planeOrigX = c0.x - c0DistN * fn.x;
+        const planeOrigY = c0.y - c0DistN * fn.y;
+        const planeOrigZ = c0.z - c0DistN * fn.z;
+
         const originTwd = typeof localToTwd97 === "function" ? localToTwd97({ x: 0, y: 0, z: 0 }) : { e: 0, n: 0, h: 0 };
 
         let sumSqMm = 0;
@@ -958,12 +1011,16 @@
           const devMm = devM * 1000.0;
           cell.devM = devM;
           cell.devMm = devMm;
-          cell.planeU = dx * fu.x + dy * fu.y + dz * fu.z;
-          cell.planeV = dx * fv.x + dy * fv.y + dz * fv.z;
-          // Point projected onto the best-fit plane
-          cell.planeX = cell.x - devM * fn.x;
-          cell.planeY = cell.y - devM * fn.y;
-          cell.planeZ = cell.z - devM * fn.z;
+          cell.planeU = cell.u;
+          cell.planeV = cell.v;
+          // Exact regular local (u, v) grid center on the best-fit plane (eliminates random triangle-centroid jitter)
+          cell.planeX = planeOrigX + cell.u * fu.x + cell.v * fv.x;
+          cell.planeY = planeOrigY + cell.u * fu.y + cell.v * fv.y;
+          cell.planeZ = planeOrigZ + cell.u * fu.z + cell.v * fv.z;
+          // Regular-grid 3D surface point displaced along normal by devM
+          cell.x = cell.planeX + devM * fn.x;
+          cell.y = cell.planeY + devM * fn.y;
+          cell.z = cell.planeZ + devM * fn.z;
           cell.e = Number((originTwd.e + cell.x).toFixed(3));
           cell.n = Number((originTwd.n - cell.z).toFixed(3));
           cell.h = Number((originTwd.h + cell.y).toFixed(3));
@@ -1020,12 +1077,17 @@
   /**
    * Instantaneous (< 1 ms) recalculation of Pass Rate, Protruding/Excess Volume,
    * Intruding/Lacking Volume, Net Material, and 3D Overlay when adjusting the Tolerance Slider.
+   * Supports 3 volume takeoff modes:
+   * - "threshold": Beyond ±Tolerance threshold (|d| - T)
+   * - "zero_plane": Full volume of out-of-spec zones to 0mm reference plane (|d|)
+   * - "fill_only": Self-leveling / mortar fill across polygon up to max high peak (maxHigh.devM - dM, no grinding)
    */
   function evaluateCachedFlatnessWithTolerance(cache, tolMm, volMode = "threshold") {
     if (!cache || !Array.isArray(cache.cells) || cache.cells.length === 0) return null;
     const tolM = Math.max(0.0001, tolMm / 1000.0);
     const cellA = cache.cellAreaM2 || 0.04;
     const cells = cache.cells;
+    const maxHighDevM = cache.maxHigh ? Math.max(0, Number(cache.maxHigh.devM) || 0) : 0;
 
     let passCount = 0;
     let highCount = 0;
@@ -1040,16 +1102,23 @@
       if (dMm > tolMm) {
         highCount++;
         c.status = "high";
-        const effDepthM = volMode === "zero_plane" ? dM : Math.max(0, dM - tolM);
-        excessVolM3 += effDepthM * cellA;
+        if (volMode !== "fill_only") {
+          const effDepthM = volMode === "zero_plane" ? dM : Math.max(0, dM - tolM);
+          excessVolM3 += effDepthM * cellA;
+        }
       } else if (dMm < -tolMm) {
         lowCount++;
         c.status = "low";
-        const effDepthM = volMode === "zero_plane" ? Math.abs(dM) : Math.max(0, Math.abs(dM) - tolM);
-        lackingVolM3 += effDepthM * cellA;
+        if (volMode !== "fill_only") {
+          const effDepthM = volMode === "zero_plane" ? Math.abs(dM) : Math.max(0, Math.abs(dM) - tolM);
+          lackingVolM3 += effDepthM * cellA;
+        }
       } else {
         passCount++;
         c.status = "pass";
+      }
+      if (volMode === "fill_only") {
+        lackingVolM3 += Math.max(0, maxHighDevM - dM) * cellA;
       }
     }
 
@@ -1166,14 +1235,13 @@
 
     if (typeof update2DBadgePositions === "function") update2DBadgePositions();
 
-    // Sync UI vertex count badge & buttons
     const countBadge = document.getElementById("lblFlatnessVertexCount");
     if (countBadge) {
       countBadge.textContent = pts.length === 0
-        ? t("尚未選點 (請在 3D 模型點擊 3+ 點圍成檢測範圍)", "0 pts (Click 3+ vertices on 3D surface)")
+        ? t("點擊 3+ 點圍成範圍，點紅點 V1 閉合", "Click 3+ pts on surface; click red V1 to close")
         : pts.length < 3
-        ? t(`已標記 ${pts.length} 點 — 再點 ${3 - pts.length} 點即可閉合`, `${pts.length} pts — click ${3 - pts.length} more to close`)
-        : t(`已標記 ${pts.length} 點 — 點擊紅色 V1 起點或按 Enter 閉合分析`, `${pts.length} pts — click red V1 or press Enter to analyze`);
+        ? t(`已選 ${pts.length} 點 (再點 ${3 - pts.length} 點)`, `${pts.length} pts (click ${3 - pts.length} more)`)
+        : t(`已選 ${pts.length} 點 — 點紅點 V1 或按 Enter 分析`, `${pts.length} pts — click red V1 or Enter to analyze`);
     }
     const btnLock = document.getElementById("btnLockFlatnessPoly");
     if (btnLock) btnLock.disabled = pts.length < 3;
@@ -1183,7 +1251,7 @@
 
   /**
    * Renders the 3D Best-Fit Reference Plane Grid + Protruding (Red/Orange) & Intruding (Blue/Cyan)
-   * 3D Deviation Prisms inside the locked polygon.
+   * 3D Deviation Tiles or Points on a strictly uniform local (u, v) grid inside the locked polygon.
    */
   function renderPolygonFlatness3DOverlay(cache, metrics, showPass3D = false) {
     if (!window.studioThree || !window.studioThree.scene || !window.THREE || !cache) return;
@@ -1198,24 +1266,32 @@
     const fu = new THREE.Vector3(plane.uAxis.x, plane.uAxis.y, plane.uAxis.z).normalize();
     const fv = new THREE.Vector3(plane.vAxis.x, plane.vAxis.y, plane.vAxis.z).normalize();
 
-    // 1. Locked Polygon Perimeter Loop & Vertex Spheres
-    const polyPts = (cache.polyPts || []).map((p) => new THREE.Vector3(p.x, p.y, p.z).addScaledVector(fn, 0.015));
+    // 1. Locked Polygon Perimeter Loop & Vertex Pin Markers (identical to Area tool)
+    const rawPolyPts = (window.STATE && Array.isArray(window.STATE.flatnessPolygonPoints) && window.STATE.flatnessPolygonPoints.length >= 3)
+      ? window.STATE.flatnessPolygonPoints
+      : (cache.polyPts || []);
+    const polyPts = rawPolyPts.map((p) => new THREE.Vector3(p.x, p.y, p.z));
     if (polyPts.length >= 3) {
       const loopPts = [...polyPts, polyPts[0]];
       const loopGeo = new THREE.BufferGeometry().setFromPoints(loopPts);
-      const loopMat = new THREE.LineBasicMaterial({ color: 0x38bdf8, depthTest: false });
+      const loopMat = new THREE.LineBasicMaterial({ color: 0x0284c7, depthTest: false });
       const loopLine = new THREE.Line(loopGeo, loopMat);
       loopLine.renderOrder = 997;
       surfaceQa3DGroup.add(loopLine);
 
       polyPts.forEach((p, idx) => {
-        const sp = new THREE.Mesh(
-          new THREE.SphereGeometry(idx === 0 ? 0.16 : 0.12, 12, 12),
-          new THREE.MeshBasicMaterial({ color: idx === 0 ? 0xff3b30 : 0x38bdf8, depthTest: false })
-        );
-        sp.position.copy(p);
-        sp.renderOrder = 998;
-        surfaceQa3DGroup.add(sp);
+        const pinColor = idx === 0 ? 0xff3b30 : 0x0284c7;
+        if (typeof add3DPinMarker === "function") {
+          add3DPinMarker(p, pinColor, surfaceQa3DGroup);
+        } else {
+          const sp = new THREE.Mesh(
+            new THREE.SphereGeometry(idx === 0 ? 0.16 : 0.12, 12, 12),
+            new THREE.MeshBasicMaterial({ color: pinColor, depthTest: false })
+          );
+          sp.position.copy(p);
+          sp.renderOrder = 998;
+          surfaceQa3DGroup.add(sp);
+        }
       });
     }
 
@@ -1226,7 +1302,7 @@
       color: 0x22d3ee,
       wireframe: true,
       transparent: true,
-      opacity: 0.48,
+      opacity: 0.42,
       depthTest: false,
     });
     const planeMesh = new THREE.Mesh(planeGeo, planeMat);
@@ -1235,27 +1311,22 @@
     planeMesh.renderOrder = 994;
     surfaceQa3DGroup.add(planeMesh);
 
-    // Reference Plane Normal Arrow at Centroid
-    const arrowLen = Math.max(0.8, Math.min(2.2, Math.max(cache.spanU, cache.spanV) * 0.22));
-    const normArrow = new THREE.ArrowHelper(fn, fc, arrowLen, 0x22d3ee, arrowLen * 0.25, arrowLen * 0.14);
-    normArrow.renderOrder = 998;
-    if (normArrow.line && normArrow.line.material) normArrow.line.material.depthTest = false;
-    if (normArrow.cone && normArrow.cone.material) normArrow.cone.material.depthTest = false;
-    surfaceQa3DGroup.add(normArrow);
-
-    // 3. Protruding (> +T, Red/Orange) & Intruding (< -T, Blue/Cyan) 3D Deviation Cells
+    // 3. Protruding (> +T, Red/Orange), Intruding (< -T, Blue/Cyan) & Pass (Green) 3D Grid Elements
     const tolMm = Math.max(0.5, metrics.tolerance_mm || 3.0);
     const cells = cache.cells || [];
     const activeCells = cells.filter((c) => showPass3D || c.status === "high" || c.status === "low");
+    const displayMode = QA_STATE.flatnessDisplayMode === "points" ? "points" : "tiles";
 
     if (activeCells.length > 0) {
-      const unitBox = new THREE.BoxGeometry(cache.du * 0.94, cache.dv * 0.94, 1.0);
+      const cellGeom = displayMode === "points"
+        ? new THREE.SphereGeometry(Math.min(cache.du, cache.dv) * 0.28, 12, 12)
+        : new THREE.BoxGeometry(cache.du * 0.92, cache.dv * 0.92, 1.0);
       const instMat = new THREE.MeshBasicMaterial({
         transparent: true,
-        opacity: 0.84,
+        opacity: displayMode === "points" ? 0.96 : 0.94,
         depthTest: false,
       });
-      const instMesh = new THREE.InstancedMesh(unitBox, instMat, activeCells.length);
+      const instMesh = new THREE.InstancedMesh(cellGeom, instMat, activeCells.length);
       instMesh.renderOrder = 996;
 
       const dummyMat = new THREE.Matrix4();
@@ -1267,23 +1338,27 @@
         const c = activeCells[i];
         const absMm = Math.abs(c.devMm);
         const ratio = Math.min(3.5, absMm / tolMm);
-        // Visual prism thickness scaled for clear 3D visibility while preserving sign
-        const prismThickM = Math.max(0.014, Math.min(0.14, Math.abs(c.devM) * 0.65 + 0.01));
         const sign = c.devM >= 0 ? 1.0 : -1.0;
 
-        posVec.set(c.planeX, c.planeY, c.planeZ).addScaledVector(fn, sign * prismThickM * 0.5);
-        dummyMat.copy(basisMat);
-        scaleMat.makeScale(1.0, 1.0, prismThickM);
-        dummyMat.multiply(scaleMat);
-        dummyMat.setPosition(posVec);
+        if (displayMode === "points") {
+          const offsetM = Math.max(0.015, Math.min(0.14, Math.abs(c.devM) + 0.01));
+          posVec.set(c.planeX, c.planeY, c.planeZ).addScaledVector(fn, sign * offsetM);
+          dummyMat.identity();
+          dummyMat.setPosition(posVec);
+        } else {
+          const prismThickM = Math.max(0.014, Math.min(0.14, Math.abs(c.devM) * 0.65 + 0.01));
+          posVec.set(c.planeX, c.planeY, c.planeZ).addScaledVector(fn, sign * prismThickM * 0.5);
+          dummyMat.copy(basisMat);
+          scaleMat.makeScale(1.0, 1.0, prismThickM);
+          dummyMat.multiply(scaleMat);
+          dummyMat.setPosition(posVec);
+        }
         instMesh.setMatrixAt(i, dummyMat);
 
         if (c.status === "high") {
-          // Protruding (> +T): Warm Orange (#f97316) -> Crimson Red (#ef4444)
           if (ratio >= 2.0) col.setHex(0xef4444);
           else col.setHex(0xf97316).lerp(new THREE.Color(0xef4444), (ratio - 1.0));
         } else if (c.status === "low") {
-          // Intruding (< -T): Cyan (#06b6d4) -> Deep Blue (#2563eb)
           if (ratio >= 2.0) col.setHex(0x2563eb);
           else col.setHex(0x06b6d4).lerp(new THREE.Color(0x2563eb), (ratio - 1.0));
         } else {
@@ -1296,34 +1371,31 @@
       surfaceQa3DGroup.add(instMesh);
     }
 
-    // 4. Max High (Red Cone) & Max Low (Blue Cone) 3D Callout Pins
-    if (cache.maxHigh) {
-      const hp = new THREE.Vector3(cache.maxHigh.x, cache.maxHigh.y, cache.maxHigh.z);
-      const pinTop = hp.clone().addScaledVector(fn, 0.42);
-      const coneGeo = new THREE.ConeGeometry(0.14, 0.38, 12);
-      coneGeo.rotateX(Math.PI);
-      const cone = new THREE.Mesh(coneGeo, new THREE.MeshBasicMaterial({ color: 0xef4444, depthTest: false }));
-      cone.position.copy(pinTop);
-      cone.renderOrder = 999;
-      surfaceQa3DGroup.add(cone);
-    }
-    if (cache.maxLow) {
-      const lp = new THREE.Vector3(cache.maxLow.x, cache.maxLow.y, cache.maxLow.z);
-      const pinBot = lp.clone().addScaledVector(fn, -0.42);
-      const coneGeo = new THREE.ConeGeometry(0.14, 0.38, 12);
-      const cone = new THREE.Mesh(coneGeo, new THREE.MeshBasicMaterial({ color: 0x3b82f6, depthTest: false }));
-      cone.position.copy(pinBot);
-      cone.renderOrder = 999;
-      surfaceQa3DGroup.add(cone);
-    }
-
     if (window.studioThree.overlayGroup) {
       window.studioThree.overlayGroup.add(surfaceQa3DGroup);
     } else {
       window.studioThree.scene.add(surfaceQa3DGroup);
     }
+    if (typeof updateZoomInvariantElements === "function") {
+      updateZoomInvariantElements();
+    }
     if (window.studioThree.renderer && window.studioThree.camera) {
       window.studioThree.renderer.render(window.studioThree.scene, window.studioThree.camera);
+    }
+  }
+
+  function updateFlatnessRegulationBubbleUI(tolMm) {
+    const spec = getFlatnessRegulationSpec(tolMm);
+    const pillEl = document.getElementById("lblFlatnessSpecChapter");
+    if (pillEl) pillEl.textContent = spec.code;
+    const lnkEl = document.getElementById("lnkFlatnessRegPdf");
+    if (lnkEl) {
+      lnkEl.href = spec.url;
+      lnkEl.title = t("點擊開啟政府施工綱要規範 PDF", "Click to open official government regulation PDF");
+    }
+    const txtEl = document.getElementById("lblFlatnessRegName");
+    if (txtEl) {
+      txtEl.textContent = t(spec.zh, spec.en);
     }
   }
 
@@ -1342,52 +1414,54 @@
     const tolMm = QA_STATE.flatnessToleranceMm || 3.0;
     const planeMode = QA_STATE.flatnessPlaneMode || "best_fit_3d";
     const volMode = QA_STATE.flatnessVolumeMode || "threshold";
+    const dispMode = QA_STATE.flatnessDisplayMode || "tiles";
     const ptsCount = (window.STATE && Array.isArray(window.STATE.measurePoints)) ? window.STATE.measurePoints.length : 0;
+    const regSpec = getFlatnessRegulationSpec(tolMm);
 
     const html = `
       <div class="gs-qa-container" id="surfaceQaContainer">
         <!-- Header & Taiwan PCC Spec Pill -->
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;gap:4px;">
           <span style="font-size:12px;font-weight:700;color:var(--ui-text-primary);display:inline-flex;align-items:center;gap:5px;">
-            ${QA_SVGS.FLATNESS} ${t("多邊形區域平整度與補料分析", "Polygon Flatness & Material Takeoff")}
+            ${QA_SVGS.FLATNESS} ${t("區域平整度與補料分析", "Flatness & Material Takeoff")}
           </span>
-          <span class="gcp-crs-pill">PCC 09611/09220</span>
+          <span class="gcp-crs-pill" id="lblFlatnessSpecChapter">${regSpec.code}</span>
         </div>
 
         <!-- Step 1: 3D Polygon Drawing Guide & Controls -->
         <div class="gs-qa-card" id="flatnessStep1Card">
           <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
             <span style="font-size:11px;font-weight:700;color:var(--ui-text-primary);">
-              1. ${t("框選 3D 檢測範圍 (地坪 / 斜坡 / 牆面)", "1. Draw 3D Inspection Polygon")}
+              1. ${t("檢測範圍 (可拖曳頂點微調)", "1. Inspection Polygon (Draggable)")}
             </span>
             <span id="badgeFlatnessPolyState" style="font-size:10px;padding:1px 6px;border-radius:999px;background:rgba(2,132,199,0.15);color:#38bdf8;font-weight:700;">
               ${QA_STATE.flatnessCache ? t("已鎖定", "Locked") : t("繪製中", "Drawing")}
             </span>
           </div>
-          <div id="lblFlatnessVertexCount" style="font-size:10.5px;color:var(--ui-text-secondary);line-height:1.4;margin-bottom:6px;">
+          <div id="lblFlatnessVertexCount" style="font-size:10.5px;color:var(--ui-text-secondary);line-height:1.35;margin-bottom:6px;">
             ${
               QA_STATE.flatnessCache
-                ? t(`已完成多邊形區域取樣 (${QA_STATE.flatnessCache.totalAreaM2} m²) — 拖曳下方公差滑桿即時更新凸起/凹陷區域`, `Polygon analyzed (${QA_STATE.flatnessCache.totalAreaM2} m²) — drag tolerance slider for instant update`)
+                ? t(`已分析 ${QA_STATE.flatnessCache.totalAreaM2} m² — 可直接拖曳 3D 頂點或調整公差`, `Analyzed ${QA_STATE.flatnessCache.totalAreaM2} m² — drag 3D pins or adjust tolerance`)
                 : ptsCount === 0
-                ? t("請在 3D 模型表面點擊 3 個以上頂點圍成檢測範圍，再點擊紅色起點 V1 或按 Enter 閉合分析", "Click 3+ vertices on the 3D surface, then click red V1 or press Enter to lock & analyze")
-                : t(`已標記 ${ptsCount} 個頂點`, `${ptsCount} vertices placed`)
+                ? t("點擊 3+ 點圍成範圍，點紅點 V1 或按 Enter 閉合", "Click 3+ pts on surface; click red V1 or Enter to close")
+                : t(`已選 ${ptsCount} 點`, `${ptsCount} pts placed`)
             }
           </div>
           <div style="display:grid;grid-template-columns:repeat(3, 1fr);gap:5px;">
-            <button type="button" class="btn-xs primary" id="btnLockFlatnessPoly" ${ptsCount >= 3 ? "" : "disabled"} title="${t("閉合多邊形並擬合最佳基準面", "Close polygon and fit reference plane")}">
-              ${QA_SVGS.CHECK} ${t("閉合分析", "Analyze")}
+            <button type="button" class="btn-xs primary" id="btnLockFlatnessPoly" ${ptsCount >= 3 ? "" : "disabled"} title="${t("閉合多邊形並擬合基準面", "Close polygon and fit plane")}">
+              ${QA_SVGS.CHECK} ${t("分析", "Analyze")}
             </button>
-            <button type="button" class="btn-xs" id="btnUndoFlatnessVertex" ${ptsCount >= 1 ? "" : "disabled"} title="${t("復原上一個頂點", "Undo last vertex")}">
-              ${QA_SVGS.RESET} ${t("復原點", "Undo")}
+            <button type="button" class="btn-xs" id="btnUndoFlatnessVertex" ${ptsCount >= 1 ? "" : "disabled"} title="${t("復原上一點", "Undo last point")}">
+              ${QA_SVGS.RESET} ${t("復原", "Undo")}
             </button>
-            <button type="button" class="btn-xs" id="btnResetSurfaceQa" title="${t("清除目前多邊形並重新框選", "Clear polygon and redraw")}">
-              ${QA_SVGS.PICK} ${t("重繪範圍", "Redraw")}
+            <button type="button" class="btn-xs" id="btnResetSurfaceQa" title="${t("清除並重繪範圍", "Clear and redraw polygon")}">
+              ${QA_SVGS.PICK} ${t("重繪", "Redraw")}
             </button>
           </div>
           <!-- Background Time-Sliced Sampling Progress Bar -->
           <div id="flatnessSamplingProgressWrap" style="display:none;margin-top:7px;">
             <div style="display:flex;justify-content:space-between;font-size:10px;color:var(--ui-text-secondary);margin-bottom:3px;">
-              <span id="lblFlatnessSamplingStage">${t("背景分時網格取樣與 PCA 平面擬合中...", "Background time-sliced surface sampling...")}</span>
+              <span id="lblFlatnessSamplingStage">${t("網格取樣與平面擬合中...", "Sampling surface grid...")}</span>
               <span id="lblFlatnessSamplingPct" style="font-weight:700;color:#38bdf8;">0%</span>
             </div>
             <div style="width:100%;height:5px;background:var(--ui-bg-subtle);border-radius:999px;overflow:hidden;">
@@ -1399,29 +1473,29 @@
         <!-- Step 2: Reference Plane Mode -->
         <div class="gs-qa-card">
           <div style="font-size:11px;font-weight:700;color:var(--ui-text-secondary);margin-bottom:4px;">
-            2. ${t("基準平面擬合模式", "2. Reference Plane Fitting Mode")}
+            2. ${t("基準平面", "2. Reference Plane")}
           </div>
           <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:4px;">
             <label class="gs-qa-mode-pill ${planeMode === "best_fit_3d" ? "active" : ""}">
               <input type="radio" name="qaRefMode" value="best_fit_3d" ${planeMode === "best_fit_3d" ? "checked" : ""} style="display:none;" />
-              <span>${t("最佳擬合面", "3D Best-Fit")}</span>
+              <span>${t("最佳擬合", "Best-Fit")}</span>
             </label>
             <label class="gs-qa-mode-pill ${planeMode === "horizontal" ? "active" : ""}">
               <input type="radio" name="qaRefMode" value="horizontal" ${planeMode === "horizontal" ? "checked" : ""} style="display:none;" />
-              <span>${t("水平基準面", "Horizontal")}</span>
+              <span>${t("水平面", "Horizontal")}</span>
             </label>
             <label class="gs-qa-mode-pill ${planeMode === "vertical_plumb" ? "active" : ""}">
               <input type="radio" name="qaRefMode" value="vertical_plumb" ${planeMode === "vertical_plumb" ? "checked" : ""} style="display:none;" />
-              <span>${t("垂直鉛直面", "Plumb Wall")}</span>
+              <span>${t("鉛直面", "Plumb Wall")}</span>
             </label>
           </div>
         </div>
 
-        <!-- Step 3: Taiwan PCC Regulation Presets & Real-Time Tolerance Slider -->
+        <!-- Step 3: Taiwan PCC Regulation Presets, Clickable Regulation Bubble & Tolerance Slider -->
         <div class="gs-qa-card">
           <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
             <span style="font-size:11px;font-weight:700;color:var(--ui-text-secondary);">
-              3. ${t("台灣公共工程規範公差門檻", "3. Taiwan PCC Tolerance Threshold")}
+              3. ${t("公差門檻", "3. Tolerance")}
             </span>
             <span id="lblFlatnessTolReadout" style="font-size:12px;font-weight:800;color:#38bdf8;font-family:monospace;">
               +/-${tolMm.toFixed(1)} mm
@@ -1429,20 +1503,28 @@
           </div>
 
           <!-- Taiwan PCC Specification Quick Presets -->
-          <div style="display:grid;grid-template-columns:repeat(4, 1fr);gap:4px;margin-bottom:6px;">
-            <button type="button" class="btn-xs ${Math.abs(tolMm - 3.0) < 0.1 ? "primary" : ""}" data-flatness-preset-mm="3.0" title="公共工程施工綱要規範 第09611章 整體粉光 / 第09220章 精細水泥砂漿粉刷 (3m直規 ±3mm)">
-              ±3mm 粉光
+          <div style="display:grid;grid-template-columns:repeat(4, 1fr);gap:4px;margin-bottom:5px;">
+            <button type="button" class="btn-xs ${Math.abs(tolMm - 3.0) < 0.1 ? "primary" : ""}" data-flatness-preset-mm="3.0" title="${t("第09611章 整體粉光地坪 (3m直規 ±3mm)", "Ch.09611 Monolithic Floor Troweling (±3mm)")}">
+              ${t("±3mm 粉光", "±3mm Trowel")}
             </button>
-            <button type="button" class="btn-xs ${Math.abs(tolMm - 6.0) < 0.1 ? "primary" : ""}" data-flatness-preset-mm="6.0" title="公共工程施工綱要規範 第09220章 一般水泥砂漿粉刷 (3m直規 ±6mm)">
-              ±6mm 粉刷
+            <button type="button" class="btn-xs ${Math.abs(tolMm - 6.0) < 0.1 ? "primary" : ""}" data-flatness-preset-mm="6.0" title="${t("第09220章 水泥砂漿一般粉刷 (3m直規 ±6mm)", "Ch.09220 Cement Mortar Plastering (±6mm)")}">
+              ${t("±6mm 粉刷", "±6mm Plaster")}
             </button>
-            <button type="button" class="btn-xs ${Math.abs(tolMm - 10.0) < 0.1 ? "primary" : ""}" data-flatness-preset-mm="10.0" title="公共工程施工綱要規範 第03310章 結構體混凝土模板粗底 (±10mm)">
-              ±10mm 粗底
+            <button type="button" class="btn-xs ${Math.abs(tolMm - 10.0) < 0.1 ? "primary" : ""}" data-flatness-preset-mm="10.0" title="${t("第03310章 結構用混凝土模板粗底 (±10mm)", "Ch.03310 Structural Concrete Formwork (±10mm)")}">
+              ${t("±10mm 粗底", "±10mm Form")}
             </button>
-            <button type="button" class="btn-xs ${Math.abs(tolMm - 15.0) < 0.1 ? "primary" : ""}" data-flatness-preset-mm="15.0" title="道路與廣場鋪面基層施工公差 (±15mm)">
-              ±15mm 鋪面
+            <button type="button" class="btn-xs ${Math.abs(tolMm - 15.0) < 0.1 ? "primary" : ""}" data-flatness-preset-mm="15.0" title="${t("第02742章 道路與廣場鋪面基層公差 (±15mm)", "Ch.02742 Road & Pavement Base (±15mm)")}">
+              ${t("±15mm 鋪面", "±15mm Paving")}
             </button>
           </div>
+
+          <!-- Clickable Government Regulation PDF Bubble -->
+          <a id="lnkFlatnessRegPdf" href="${regSpec.url}" target="_blank" rel="noopener noreferrer"
+             title="${t("點擊開啟政府施工綱要規範 PDF", "Click to open official government regulation PDF")}"
+             style="display:flex;align-items:center;justify-content:space-between;gap:6px;padding:4px 8px;margin-bottom:6px;border-radius:6px;background:rgba(2,132,199,0.12);border:1px solid rgba(56,189,248,0.32);color:#38bdf8;font-size:10px;font-weight:600;text-decoration:none;transition:background 0.15s;">
+            <span id="lblFlatnessRegName" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${t(regSpec.zh, regSpec.en)}</span>
+            <span style="flex-shrink:0;font-size:9.5px;padding:1px 5px;border-radius:4px;background:rgba(56,189,248,0.18);color:var(--ui-text-primary);font-weight:700;">PDF ↗</span>
+          </a>
 
           <!-- Real-Time Slider + Numeric Input -->
           <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">
@@ -1450,34 +1532,48 @@
             <input type="number" id="qaToleranceMm" class="gs-input" value="${tolMm}" step="0.5" min="0.5" max="100" style="width:68px;height:26px;font-size:11px;text-align:right;" />
           </div>
 
-          <!-- Volume Takeoff Baseline Mode & 3D Pass Toggle -->
+          <!-- Volume Takeoff Baseline Mode (3 Options) & 3D Display Mode Toggle -->
           <div style="border-top:1px solid var(--ui-border);padding-top:6px;margin-top:4px;">
             <div style="font-size:10px;color:var(--ui-text-muted);margin-bottom:4px;">
-              ${t("凸起打磨 / 凹陷補料體積計算基準：", "Volume Takeoff Calculation Baseline:")}
+              ${t("體積計算基準：", "Volume Calculation Baseline:")}
             </div>
-            <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px;margin-bottom:5px;">
-              <label class="gs-qa-mode-pill ${volMode === "threshold" ? "active" : ""}" title="${t("僅計算超出 ±公差門檻以外之超差體積 (|d| - T)", "Volume exceeding the ±Tolerance threshold (|d| - T)")}">
+            <div style="display:grid;grid-template-columns:repeat(3, 1fr);gap:4px;margin-bottom:6px;">
+              <label class="gs-qa-mode-pill ${volMode === "threshold" ? "active" : ""}" title="${t("僅計算超出 ±公差門檻之體積 (|d| - T)", "Volume exceeding ±Tolerance (|d| - T)")}">
                 <input type="radio" name="flatnessVolMode" value="threshold" ${volMode === "threshold" ? "checked" : ""} style="display:none;" />
-                <span style="font-size:10px;">${t("超出公差門檻 (|d|-T)", "Beyond ±Tol (|d|-T)")}</span>
+                <span style="font-size:9.5px;">${t("超出公差", "Beyond ±Tol")}</span>
               </label>
-              <label class="gs-qa-mode-pill ${volMode === "zero_plane" ? "active" : ""}" title="${t("計算超差區域整平至 0mm 基準面所需之完整體積 (|d|)", "Full volume to level out-of-spec zones to 0mm plane (|d|)")}">
+              <label class="gs-qa-mode-pill ${volMode === "zero_plane" ? "active" : ""}" title="${t("超差區整平至 0mm 基準面之完整體積 (|d|)", "Full volume to level out-of-spec zones to 0mm plane")}">
                 <input type="radio" name="flatnessVolMode" value="zero_plane" ${volMode === "zero_plane" ? "checked" : ""} style="display:none;" />
-                <span style="font-size:10px;">${t("至 0mm 基準面 (|d|)", "To 0mm Plane (|d|)")}</span>
+                <span style="font-size:9.5px;">${t("至 0mm 面", "To 0mm Plane")}</span>
+              </label>
+              <label class="gs-qa-mode-pill ${volMode === "fill_only" ? "active" : ""}" title="${t("不打磨高點，全區自平泥/砂漿填補至最高點所需體積", "No grinding; fill entire polygon up to highest peak")}">
+                <input type="radio" name="flatnessVolMode" value="fill_only" ${volMode === "fill_only" ? "checked" : ""} style="display:none;" />
+                <span style="font-size:9.5px;">${t("僅填至高點", "Fill Only")}</span>
               </label>
             </div>
-            <label style="display:flex;align-items:center;gap:6px;font-size:10.5px;color:var(--ui-text-secondary);cursor:pointer;">
-              <input type="checkbox" id="chkFlatnessShowPass3D" ${QA_STATE.flatnessShowPass3D ? "checked" : ""} />
-              <span>${t("在 3D 視圖同時顯示合格區域 (綠色)", "Also show in-tolerance compliant cells (Green) in 3D")}</span>
-            </label>
+            <div style="display:flex;align-items:center;justify-content:space-between;gap:6px;">
+              <label style="display:flex;align-items:center;gap:5px;font-size:10.5px;color:var(--ui-text-secondary);cursor:pointer;">
+                <input type="checkbox" id="chkFlatnessShowPass3D" ${QA_STATE.flatnessShowPass3D ? "checked" : ""} />
+                <span>${t("顯示合格格 (綠)", "Show Pass (Green)")}</span>
+              </label>
+              <div style="display:inline-flex;gap:3px;" role="group" aria-label="3D Display Mode">
+                <button type="button" class="btn-xs ${dispMode === "tiles" ? "primary" : ""}" data-flatness-disp-mode="tiles" style="padding:2px 7px;font-size:10px;" title="${t("以規則網格色塊顯示", "Display as regular grid tiles")}">
+                  ${t("色塊", "Tiles")}
+                </button>
+                <button type="button" class="btn-xs ${dispMode === "points" ? "primary" : ""}" data-flatness-disp-mode="points" style="padding:2px 7px;font-size:10px;" title="${t("以規則網格點顯示", "Display as regular grid points")}">
+                  ${t("點雲", "Points")}
+                </button>
+              </div>
+            </div>
           </div>
         </div>
 
         <!-- Export & Report Toolbar -->
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:4px;">
-          <button type="button" class="btn-xs" id="btnExportSurfaceQaCsv" title="${t("匯出格網偏差與體積數量 CSV", "Export Grid & Volume CSV")}">
+          <button type="button" class="btn-xs" id="btnExportSurfaceQaCsv" title="${t("匯出格網偏差與體積 CSV", "Export Grid & Volume CSV")}">
             ${QA_SVGS.CSV} CSV
           </button>
-          <button type="button" class="btn-xs primary" id="btnExportFlatnessReport" title="${t("產生含 3D 截圖與平面正射偏差圖之工程檢驗報告", "Generate Engineering Report with 3D & Orthographic Screenshots")}">
+          <button type="button" class="btn-xs primary" id="btnExportFlatnessReport" title="${t("產生含 3D 與正射截圖之檢驗報告", "Generate Engineering Report with Screenshots")}">
             ${QA_SVGS.PRINT} ${t("截圖報告", "Report")}
           </button>
         </div>
@@ -1490,7 +1586,6 @@
     showSidePanel(t("表面平整度", "Surface Flatness"), html);
     bindSurfaceQaEvents();
 
-    // If a polygon was already analyzed, restore its metrics & 3D overlay; otherwise draw draft vertices only
     if (QA_STATE.flatnessCache) {
       recomputeFlatnessMetricsAndVisuals();
     } else {
@@ -1499,7 +1594,6 @@
   }
 
   function recomputeFlatnessMetricsAndVisuals() {
-    if (!QA_STATE.flatnessCache) return;
     const tolMm = Math.max(0.5, safeFloat(document.getElementById("qaToleranceMm")?.value, QA_STATE.flatnessToleranceMm || 3.0));
     QA_STATE.flatnessToleranceMm = tolMm;
     const volMode = document.querySelector('input[name="flatnessVolMode"]:checked')?.value || QA_STATE.flatnessVolumeMode || "threshold";
@@ -1510,12 +1604,19 @@
     const lblTol = document.getElementById("lblFlatnessTolReadout");
     if (lblTol) lblTol.textContent = `+/-${tolMm.toFixed(1)} mm`;
 
-    // Highlight matching preset pill if any
+    updateFlatnessRegulationBubbleUI(tolMm);
+
     document.querySelectorAll("[data-flatness-preset-mm]").forEach((btn) => {
       const pVal = safeFloat(btn.getAttribute("data-flatness-preset-mm"), -1);
       btn.classList.toggle("primary", Math.abs(pVal - tolMm) < 0.08);
     });
 
+    document.querySelectorAll("[data-flatness-disp-mode]").forEach((btn) => {
+      const mVal = btn.getAttribute("data-flatness-disp-mode");
+      btn.classList.toggle("primary", mVal === (QA_STATE.flatnessDisplayMode || "tiles"));
+    });
+
+    if (!QA_STATE.flatnessCache) return;
     const metrics = evaluateCachedFlatnessWithTolerance(QA_STATE.flatnessCache, tolMm, volMode);
     if (!metrics) return;
     QA_STATE.surfaceQaLastResult = metrics;
@@ -1530,7 +1631,7 @@
 
     if (rawPts.length < 3) {
       if (typeof showToast === "function") {
-        showToast(t("請先在 3D 模型表面點擊至少 3 個頂點圍成檢測範圍", "Please click at least 3 vertices on the 3D surface first"));
+        showToast(t("請先在 3D 表面點擊至少 3 個頂點", "Click at least 3 vertices on the 3D surface first"));
       }
       return;
     }
@@ -1541,7 +1642,14 @@
       }
     }
 
-    const polyPts = rawPts.map((p) => (typeof p.clone === "function" ? p.clone() : { x: Number(p.x), y: Number(p.y), z: Number(p.z) }));
+    const THREE = window.THREE;
+    const polyPts = rawPts.map((p) =>
+      typeof p.clone === "function"
+        ? p.clone()
+        : THREE
+        ? new THREE.Vector3(Number(p.x), Number(p.y), Number(p.z))
+        : { x: Number(p.x), y: Number(p.y), z: Number(p.z) }
+    );
     if (window.STATE) {
       window.STATE.measurePoints = [];
       window.STATE.polygonLocked = true;
@@ -1580,8 +1688,8 @@
       const lblCount = document.getElementById("lblFlatnessVertexCount");
       if (lblCount) {
         lblCount.textContent = t(
-          `已分析多邊形區域 (${cache.totalAreaM2} m², ${cache.cells.length} 網格) — 拖曳下方公差滑桿即時更新凸起與凹陷區域`,
-          `Analyzed polygon (${cache.totalAreaM2} m², ${cache.cells.length} cells) — drag tolerance slider for instant update`
+          `已分析 ${cache.totalAreaM2} m² (${cache.cells.length} 格) — 可拖曳頂點或公差滑桿`,
+          `Analyzed ${cache.totalAreaM2} m² (${cache.cells.length} cells) — drag pins or tolerance slider`
         );
       }
       recomputeFlatnessMetricsAndVisuals();
@@ -1601,8 +1709,11 @@
         });
         e.target.closest(".gs-qa-mode-pill")?.classList.add("active");
         QA_STATE.flatnessPlaneMode = e.target.value;
-        if (QA_STATE.flatnessCache && Array.isArray(QA_STATE.flatnessCache.polyPts) && QA_STATE.flatnessCache.polyPts.length >= 3) {
-          lockFlatnessPolygonAndAnalyze(QA_STATE.flatnessCache.polyPts);
+        const pts = (window.STATE && Array.isArray(window.STATE.flatnessPolygonPoints) && window.STATE.flatnessPolygonPoints.length >= 3)
+          ? window.STATE.flatnessPolygonPoints
+          : (QA_STATE.flatnessCache && Array.isArray(QA_STATE.flatnessCache.polyPts) ? QA_STATE.flatnessCache.polyPts : null);
+        if (pts && pts.length >= 3) {
+          lockFlatnessPolygonAndAnalyze(pts);
         }
       });
     });
@@ -1614,6 +1725,14 @@
         });
         e.target.closest(".gs-qa-mode-pill")?.classList.add("active");
         QA_STATE.flatnessVolumeMode = e.target.value;
+        recomputeFlatnessMetricsAndVisuals();
+      });
+    });
+
+    document.querySelectorAll("[data-flatness-disp-mode]").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const mode = btn.getAttribute("data-flatness-disp-mode") === "points" ? "points" : "tiles";
+        QA_STATE.flatnessDisplayMode = mode;
         recomputeFlatnessMetricsAndVisuals();
       });
     });
@@ -1683,13 +1802,13 @@
       refreshFlatnessDraftVisuals();
       if (typeof syncStudioMobileToolHud === "function") syncStudioMobileToolHud();
       if (typeof showToast === "function") {
-        showToast(t("已清除多邊形 — 請在 3D 模型表面點擊 3+ 點重新框選", "Polygon cleared — click 3+ vertices on 3D surface"));
+        showToast(t("已清除多邊形，請重新框選", "Polygon cleared — click 3+ pts to redraw"));
       }
     });
 
     document.getElementById("btnExportSurfaceQaCsv")?.addEventListener("click", () => {
       if (!QA_STATE.surfaceQaLastResult || !QA_STATE.flatnessCache) {
-        if (typeof showToast === "function") showToast(t("請先框選多邊形執行平整度分析", "Draw and analyze a polygon first"));
+        if (typeof showToast === "function") showToast(t("請先框選多邊形執行分析", "Draw and analyze a polygon first"));
         return;
       }
       exportSurfaceQaCsv(QA_STATE.surfaceQaLastResult, QA_STATE.flatnessCache);
@@ -1697,7 +1816,7 @@
 
     document.getElementById("btnExportFlatnessReport")?.addEventListener("click", () => {
       if (!QA_STATE.surfaceQaLastResult || !QA_STATE.flatnessCache) {
-        if (typeof showToast === "function") showToast(t("請先框選多邊形執行平整度分析", "Draw and analyze a polygon first"));
+        if (typeof showToast === "function") showToast(t("請先框選多邊形執行分析", "Draw and analyze a polygon first"));
         return;
       }
       exportFlatnessReportWithScreenshots(QA_STATE.surfaceQaLastResult, QA_STATE.flatnessCache);
@@ -1717,6 +1836,7 @@
     const plumb = res.plumb_tilt || {};
     const netL = res.net_volume_liters || 0;
     const isNetFill = netL >= 0;
+    const isFillOnly = res.volume_mode === "fill_only";
 
     card.innerHTML = `
       <!-- Pass Rate & Area Summary Banner -->
@@ -1724,7 +1844,7 @@
         <div style="display:flex;justify-content:space-between;align-items:center;">
           <div>
             <div style="font-size:10px;text-transform:uppercase;color:var(--ui-text-muted);">
-              ${t("平整度合格率", "Flatness Pass Rate")} (+/-${res.tolerance_mm} mm)
+              ${t("合格率", "Pass Rate")} (+/-${res.tolerance_mm} mm)
             </div>
             <div style="font-size:19px;font-weight:800;color:currentColor;">
               ${passRate}%
@@ -1732,10 +1852,10 @@
           </div>
           <div style="text-align:right;">
             <div style="font-size:10.5px;font-weight:700;">
-              ${t("檢測面積", "Area")}: ${res.total_area_m2 || 0} m²
+              ${t("面積", "Area")}: ${res.total_area_m2 || 0} m²
             </div>
             <div style="font-size:10px;color:var(--ui-text-muted);">
-              ${res.pass_count || 0} / ${res.total_points || 0} ${t("格合格", "cells")} · RMS ${res.rms_dev_mm || 0} mm
+              ${res.pass_count || 0}/${res.total_points || 0} ${t("格", "cells")} · RMS ${res.rms_dev_mm || 0} mm
             </div>
           </div>
         </div>
@@ -1745,31 +1865,31 @@
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:5px;margin-top:6px;">
         <div class="gs-qa-stat-pill" style="border-left:3px solid #ef4444;padding-left:7px;">
           <div style="font-size:10px;font-weight:700;color:#ef4444;">
-            ${t("凸起超差 (> +公差，需打磨)", "Protruding (> +Tol, Grind)")}
+            ${t("凸起 (> +公差，打磨)", "High (> +Tol, Grind)")}
           </div>
           <div style="font-size:13px;font-weight:800;color:#ef4444;margin-top:2px;">
             ${res.excess_volume_liters} L <span style="font-size:10px;font-weight:600;color:var(--ui-text-secondary);">(${res.excess_volume_m3} m³)</span>
           </div>
           <div style="font-size:9.5px;color:var(--ui-text-secondary);margin-top:2px;">
-            ${t("超差面積", "Area")}: <b>${res.high_area_m2} m²</b> (${res.high_area_pct}%)
+            ${t("面積", "Area")}: <b>${res.high_area_m2} m²</b> (${res.high_area_pct}%)
           </div>
           <div style="font-size:9.5px;color:var(--ui-text-muted);font-family:monospace;">
-            ${t("最大凸起", "Max High")}: +${maxHigh.dev_mm || 0} mm
+            ${t("最高", "Max")}: +${maxHigh.dev_mm || 0} mm
           </div>
         </div>
 
         <div class="gs-qa-stat-pill" style="border-left:3px solid #3b82f6;padding-left:7px;">
           <div style="font-size:10px;font-weight:700;color:#3b82f6;">
-            ${t("凹陷超差 (< -公差，需填補)", "Intruding (< -Tol, Fill)")}
+            ${isFillOnly ? t("全區填至最高點", "Fill to Max Peak") : t("凹陷 (< -公差，填補)", "Low (< -Tol, Fill)")}
           </div>
           <div style="font-size:13px;font-weight:800;color:#3b82f6;margin-top:2px;">
             ${res.lacking_volume_liters} L <span style="font-size:10px;font-weight:600;color:var(--ui-text-secondary);">(${res.lacking_volume_m3} m³)</span>
           </div>
           <div style="font-size:9.5px;color:var(--ui-text-secondary);margin-top:2px;">
-            ${t("超差面積", "Area")}: <b>${res.low_area_m2} m²</b> (${res.low_area_pct}%)
+            ${t("面積", "Area")}: <b>${res.low_area_m2} m²</b> (${res.low_area_pct}%)
           </div>
           <div style="font-size:9.5px;color:var(--ui-text-muted);font-family:monospace;">
-            ${t("最大凹陷", "Max Low")}: ${maxLow.dev_mm || 0} mm
+            ${t("最低", "Min")}: ${maxLow.dev_mm || 0} mm
           </div>
         </div>
       </div>
@@ -1778,14 +1898,14 @@
       <div class="gs-qa-card" style="margin-top:6px;background:rgba(2,132,199,0.08);border-color:rgba(56,189,248,0.28);">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:3px;">
           <span style="font-size:10.5px;font-weight:700;color:var(--ui-text-primary);">
-            ${t("淨材料差額 (填補 - 打磨)", "Net Material (Fill - Excess)")}:
+            ${isFillOnly ? t("總填補量 (至最高點)", "Total Fill (To Peak)") : t("淨材料差額 (填-磨)", "Net Material (Fill-Grind)")}:
           </span>
           <span style="font-size:12px;font-weight:800;color:${isNetFill ? "#38bdf8" : "#f97316"};">
-            ${isNetFill ? t("淨需補料", "Net Fill") : t("淨需打磨", "Net Grind")} ${Math.abs(netL).toFixed(2)} L (${Math.abs(res.net_volume_m3 || 0).toFixed(4)} m³)
+            ${isNetFill ? t("需補料", "Net Fill") : t("需打磨", "Net Grind")} ${Math.abs(netL).toFixed(2)} L (${Math.abs(res.net_volume_m3 || 0).toFixed(4)} m³)
           </span>
         </div>
         <div style="display:flex;justify-content:space-between;align-items:center;font-size:10px;color:var(--ui-text-secondary);">
-          <span>${t("預估 25kg 水泥砂漿/自平泥包數 (13.5 L/包):", "Est. 25kg Mortar Bags (13.5 L/bag):")}</span>
+          <span>${t("預估 25kg 砂漿/自平泥 (13.5 L/包):", "Est. 25kg Mortar (13.5 L/bag):")}</span>
           <b style="color:var(--ui-text-primary);">${res.est_mortar_bags_25kg || 0} ${t("包", "bags")}</b>
         </div>
       </div>
@@ -1793,7 +1913,7 @@
       <!-- Plane Geometry, ASTM E1155 & Plumb Tilt Details -->
       <div class="gs-qa-card" style="margin-top:6px;">
         <div style="display:flex;justify-content:space-between;font-size:10.5px;margin-bottom:3px;">
-          <span style="color:var(--ui-text-muted);">${t("擬合表面型態 / 坡度", "Surface Type / Slope")}:</span>
+          <span style="color:var(--ui-text-muted);">${t("表面型態 / 坡度", "Surface / Slope")}:</span>
           <span style="font-weight:700;color:var(--ui-text-primary);">${t(plumb.surface_class_zh || "平面", plumb.surface_class_en || "Plane")} · ${plumb.slope_deg || 0}° (${plumb.tilt_ratio || "1:INF"})</span>
         </div>
         <div style="display:flex;justify-content:space-between;font-size:10.5px;margin-bottom:3px;">
@@ -1801,7 +1921,7 @@
           <span style="font-weight:700;color:var(--ui-text-primary);">F_F ${astm.ff_flatness || "—"} / F_L ${astm.fl_levelness || "—"}</span>
         </div>
         <div style="display:flex;justify-content:space-between;font-size:10.5px;">
-          <span style="color:var(--ui-text-muted);">${t("鉛直度偏差 / 傾向方位", "Plumb Dev / Azimuth")}:</span>
+          <span style="color:var(--ui-text-muted);">${t("傾角 / 方位", "Plumb / Azimuth")}:</span>
           <span style="font-weight:700;color:var(--ui-text-primary);">${plumb.plumb_mm_per_m || 0} mm/m · ${plumb.azimuth_deg || 0}°</span>
         </div>
       </div>
@@ -2965,6 +3085,7 @@
   window.lockFlatnessPolygonAndAnalyze = lockFlatnessPolygonAndAnalyze;
   window.refreshFlatnessDraftVisuals = refreshFlatnessDraftVisuals;
   window.recomputeFlatnessMetricsAndVisuals = recomputeFlatnessMetricsAndVisuals;
+  window.renderPolygonFlatness3DOverlay = renderPolygonFlatness3DOverlay;
   window.fitFlatnessReferencePlane = fitFlatnessReferencePlane;
   window.computeClientFlatnessPolygonAsync = computeClientFlatnessPolygonAsync;
   window.exportFlatnessReportWithScreenshots = exportFlatnessReportWithScreenshots;

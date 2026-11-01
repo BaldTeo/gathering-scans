@@ -4157,7 +4157,10 @@
       } else if (tool === "categorize") openCategorizeInspector();
       else if (tool === "comments") openCommentsInspector();
       else if (tool === "stationing" && typeof window.openStationingAndAeaVolumeInspector === "function") window.openStationingAndAeaVolumeInspector();
-      else if (tool === "drainage" && typeof openDrainageAndSlopeInspector === "function") openDrainageAndSlopeInspector();
+      else if (tool === "drainage" && typeof openDrainageAndSlopeInspector === "function") {
+        STATE.drainagePolygonPoints = [];
+        openDrainageAndSlopeInspector();
+      }
       else if (tool === "gcp_qa" && typeof openGcpAccuracyQaInspector === "function") openGcpAccuracyQaInspector();
       else if (tool === "flatness" && typeof window.openSurfaceFlatnessQaInspector === "function") {
         STATE.polygonLocked = false;
@@ -4191,9 +4194,93 @@
       } else if (tool === "align_merge") {
         openAlignMergeInspector();
       }
+      const qaMenuEl = document.getElementById("bimDockQaMenu");
+      if (qaMenuEl && qaMenuEl.classList.contains("open")) {
+        qaMenuEl.classList.remove("open");
+        document.getElementById("btnDockQaGroup")?.setAttribute("aria-expanded", "false");
+      }
       if (typeof syncStudioMobileToolHud === "function") syncStudioMobileToolHud();
     });
   });
+
+  // Unified QA (品管) Drop-Up Container Hover (Desktop) & Tap/Click (Mobile/Desktop) Wiring
+  (function initBimDockQaDropup() {
+    const wrapEl = document.getElementById("bimDockQaWrap");
+    const groupBtn = document.getElementById("btnDockQaGroup");
+    const menuEl = document.getElementById("bimDockQaMenu");
+    if (!wrapEl || !groupBtn || !menuEl) return;
+    let closeTimer = null;
+
+    function positionAndOpenQaMenu() {
+      if (closeTimer) {
+        clearTimeout(closeTimer);
+        closeTimer = null;
+      }
+      if (STATE.multiAlign?.active) return;
+      const rect = groupBtn.getBoundingClientRect();
+      const hasRect = Boolean(rect && (rect.width > 0 || rect.height > 0));
+      const centerX = hasRect
+        ? Math.max(64, Math.min(window.innerWidth - 64, rect.left + rect.width * 0.5))
+        : Math.round(window.innerWidth * 0.5);
+      const bottomPx = hasRect ? Math.max(52, window.innerHeight - rect.top + 8) : 64;
+      menuEl.style.left = `${Math.round(centerX)}px`;
+      menuEl.style.bottom = `${Math.round(bottomPx)}px`;
+      menuEl.classList.add("open");
+      groupBtn.setAttribute("aria-expanded", "true");
+    }
+
+    function closeQaMenuSoon(delayMs = 150) {
+      if (closeTimer) clearTimeout(closeTimer);
+      closeTimer = setTimeout(() => {
+        menuEl.classList.remove("open");
+        groupBtn.setAttribute("aria-expanded", "false");
+      }, delayMs);
+    }
+
+    wrapEl.addEventListener("mouseenter", () => {
+      if (window.matchMedia && window.matchMedia("(hover: hover)").matches) {
+        positionAndOpenQaMenu();
+      }
+    });
+    wrapEl.addEventListener("mouseleave", () => {
+      if (window.matchMedia && window.matchMedia("(hover: hover)").matches) {
+        closeQaMenuSoon(160);
+      }
+    });
+    menuEl.addEventListener("mouseenter", () => {
+      if (closeTimer) {
+        clearTimeout(closeTimer);
+        closeTimer = null;
+      }
+    });
+    menuEl.addEventListener("mouseleave", () => {
+      if (window.matchMedia && window.matchMedia("(hover: hover)").matches) {
+        closeQaMenuSoon(140);
+      }
+    });
+
+    groupBtn.addEventListener("click", (ev) => {
+      ev.preventDefault();
+      ev.stopPropagation();
+      if (STATE.multiAlign?.active) {
+        showToast("Unavailable during Multi-Scan Editing — merge scans first (or exit Multi-Scan mode)");
+        return;
+      }
+      if (menuEl.classList.contains("open")) {
+        menuEl.classList.remove("open");
+        groupBtn.setAttribute("aria-expanded", "false");
+      } else {
+        positionAndOpenQaMenu();
+      }
+    });
+
+    document.addEventListener("pointerdown", (ev) => {
+      if (!menuEl.classList.contains("open")) return;
+      if (wrapEl.contains(ev.target) || menuEl.contains(ev.target)) return;
+      menuEl.classList.remove("open");
+      groupBtn.setAttribute("aria-expanded", "false");
+    });
+  })();
 
   window.handleStudioExtraToolCanvasClick = function (tool, pt, twd, isNearStartVertex) {
     if (tool === "flatten_zone") {
