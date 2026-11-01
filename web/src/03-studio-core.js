@@ -376,7 +376,7 @@
         }
         if (!Number.isFinite(surfDist)) return;
 
-        const minSurfDist = Boolean(window.UTILS_STATE && window.UTILS_STATE.active) ? 0.05 : 0.18;
+        const minSurfDist = Boolean(window.UTILS_STATE && window.UTILS_STATE.active) ? 0.08 : 0.18;
         if (surfDist <= minSurfDist) {
           e.stopImmediatePropagation();
           e.preventDefault();
@@ -1859,7 +1859,7 @@
           if (c.isMesh && c.material) {
             const mats = Array.isArray(c.material) ? c.material : [c.material];
             mats.forEach((m) => {
-              if (m && m.colorWrite !== false && m.userData?._lastBrightness !== STATE.scanBrightness) {
+              if (m && m.colorWrite !== false && (m.userData?._lastBrightness !== STATE.scanBrightness || !m.userData?.PassUniforms)) {
                 applyBrightnessToMaterial(m, STATE.scanBrightness);
               }
             });

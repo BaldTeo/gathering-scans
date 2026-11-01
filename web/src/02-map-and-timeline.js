@@ -1882,7 +1882,7 @@
       tr._maxActiveTiles = 16;
     } else if (lodMode === "max" && !isEmbed) {
       tr.maxDepth = Infinity;
-      tr.errorTarget = isPreview ? 1.5 : isMobOrTab ? 4.0 : 0.8;
+      tr.errorTarget = isPreview ? 1.0 : isMobOrTab ? 2.5 : 0.25;
       tr._maxActiveTiles = isIOS || isPhone ? 120 : isMobOrTab ? 140 : isPreview ? 180 : 600;
     } else {
       // Auto mode: NO depth cap (maxDepth = Infinity) so close-up zooming refines all the way to leaf tiles,
@@ -1890,16 +1890,16 @@
       tr.maxDepth = Infinity;
       if (isIOS || isPhone) {
         tr._maxActiveTiles = 85;
-        tr.errorTarget = 7.0;
+        tr.errorTarget = 3.0;
       } else if (isMobOrTab) {
         tr._maxActiveTiles = 110;
-        tr.errorTarget = 6.0;
+        tr.errorTarget = 2.5;
       } else if (isEmbed || isPreview || isCompareOrAlign) {
         tr._maxActiveTiles = 135;
-        tr.errorTarget = 5.0;
+        tr.errorTarget = 2.0;
       } else {
         tr._maxActiveTiles = 200;
-        tr.errorTarget = 3.5;
+        tr.errorTarget = 1.2;
       }
     }
 

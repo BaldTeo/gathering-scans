@@ -3543,6 +3543,14 @@ class GatheringScansTestSuite(unittest.TestCase):
         with open(os.path.join(BASE_DIR, "web", "lib", "3d-tiles-renderer.bundle.js"), "r", encoding="utf-8") as f:
             tiles_bundle = f.read()
         self.assertIn("netAdd=inFrustCount", tiles_bundle)
+        self.assertIn("!r.internal.hasRenderableContent&&r.children&&r.children.length>0", tiles_bundle)
+
+        self.assertIn("polygonOffsetFactor: -1.5 - layerIdx * 0.25", js12)
+        self.assertIn("const showXrayOverlay = Boolean(UTILS_STATE.active) && hasVisibleUtilities3D() && Number(pct) > 1;", js12)
+
+        with open(os.path.join(BASE_DIR, "web", "src", "02-map-and-timeline.js"), "r", encoding="utf-8") as f:
+            js02 = f.read()
+        self.assertIn("tr.errorTarget = 1.2;", js02)
 
         with open(os.path.join(BASE_DIR, "web", "src", "03-studio-core.js"), "r", encoding="utf-8") as f:
             js03 = f.read()

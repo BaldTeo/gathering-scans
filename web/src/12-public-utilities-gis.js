@@ -278,13 +278,14 @@
    * precision is up to 100x sharper when zoomed out (eliminating distant pipe Z-fighting flicker).
    */
   function hasVisibleUtilities3D() {
+    const anyLayerVis = Object.values(UTILITY_LAYERS).some((l) => l && l.visible === true);
     return Boolean(
-      UTILS_STATE.active ||
-        (UTILS_STATE.keepLayersOnClose &&
-          UTILS_STATE.threeGroup &&
-          UTILS_STATE.threeGroup.visible &&
-          Array.isArray(UTILS_STATE.features) &&
-          UTILS_STATE.features.length > 0)
+      (UTILS_STATE.active || UTILS_STATE.keepLayersOnClose) &&
+        anyLayerVis &&
+        UTILS_STATE.threeGroup &&
+        UTILS_STATE.threeGroup.visible &&
+        Array.isArray(UTILS_STATE.features) &&
+        UTILS_STATE.features.length > 0
     );
   }
 
@@ -381,7 +382,7 @@
   }
 
   function syncSubsurfaceXrayOverlayMeshes(pct) {
-    const showXrayOverlay = hasVisibleUtilities3D() && pct > 1;
+    const showXrayOverlay = Boolean(UTILS_STATE.active) && hasVisibleUtilities3D() && Number(pct) > 1;
     const xrayAlpha = showXrayOverlay ? Math.max(0.14, Math.min(0.88, Number(((pct / 100.0) * 1.05).toFixed(2)))) : 0.0;
     if (Array.isArray(UTILS_STATE.xrayMeshes)) {
       for (let i = 0; i < UTILS_STATE.xrayMeshes.length; i++) {
@@ -479,7 +480,9 @@
         mat.opacity = orig.opacity;
         mat.depthWrite = orig.depthWrite;
         mat.userData.__utilXrayScale = xrayBrightScale;
-        if (mat.userData.PassUniforms && mat.userData.PassUniforms.uBrightness) {
+        if (!mat.userData.PassUniforms && typeof applyBrightnessToMaterial === "function") {
+          applyBrightnessToMaterial(mat, baseBright);
+        } else if (mat.userData.PassUniforms && mat.userData.PassUniforms.uBrightness) {
           mat.userData.PassUniforms.uBrightness.value = baseBright * xrayBrightScale;
         }
         if (needShaderRebuild) {
@@ -520,7 +523,9 @@
         mat.opacity = orig.opacity;
         mat.depthWrite = orig.depthWrite;
         mat.userData.__utilXrayScale = 1.0;
-        if (mat.userData.PassUniforms && mat.userData.PassUniforms.uBrightness) {
+        if (!mat.userData.PassUniforms && typeof applyBrightnessToMaterial === "function") {
+          applyBrightnessToMaterial(mat, baseBright);
+        } else if (mat.userData.PassUniforms && mat.userData.PassUniforms.uBrightness) {
           mat.userData.PassUniforms.uBrightness.value = baseBright;
         }
         if (needShaderRebuild) {
@@ -2342,7 +2347,7 @@
 
         // Companion depth-fail (THREE.GreaterDepth) subsurface X-Ray mesh sharing mergedGeo (0 extra vertex memory!)
         // Renders buried utilities through 100% opaque 3D scan tiles without moving terrain tiles to the transparent pass.
-        const showXrayNow = hasVisibleUtilities3D() && Number(UTILS_STATE.groundXrayPct) > 1;
+        const showXrayNow = Boolean(UTILS_STATE.active) && hasVisibleUtilities3D() && Number(UTILS_STATE.groundXrayPct) > 1;
         const initXrayAlpha = showXrayNow
           ? Math.max(0.14, Math.min(0.88, Number(((Number(UTILS_STATE.groundXrayPct) / 100.0) * 1.05).toFixed(2))))
           : 0.0;
@@ -2353,6 +2358,9 @@
           depthTest: true,
           depthWrite: false,
           depthFunc: THREE.GreaterDepth,
+          polygonOffset: true,
+          polygonOffsetFactor: -1.5 - layerIdx * 0.25,
+          polygonOffsetUnits: -2 - layerIdx * 0.5,
         });
         const xrayMesh = new THREE.Mesh(mergedGeo, xrayMat);
         xrayMesh.name = `UtilitiesLayerXray_${layerId}`;
@@ -2369,7 +2377,7 @@
       if (bucket.linePositions.length >= 6) {
         const lineGeo = new THREE.BufferGeometry();
         lineGeo.setAttribute("position", new THREE.Float32BufferAttribute(bucket.linePositions, 3));
-        const showXrayNow = hasVisibleUtilities3D() && Number(UTILS_STATE.groundXrayPct) > 1;
+        const showXrayNow = Boolean(UTILS_STATE.active) && hasVisibleUtilities3D() && Number(UTILS_STATE.groundXrayPct) > 1;
         const lineMat = new THREE.LineBasicMaterial({
           color: new THREE.Color(ldef.color),
           transparent: true,
@@ -2438,7 +2446,7 @@
     if (!UTILS_STATE.threeGroup) return;
     UTILS_STATE.threeGroup.visible = anyLayerVisible;
 
-    const showXrayNow = hasVisibleUtilities3D() && Number(UTILS_STATE.groundXrayPct) > 1;
+    const showXrayNow = Boolean(UTILS_STATE.active) && hasVisibleUtilities3D() && Number(UTILS_STATE.groundXrayPct) > 1;
     UTILS_STATE.threeGroup.traverse((child) => {
       if (child === UTILS_STATE.threeGroup) {
         child.visible = anyLayerVisible;
