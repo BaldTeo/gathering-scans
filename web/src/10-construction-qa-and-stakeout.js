@@ -240,32 +240,76 @@
       };
     }
 
-    let cx = 0, cy = 0, cz = 0, wSum = 0;
-    for (let i = 0; i < nPts; i++) {
-      const p = points[i];
-      const w = Number.isFinite(p.w) && p.w > 0 ? p.w : 1.0;
-      cx += p.x * w;
-      cy += p.y * w;
-      cz += p.z * w;
-      wSum += w;
-    }
-    cx /= wSum;
-    cy /= wSum;
-    cz /= wSum;
-    const center = { x: cx, y: cy, z: cz };
+    const computeWeightedCentroidAndCov = (weightFn) => {
+      let mCx = 0, mCy = 0, mCz = 0, mWSum = 0;
+      for (let i = 0; i < nPts; i++) {
+        const p = points[i];
+        const w = weightFn(p, i);
+        mCx += p.x * w;
+        mCy += p.y * w;
+        mCz += p.z * w;
+        mWSum += w;
+      }
+      if (mWSum <= 1e-12) mWSum = 1.0;
+      mCx /= mWSum;
+      mCy /= mWSum;
+      mCz /= mWSum;
+      let m00 = 0, m01 = 0, m02 = 0, m11 = 0, m12 = 0, m22 = 0;
+      for (let i = 0; i < nPts; i++) {
+        const p = points[i];
+        const w = weightFn(p, i);
+        const dx = p.x - mCx, dy = p.y - mCy, dz = p.z - mCz;
+        m00 += w * dx * dx;
+        m01 += w * dx * dy;
+        m02 += w * dx * dz;
+        m11 += w * dy * dy;
+        m12 += w * dy * dz;
+        m22 += w * dz * dz;
+      }
+      return { cx: mCx, cy: mCy, cz: mCz, c00: m00, c01: m01, c02: m02, c11: m11, c12: m12, c22: m22 };
+    };
 
-    let c00 = 0, c01 = 0, c02 = 0, c11 = 0, c12 = 0, c22 = 0;
-    for (let i = 0; i < nPts; i++) {
-      const p = points[i];
-      const w = Number.isFinite(p.w) && p.w > 0 ? p.w : 1.0;
-      const dx = p.x - cx, dy = p.y - cy, dz = p.z - cz;
-      c00 += w * dx * dx;
-      c01 += w * dx * dy;
-      c02 += w * dx * dz;
-      c11 += w * dy * dy;
-      c12 += w * dy * dz;
-      c22 += w * dz * dz;
+    const solveNormalFromCov = (cov) => {
+      if (planeMode === "horizontal") {
+        return { x: 0, y: 1, z: 0 };
+      }
+      if (planeMode === "vertical_plumb") {
+        const phi = 0.5 * Math.atan2(2.0 * cov.c02, cov.c00 - cov.c22);
+        const ux = Math.cos(phi), uz = Math.sin(phi);
+        return vecNorm({ x: -uz, y: 0, z: ux });
+      }
+      const eig = solveSymmetric3x3Eigen(cov.c00, cov.c01, cov.c02, cov.c11, cov.c12, cov.c22);
+      return vecNorm(eig[0].vec);
+    };
+
+    // Pass 1: Initial weighted PCA fit
+    let cov = computeWeightedCentroidAndCov((p) => (Number.isFinite(p.w) && p.w > 0 ? p.w : 1.0));
+    let pass1Normal = solveNormalFromCov(cov);
+
+    // Pass 2: Robust IRLS re-weighting (downweights edge curbs/shrubs so plane locks onto dominant slab/wall)
+    if (nPts >= 9) {
+      const absDevs = new Float64Array(nPts);
+      for (let i = 0; i < nPts; i++) {
+        const p = points[i];
+        absDevs[i] = Math.abs(
+          (p.x - cov.cx) * pass1Normal.x +
+          (p.y - cov.cy) * pass1Normal.y +
+          (p.z - cov.cz) * pass1Normal.z
+        );
+      }
+      const sortedDevs = Array.from(absDevs).sort((a, b) => a - b);
+      const medDev = sortedDevs[Math.floor(nPts * 0.5)] || 0.003;
+      const huberScale = Math.max(0.006, 2.5 * medDev);
+      cov = computeWeightedCentroidAndCov((p, i) => {
+        const baseW = Number.isFinite(p.w) && p.w > 0 ? p.w : 1.0;
+        const r = absDevs[i] / huberScale;
+        return r <= 1.0 ? baseW : baseW / (1.0 + r * r * r * r);
+      });
     }
+
+    const cx = cov.cx, cy = cov.cy, cz = cov.cz;
+    const c00 = cov.c00, c01 = cov.c01, c02 = cov.c02, c11 = cov.c11, c12 = cov.c12, c22 = cov.c22;
+    const center = { x: cx, y: cy, z: cz };
 
     let normal = { x: 0, y: 1, z: 0 };
     let uAxis = { x: 1, y: 0, z: 0 };
@@ -313,8 +357,10 @@
     const nh = Math.hypot(normal.x, normal.z);
     const angleFromHorizontalDeg = (Math.atan2(nh, nyAbs) * 180.0) / Math.PI;
     const slopePct = nyAbs > 1e-4 ? (nh / nyAbs) * 100.0 : 999.9;
-    // Vertical plumb deviation (mm per meter of vertical rise)
-    const plumbMmPerM = nh > 1e-4 ? (nyAbs / nh) * 1000.0 : 0.0;
+    // Tilt deviation in mm/m: vertical drop per m run for floors/ramps (<=45 deg), or horizontal lean per m rise for walls (>45 deg)
+    const plumbMmPerM = angleFromHorizontalDeg <= 45.0
+      ? (nyAbs > 1e-4 ? (nh / nyAbs) * 1000.0 : 0.0)
+      : (nh > 1e-4 ? (nyAbs / nh) * 1000.0 : 0.0);
     let tiltRatio = "1:INF";
     if (angleFromHorizontalDeg <= 45.0) {
       if (slopePct >= 0.05) tiltRatio = `1:${Math.max(1, Math.round(100.0 / slopePct))}`;
@@ -405,8 +451,9 @@
         if (polyUV[i].v > maxV) maxV = polyUV[i].v;
       }
 
-      // 3D AABB with generous margin along normal
+      // 3D AABB bounded by actual polygon vertex spread along normal (prevents overhanging trees/walls from contaminating slab)
       let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity, minZ = Infinity, maxZ = -Infinity;
+      let maxPolyAbsN = 0;
       for (let i = 0; i < polyPts.length; i++) {
         const p = polyPts[i];
         if (p.x < minX) minX = p.x;
@@ -415,10 +462,13 @@
         if (p.y > maxY) maxY = p.y;
         if (p.z < minZ) minZ = p.z;
         if (p.z > maxZ) maxZ = p.z;
+        const dx = p.x - c0.x, dy = p.y - c0.y, dz = p.z - c0.z;
+        const absN = Math.abs(dx * n0.x + dy * n0.y + dz * n0.z);
+        if (absN > maxPolyAbsN) maxPolyAbsN = absN;
       }
       const spanU = Math.max(0.4, maxU - minU);
       const spanV = Math.max(0.4, maxV - minV);
-      const normalMargin = Math.min(2.2, Math.max(0.5, Math.max(spanU, spanV) * 0.25));
+      const normalMargin = Math.min(1.5, Math.max(0.32, maxPolyAbsN + 0.30));
       minX -= normalMargin; maxX += normalMargin;
       minY -= normalMargin; maxY += normalMargin;
       minZ -= normalMargin; maxZ += normalMargin;
@@ -440,7 +490,7 @@
       const cellSumZ = new Float64Array(totalGridCells);
       const cellCount = new Uint32Array(totalGridCells);
       const cellFrontN = new Float32Array(totalGridCells);
-      cellFrontN.fill(-1e9);
+      cellFrontN.fill(1e9);
       let activeCellCount = 0;
 
       for (let r = 0; r < rows; r++) {
@@ -466,17 +516,24 @@
       const isNodeVisibleUnderRoot = (node, rootStop) => {
         let cur = node;
         while (cur) {
-          if (cur.visible === false) return false;
           if (cur === rootStop) break;
+          if (cur.visible === false) return false;
           cur = cur.parent;
         }
         return true;
       };
 
-      const collectFromRoot = (rootObj, parentWorldMat = null, isCoarseFallback = false) => {
+      const markGeomsSeen = (rootObj) => {
+        if (!rootObj || typeof rootObj.traverse !== "function") return;
+        rootObj.traverse((child) => {
+          if (child.geometry) seenGeoms.add(child.geometry);
+        });
+      };
+
+      const collectFromRoot = (rootObj, parentWorldMat = null, isCoarseFallback = false, fromTileTree = false) => {
         if (!rootObj) return;
         const isDetached = Boolean(parentWorldMat && rootObj.parent === null);
-        if (!isDetached && rootObj.visible === false) return;
+        if (!fromTileTree && !isDetached && rootObj.visible === false) return;
         if (typeof rootObj.updateMatrixWorld === "function") rootObj.updateMatrixWorld(true);
         rootObj.traverse((child) => {
           if (!child.geometry || !child.geometry.attributes?.position) return;
@@ -531,19 +588,22 @@
                 walkTile(loadedChildren[i]);
               }
               if (!ch.every((c) => hasFullCoverageScene(c)) && node.engineData?.scene) {
-                collectFromRoot(node.engineData.scene, grpMat, true);
+                collectFromRoot(node.engineData.scene, grpMat, true, true);
+              } else if (node.engineData?.scene) {
+                // Prevent coarse ancestor LOD tile from being re-collected via st.modelPivot traversal
+                markGeomsSeen(node.engineData.scene);
               }
             } else if (node.engineData?.scene) {
-              collectFromRoot(node.engineData.scene, grpMat, false);
+              collectFromRoot(node.engineData.scene, grpMat, false, true);
             }
           };
           walkTile(tr.root);
         }
-        collectFromRoot(st.modelPivot, null, false);
-        if (window.STATE?.multiAlign?.active) collectFromRoot(st.multiAlignGroup, null, false);
+        collectFromRoot(st.modelPivot, null, false, false);
+        if (window.STATE?.multiAlign?.active) collectFromRoot(st.multiAlignGroup, null, false, false);
         if (meshes.length === 0 && pointClouds.length === 0) {
-          collectFromRoot(st.fallbackGroup, null, true);
-          collectFromRoot(st.scanRoot, null, false);
+          collectFromRoot(st.fallbackGroup, null, true, false);
+          collectFromRoot(st.scanRoot, null, false, false);
         }
       }
 
@@ -551,7 +611,8 @@
       meshes.sort((a, b) => Number(a.isCoarseFallback) - Number(b.isCoarseFallback));
 
       const binCellSample = (idx, lx, ly, lz, signedN, isCoarse) => {
-        if (Math.abs(signedN) > normalMargin) return;
+        const absN = Math.abs(signedN);
+        if (absN > normalMargin) return;
         if (!cellInside[idx]) return;
         if (isCoarse && cellFineMask[idx]) return;
         if (!isCoarse && !cellFineMask[idx] && cellCount[idx] > 0) {
@@ -559,12 +620,14 @@
           cellSumX[idx] = 0;
           cellSumY[idx] = 0;
           cellSumZ[idx] = 0;
-          cellFrontN[idx] = -1e9;
+          cellFrontN[idx] = 1e9;
         }
         if (!isCoarse) cellFineMask[idx] = 1;
-        // If a significantly closer front surface (by > 0.18m) is found in this cell, replace back-wall samples
+        // Prefer the surface layer closest to the user-clicked polygon plane (|signedN| smallest),
+        // rejecting overhanging bushes/eaves or back-wall layers > 0.14m away from the active surface
         if (cellCount[idx] > 0) {
-          if (signedN > cellFrontN[idx] + 0.18) {
+          const prevBestAbs = Math.abs(cellFrontN[idx]);
+          if (absN < prevBestAbs - 0.14) {
             cellSumX[idx] = lx;
             cellSumY[idx] = ly;
             cellSumZ[idx] = lz;
@@ -572,13 +635,13 @@
             cellFrontN[idx] = signedN;
             return;
           }
-          if (signedN < cellFrontN[idx] - 0.18) {
+          if (absN > prevBestAbs + 0.14) {
             return;
           }
+          if (absN < prevBestAbs) cellFrontN[idx] = signedN;
         } else {
           cellFrontN[idx] = signedN;
         }
-        if (signedN > cellFrontN[idx]) cellFrontN[idx] = signedN;
         cellSumX[idx] += lx;
         cellSumY[idx] += ly;
         cellSumZ[idx] += lz;
@@ -1901,8 +1964,8 @@
       <div class="kpi-val" style="color:#2563eb;">${res.lacking_volume_liters} L (${res.lacking_volume_m3} m³)</div>
     </div>
     <div class="kpi-box">
-      <div class="kpi-label">淨材料差額 / 預估 25kg 砂漿</div>
-      <div class="kpi-val" style="color:#0f172a;">${netL >= 0 ? "補料 " : "打磨 "}${Math.abs(netL).toFixed(2)} L (${res.est_mortar_bags_25kg} 包)</div>
+      <div class="kpi-label">淨材料差額 ｜ 凹陷填補 25kg 砂漿</div>
+      <div class="kpi-val" style="color:#0f172a;font-size:15.5px;">${netL >= 0 ? "淨補 " : "淨磨 "}${Math.abs(netL).toFixed(2)} L ｜ 填補 ${res.est_mortar_bags_25kg} 包</div>
     </div>
   </div>
 

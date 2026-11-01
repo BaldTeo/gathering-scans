@@ -1313,10 +1313,17 @@
     let totalVerts = 0;
     const seenGeoms = new Set();
 
-    const collectFromSceneRoot = (rootObj, isFallback = false, parentGroupWorldMat = null) => {
+    const markSceneGeomsSeen = (rootObj) => {
+      if (!rootObj || typeof rootObj.traverse !== "function") return;
+      rootObj.traverse((c) => {
+        if (c.geometry) seenGeoms.add(c.geometry);
+      });
+    };
+
+    const collectFromSceneRoot = (rootObj, isFallback = false, parentGroupWorldMat = null, fromTileTree = false) => {
       if (!rootObj) return;
       const isDetached = Boolean(parentGroupWorldMat && rootObj.parent === null);
-      if (!isDetached && !rootObj.visible) return;
+      if (!fromTileTree && !isDetached && !rootObj.visible) return;
       rootObj.updateMatrixWorld(true);
       rootObj.traverse((c) => {
         if (
@@ -1373,18 +1380,20 @@
             walkTileNode(loadedChildren[i]);
           }
           if (!ch.every((c) => hasFullCoverageScene(c)) && node.engineData?.scene) {
-            collectFromSceneRoot(node.engineData.scene, true, grpMat);
+            collectFromSceneRoot(node.engineData.scene, true, grpMat, true);
+          } else if (node.engineData?.scene) {
+            markSceneGeomsSeen(node.engineData.scene);
           }
         } else if (node.engineData?.scene) {
-          collectFromSceneRoot(node.engineData.scene, false, grpMat);
+          collectFromSceneRoot(node.engineData.scene, false, grpMat, true);
         }
       };
       walkTileNode(tr.root);
     }
 
-    collectFromSceneRoot(studioThree?.modelPivot, false, null);
+    collectFromSceneRoot(studioThree?.modelPivot, false, null, false);
     if (STATE.multiAlign?.active) {
-      collectFromSceneRoot(studioThree?.multiAlignGroup, false, null);
+      collectFromSceneRoot(studioThree?.multiAlignGroup, false, null, false);
     }
 
     const waterPolys2D = getActiveScanWaterPolysLocalXZ();
