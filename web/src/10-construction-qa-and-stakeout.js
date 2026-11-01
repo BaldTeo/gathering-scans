@@ -125,6 +125,7 @@
     if (tol <= 4.5) {
       return {
         code: "PCC 09611",
+        clause: "行政院公共工程委員會《施工綱要規範》第09611章「整體粉光地坪」",
         zh: "行政院公共工程委員會《施工綱要規範》第09611章「整體粉光地坪」(3m直規 ±3mm)",
         en: "PCC Spec Ch.09611 Monolithic Floor Troweling (3m ±3mm)",
         url: "https://www.nlma.gov.tw/filesys/file/chinese/dept/bw2/09611.pdf",
@@ -133,6 +134,7 @@
     if (tol <= 8.0) {
       return {
         code: "PCC 09220",
+        clause: "行政院公共工程委員會《施工綱要規範》第09220章「水泥砂漿粉刷」",
         zh: "行政院公共工程委員會《施工綱要規範》第09220章「水泥砂漿粉刷」(3m直規 ±6mm)",
         en: "PCC Spec Ch.09220 Cement Mortar Plastering (3m ±6mm)",
         url: "https://www.nlma.gov.tw/uploads/files/b540c458d9a9ace031fb2cec987593c0.pdf",
@@ -141,6 +143,7 @@
     if (tol <= 12.5) {
       return {
         code: "PCC 03310",
+        clause: "行政院公共工程委員會《施工綱要規範》第03310章「結構用混凝土」",
         zh: "行政院公共工程委員會《施工綱要規範》第03310章「結構用混凝土」模板粗底 (±10mm)",
         en: "PCC Spec Ch.03310 Structural Concrete Formwork (±10mm)",
         url: "https://www.nlma.gov.tw/uploads/files/896a8dbb1440cce3f17b09e0a4b8dcff.pdf",
@@ -148,6 +151,7 @@
     }
     return {
       code: "PCC 02742",
+      clause: "行政院公共工程委員會《施工綱要規範》第02742章「瀝青混凝土鋪面及基層」",
       zh: `行政院公共工程委員會《施工綱要規範》第02742章「瀝青混凝土鋪面及基層」公差 (±${Number(tol.toFixed(1))}mm)`,
       en: `PCC Spec Ch.02742 Road & Pavement Base (±${Number(tol.toFixed(1))}mm)`,
       url: "https://www.nlma.gov.tw/uploads/files/5ee2ba58e7e83d1d4345b233fb71d7eb.pdf",
@@ -556,10 +560,20 @@
     const THREE = window.THREE;
     if (!st || !THREE) return { leafCount: 0, maxDepth: 0 };
 
-    // If a low-memory coarse tileset was loaded initially, upgrade to full tileset.json if possible
-    if (st._loadedLowMemTileset && st._activeFullTilesetUrl && typeof window.setStudioScanLodMode === "function") {
+    // If a low-memory coarse preview_tileset.json was loaded on mobile/rough mode, upgrade to full tileset.json first
+    if (st._loadedLowMemTileset && window.STATE?.activeScanId && typeof window.loadScanIntoStudio === "function") {
       try {
-        st._loadedLowMemTileset = false;
+        window.loadScanIntoStudio(window.STATE.activeScanId, {
+          preserveCamera: true,
+          preserveTools: true,
+          forceFullRes: true,
+        });
+        const tUpgrade = performance.now();
+        while (performance.now() - tUpgrade < 2200) {
+          if (cancelToken && cancelToken.cancelled) break;
+          if (st.tilesRenderer && st.tilesRenderer.root && !st._loadedLowMemTileset) break;
+          await new Promise((r) => setTimeout(r, 40));
+        }
       } catch (_) {}
     }
 
@@ -578,7 +592,12 @@
       new THREE.Vector3(maxX + 0.25, maxY + 0.25, maxZ + 0.25)
     );
 
-    // Temporarily ensure cache capacity is large enough that requested leaf tiles are never evicted during analysis
+    // Temporarily suspend viewport tr.update() from clearing tr.usedSet / aborting queued leaf tiles in ROUGH mode,
+    // and ensure cache capacity is large enough that requested leaf tiles are never evicted during analysis
+    const origTrUpdate = typeof tr.update === "function" ? tr.update : null;
+    if (origTrUpdate) {
+      tr.update = function () {};
+    }
     const lru = tr.lruCache;
     const savedMinSize = lru ? lru.minSize : null;
     const savedMaxSize = lru ? lru.maxSize : null;
@@ -619,7 +638,7 @@
         }
 
         const ch = Array.isArray(node.children) ? node.children : [];
-        const cached = node.engineData?.cached || node.cached;
+        const cached = node.internal || node.engineData?.cached || node.cached;
         const hasUnrenderable = Boolean(cached && cached.hasUnrenderableContent);
         const hasSceneLoaded = Boolean(node.engineData?.scene || node.cached?.scene);
         const hasRenderable = Boolean(
@@ -666,8 +685,8 @@
     const isTileSettled = (node) => {
       if (!node) return true;
       if (node.engineData?.scene || node.cached?.scene) return true;
-      const stCode = node.engineData?.loadingState;
-      // loadingState === 4 (FAILED) or -1
+      const stCode = node.internal?.loadingState ?? node.engineData?.loadingState;
+      // loadingState === 4 (LOADED) or -1 (FAILED)
       if (stCode === 4 || stCode === -1) return true;
       return false;
     };
@@ -675,8 +694,8 @@
     const isSubTilesetSettled = (node) => {
       if (!node) return true;
       if (Array.isArray(node.children) && node.children.length > 0) return true;
-      const stCode = node.engineData?.loadingState;
-      if (stCode === 3 || stCode === 4 || stCode === -1) return true;
+      const stCode = node.internal?.loadingState ?? node.engineData?.loadingState;
+      if (stCode === 4 || stCode === -1) return true;
       return false;
     };
 
@@ -684,40 +703,44 @@
     const maxWaitMs = 4500;
     let lastInfo = collectAndRequestIntersectingTiles();
 
-    while (performance.now() - startWait < maxWaitMs) {
-      if (cancelToken && cancelToken.cancelled) break;
-      lastInfo = collectAndRequestIntersectingTiles();
-      const { targetLeaves, pendingSubTilesets } = lastInfo;
+    try {
+      while (performance.now() - startWait < maxWaitMs) {
+        if (cancelToken && cancelToken.cancelled) break;
+        lastInfo = collectAndRequestIntersectingTiles();
+        const { targetLeaves, pendingSubTilesets } = lastInfo;
 
-      // Keep marking target leaves as used so LRU never unloads them
-      for (let i = 0; i < targetLeaves.length; i++) {
-        if (typeof tr.markTileUsed === "function") {
-          try {
-            tr.markTileUsed(targetLeaves[i]);
-          } catch (_) {}
+        // Keep marking target leaves as used so LRU never unloads them
+        for (let i = 0; i < targetLeaves.length; i++) {
+          if (typeof tr.markTileUsed === "function") {
+            try {
+              tr.markTileUsed(targetLeaves[i]);
+            } catch (_) {}
+          }
         }
+
+        const allSubDone = pendingSubTilesets.every(isSubTilesetSettled);
+        const loadedLeaves = targetLeaves.filter(isTileSettled).length;
+        if (allSubDone && loadedLeaves >= targetLeaves.length) {
+          break;
+        }
+
+        if (typeof onProgress === "function" && targetLeaves.length > 0) {
+          const ratio = loadedLeaves / Math.max(1, targetLeaves.length);
+          onProgress(Math.min(18, Math.max(2, Math.round(ratio * 18))));
+        }
+
+        await new Promise((r) => setTimeout(r, 35));
       }
-
-      const allSubDone = pendingSubTilesets.every(isSubTilesetSettled);
-      const loadedLeaves = targetLeaves.filter(isTileSettled).length;
-      if (allSubDone && loadedLeaves >= targetLeaves.length) {
-        break;
+    } finally {
+      if (origTrUpdate) {
+        tr.update = origTrUpdate;
       }
-
-      if (typeof onProgress === "function" && targetLeaves.length > 0) {
-        const ratio = loadedLeaves / Math.max(1, targetLeaves.length);
-        onProgress(Math.min(18, Math.max(2, Math.round(ratio * 18))));
+      if (lru && savedMinSize !== null && savedMaxSize !== null) {
+        lru.minSize = Math.max(savedMinSize, 400);
+        lru.maxSize = Math.max(savedMaxSize, 800);
+        if (typeof savedMinBytes === "number") lru.minBytesSize = Math.max(savedMinBytes, 400 * 1024 * 1024);
+        if (typeof savedMaxBytes === "number") lru.maxBytesSize = Math.max(savedMaxBytes, 800 * 1024 * 1024);
       }
-
-      await new Promise((r) => setTimeout(r, 35));
-    }
-
-    // Restore LRU sizes if needed (keep high water mark if reasonable)
-    if (lru && savedMinSize !== null && savedMaxSize !== null) {
-      lru.minSize = Math.max(savedMinSize, 400);
-      lru.maxSize = Math.max(savedMaxSize, 800);
-      if (typeof savedMinBytes === "number") lru.minBytesSize = Math.max(savedMinBytes, 400 * 1024 * 1024);
-      if (typeof savedMaxBytes === "number") lru.maxBytesSize = Math.max(savedMaxBytes, 800 * 1024 * 1024);
     }
 
     const loadedLeafScenes = lastInfo.targetLeaves.filter((n) => Boolean(n?.engineData?.scene)).length;
@@ -1315,6 +1338,7 @@
             const originTwd = typeof localToTwd97 === "function" ? localToTwd97({ x: 0, y: 0, z: 0 }) : { e: 0, n: 0, h: 0 };
 
             let sumSqMm = 0;
+            let sumAbsMm = 0;
             let maxHigh = null;
             let maxLow = null;
 
@@ -1341,6 +1365,7 @@
               cell.n = Number((originTwd.n - cell.z).toFixed(3));
               cell.h = Number((originTwd.h + cell.y).toFixed(3));
               sumSqMm += devMm * devMm;
+              sumAbsMm += Math.abs(devMm);
 
               if (!maxHigh || devMm > maxHigh.devMm) maxHigh = cell;
               if (!maxLow || devMm < maxLow.devMm) maxLow = cell;
@@ -1348,6 +1373,8 @@
 
             const nSamples = Math.max(1, sampledCells.length);
             const rmsMm = Math.sqrt(sumSqMm / nSamples);
+            const meanAbsMm = sumAbsMm / nSamples;
+            fittedPlane.medH = Number((originTwd.h + fc.y).toFixed(3));
             // ASTM E1155 F_F / F_L approximation from local curvature & levelness variance
             let curvSumSq = 0, curvCnt = 0;
             for (let i = 2; i < sampledCells.length; i++) {
@@ -1381,6 +1408,7 @@
               cellAreaM2: effectiveCellAreaM2,
               totalAreaM2: Number((sampledCells.length * effectiveCellAreaM2).toFixed(2)),
               rmsMm: Number(rmsMm.toFixed(2)),
+              meanAbsMm: Number(meanAbsMm.toFixed(2)),
               ffFlatness: ffVal,
               flLevelness: flVal,
               maxHigh,
@@ -1462,6 +1490,7 @@
       scan_id: cache.scanId,
       reference_mode: cache.plane.planeMode,
       tolerance_mm: tolMm,
+      resolution_cm: cache.resolutionCm || Number(((cache.du || 0.15) * 100.0).toFixed(1)),
       volume_mode: volMode,
       total_points: totalPts,
       pass_count: passCount,
@@ -1469,6 +1498,7 @@
       low_count: lowCount,
       pass_rate_pct: passRatePct,
       rms_dev_mm: cache.rmsMm,
+      mean_abs_dev_mm: cache.meanAbsMm !== undefined ? cache.meanAbsMm : Number((cache.rmsMm * 0.8).toFixed(2)),
       total_area_m2: cache.totalAreaM2,
       high_area_m2: highAreaM2,
       high_area_pct: highAreaPct,
@@ -2502,9 +2532,12 @@
         savedObj.result = metrics;
         savedObj.name = `${savedObj.code} ${surfaceTitleZh} (${cache.totalAreaM2} m²)`;
       } else {
-        const seqNum = objs.length + 1;
-        const code = `F${seqNum}`;
-        const newId = `flat_${getActiveFlatnessScanId()}_${Date.now()}_${ QA_STATE.flatnessNextSeq++ }`;
+        const maxNum = objs.reduce((acc, o) => {
+          const m = /^F(\d+)$/i.exec(String(o?.code || ""));
+          return m ? Math.max(acc, parseInt(m[1], 10)) : acc;
+        }, 0);
+        const code = `F${maxNum + 1}`;
+        const newId = `flat_${getActiveFlatnessScanId()}_${Date.now()}_${QA_STATE.flatnessNextSeq++}`;
         savedObj = {
           id: newId,
           code,
@@ -2525,6 +2558,20 @@
         };
         objs.push(savedObj);
         QA_STATE.activeFlatnessObjectId = savedObj.id;
+      }
+
+      if (Number(cache.resolutionCm) > Number(cache.requestedResolutionCm || resCm) + 0.15) {
+        QA_STATE.flatnessResolutionCm = Number(cache.resolutionCm);
+        const lblRes = document.getElementById("lblFlatnessResReadout");
+        if (lblRes) lblRes.textContent = `${cache.resolutionCm} cm`;
+        if (typeof showToast === "function") {
+          showToast(
+            t(
+              `檢測範圍較大，網格解析度已自動調整為 ${cache.resolutionCm} cm 以維持流暢度`,
+              `Large polygon: grid resolution clamped to ${cache.resolutionCm} cm for performance`
+            )
+          );
+        }
       }
 
       const progWrap = document.getElementById("flatnessSamplingProgressWrap");
@@ -2924,6 +2971,7 @@
     octx.font = "12px 'Microsoft JhengHei', sans-serif";
     octx.fillText(`共 ${reportObjs.length} 處檢驗分區 ｜ 垂直牆面以引線箭頭 (──►) 標示平面位置`, 28, 58);
 
+    const placedWallBoxes = [];
     reportObjs.forEach((obj, objIdx) => {
       const c = obj.cache || {};
       const r = obj.result || {};
@@ -2932,10 +2980,7 @@
 
       const screenPts = pts.map((pt) => {
         const v = new THREE.Vector3(pt.x, pt.y, pt.z).project(camera);
-        return {
-          x: (v.x * 0.5 + 0.5) * ovCvs.width,
-          y: (-v.y * 0.5 + 0.5) * ovCvs.height,
-        };
+        return { x: (v.x * 0.5 + 0.5) * ovCvs.width, y: (-v.y * 0.5 + 0.5) * ovCvs.height };
       });
       const pc = (c.plane && c.plane.center) || pts[0];
       const vc = new THREE.Vector3(pc.x, pc.y, pc.z).project(camera);
@@ -2958,10 +3003,20 @@
       octx.restore();
 
       if (isWall) {
+        const boxW = 230, boxH = 44;
         const offsetDirX = scx > ovCvs.width * 0.55 ? -1 : 1;
         const offsetDirY = scy > ovCvs.height * 0.55 ? -1 : 1;
         const tailX = Math.max(140, Math.min(ovCvs.width - 240, scx + offsetDirX * 115));
-        const tailY = Math.max(95, Math.min(ovCvs.height - 75, scy + offsetDirY * (70 + (objIdx % 3) * 28)));
+        let tailY = Math.max(95, Math.min(ovCvs.height - 55, scy + offsetDirY * (68 + (objIdx % 4) * 26)));
+        let boxX = offsetDirX < 0 ? tailX - boxW : tailX;
+        let boxY = tailY - boxH * 0.5;
+        for (let iter = 0; iter < 8; iter++) {
+          const hit = placedWallBoxes.find((b) => Math.abs(boxX - b.x) < boxW + 6 && Math.abs(boxY - b.y) < boxH + 6);
+          if (!hit) break;
+          boxY = hit.y + boxH + 8 <= ovCvs.height - boxH - 10 ? hit.y + boxH + 8 : Math.max(82, hit.y - boxH - 8);
+          tailY = boxY + boxH * 0.5;
+        }
+        placedWallBoxes.push({ x: boxX, y: boxY });
 
         octx.save();
         octx.strokeStyle = "#f59e0b";
@@ -2989,10 +3044,6 @@
         octx.lineWidth = 2;
         octx.stroke();
 
-        const boxW = 230;
-        const boxH = 44;
-        const boxX = offsetDirX < 0 ? tailX - boxW : tailX;
-        const boxY = tailY - boxH * 0.5;
         octx.fillStyle = "rgba(15, 23, 42, 0.94)";
         octx.fillRect(boxX, boxY, boxW, boxH);
         octx.strokeStyle = "#f59e0b";

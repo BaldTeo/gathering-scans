@@ -3811,6 +3811,12 @@ class GatheringScansTestSuite(unittest.TestCase):
             "https://www.astm.org/e1155-20.html",
             "https://www.nlsc.gov.tw/",
             "工程施工品質自主檢查與三維點雲表面平整度檢驗報告",
+            'clause: "行政院公共工程委員會《施工綱要規範》第09611章「整體粉光地坪」"',
+            "mean_abs_dev_mm:",
+            "resolution_cm:",
+            "fittedPlane.medH =",
+            "origTrUpdate",
+            "placedWallBoxes",
         ):
             self.assertIn(token, js10, f"Missing {token} in 10-construction-qa-and-stakeout.js")
 
