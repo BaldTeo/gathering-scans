@@ -2711,6 +2711,11 @@ class CategorizationHeuristicsMixin:
         csv_name = f"categorization_report_{scan_id}.csv"
         dxf_name = f"Civil3D_Categorized_{scan_id}.dxf"
 
+        for _clist in (roads_list, trees_list, water_list, walls_list, buildings_list, water_tanks_list, pipes_list, street_furniture_list, stockpiles_list):
+            for _it in _clist:
+                if isinstance(_it, dict) and _it.get("id") and not _it.get("orig_id"):
+                    _it["orig_id"] = str(_it["id"]).strip()
+
         result = {
             "ok": True,
             "status": "ok",
@@ -2749,6 +2754,7 @@ class CategorizationHeuristicsMixin:
             "categories_breakdown": extended_categories,
             "roads": roads_list,
             "trees": trees_list,
+            "_base_trees": [dict(t) for t in trees_list if isinstance(t, dict) and not t.get("manual_added")],
             "water_bodies": water_list,
             "walls": walls_list,
             "buildings": buildings_list,

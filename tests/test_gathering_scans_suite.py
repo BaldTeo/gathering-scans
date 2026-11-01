@@ -3013,6 +3013,39 @@ class GatheringScansTestSuite(unittest.TestCase):
         self.assertIn('elif req_action in ("manual_remove", "manual_add", "manual_reset"):', tunnel_py)
         self.assertIn("upd_cat = SURVEY.modify_saved_categorization(req_sid, p_obj)", tunnel_py)
 
+        # 5. Verify sequential manual_remove (no id vs orig_id double-deletion), manual_add, and manual_reset on cached scans
+        import copy
+        import json
+        from unittest.mock import patch
+
+        q_path = os.path.join(BASE_DIR, "data", "categorization_cache", "QuChi261016_Trees_categorization_v3.json")
+        with open(q_path, "r", encoding="utf-8") as f:
+            orig_cat = json.load(f)
+        self.assertTrue(isinstance(orig_cat.get("_base_trees"), list) and len(orig_cat["_base_trees"]) == len(orig_cat["trees"]))
+        working_cat = copy.deepcopy(orig_cat)
+        with patch.object(self.survey, "get_saved_categorization", side_effect=lambda sid, scan=None: working_cat), \
+             patch.object(self.survey, "categorize_scan_surfaces_and_objects", side_effect=RuntimeError("VPS mode")), \
+             patch.object(self.survey, "_write_categorization_deliverables"), \
+             patch.object(self.survey, "_persist_categorization_result"):
+            working_cat = self.survey.modify_saved_categorization(
+                "QuChi261016_Trees", {"action": "manual_remove", "item_id": "T4", "category": "trees"}
+            )
+            self.assertEqual(len(working_cat["trees"]), len(orig_cat["trees"]) - 1)
+            working_cat = self.survey.modify_saved_categorization(
+                "QuChi261016_Trees", {"action": "manual_remove", "item_id": "T5", "category": "trees"}
+            )
+            self.assertEqual(len(working_cat["trees"]), len(orig_cat["trees"]) - 2)
+            self.assertEqual([t["orig_id"] for t in working_cat["trees"][:5]], ["T1", "T2", "T3", "T5", "T7"])
+            working_cat = self.survey.modify_saved_categorization(
+                "QuChi261016_Trees",
+                {"action": "manual_add", "category": "trees", "item": {"trunk_local": [5.0, 0.0, 5.0], "auto_measure": True}},
+            )
+            self.assertEqual(len(working_cat["trees"]), len(orig_cat["trees"]) - 1)
+            self.assertEqual(working_cat["trees"][-1]["id"], "TM1")
+            working_cat = self.survey.modify_saved_categorization("QuChi261016_Trees", {"action": "manual_reset"})
+            self.assertEqual(len(working_cat["trees"]), len(orig_cat["trees"]))
+            self.assertEqual([t["orig_id"] for t in working_cat["trees"][:6]], ["T1", "T2", "T3", "T4", "T5", "T6"])
+
     def test_38_milestone7_public_utilities_gis_and_gml_integration(self):
         """
         Milestone 7 Verification: Real Public Utilities GIS Integration with Taiwan Open APIs,

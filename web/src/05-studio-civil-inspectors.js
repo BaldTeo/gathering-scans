@@ -503,7 +503,7 @@
         panel.classList.toggle("mobile-minimized", STATE.sidePanelMinimized);
         panel.classList.toggle("gs-panel-minimized", STATE.sidePanelMinimized);
         const lblCollapse = document.getElementById("lblCollapseSidePanel");
-        if (lblCollapse) lblCollapse.textContent = STATE.sidePanelMinimized ? "▴ 展開" : "▾ 收合";
+        if (lblCollapse) lblCollapse.textContent = STATE.sidePanelMinimized ? "▴" : "▾";
         syncStudioMobileToolHud();
         if (typeof syncMobileToastPosition === "function") syncMobileToastPosition();
         update2DBadgePositions();
@@ -519,7 +519,7 @@
         STATE.sidePanelMinimized = false;
         panel.classList.remove("mobile-minimized", "gs-panel-minimized");
         const lblCollapse = document.getElementById("lblCollapseSidePanel");
-        if (lblCollapse) lblCollapse.textContent = "▾ 收合";
+        if (lblCollapse) lblCollapse.textContent = "▾";
       }
       if (STATE.lastCategorizeResult) renderCategorizePanelContent(STATE.lastCategorizeResult);
       syncStudioMobileToolHud();
@@ -1702,9 +1702,9 @@
     let resolvedItemData = itemData ? Object.assign({}, itemData) : {};
     if (action === "manual_remove" && itemId && STATE.lastCategorizeResult) {
       const curTrees = Array.isArray(STATE.lastCategorizeResult.trees) ? STATE.lastCategorizeResult.trees : [];
-      const targetTree = curTrees.find(
-        (t) => String(t.id || "") === String(itemId) || String(t.orig_id || "") === String(itemId)
-      );
+      const targetTree =
+        curTrees.find((t) => String(t.id || "") === String(itemId)) ||
+        curTrees.find((t) => String(t.orig_id || "") === String(itemId));
       if (targetTree) {
         resolvedItemData = Object.assign(
           {
@@ -1715,10 +1715,10 @@
           resolvedItemData
         );
       }
-      // Optimistically remove from 3D scene and side panel immediately
-      STATE.lastCategorizeResult.trees = curTrees.filter(
-        (t) => String(t.id || "") !== String(itemId) && String(t.orig_id || "") !== String(itemId)
-      );
+      // Optimistically remove only the matched target tree from 3D scene and side panel immediately
+      STATE.lastCategorizeResult.trees = targetTree
+        ? curTrees.filter((t) => t !== targetTree)
+        : curTrees.filter((t) => String(t.id || "") !== String(itemId));
       if (STATE.lastCategorizeResult.summary) {
         STATE.lastCategorizeResult.summary.trees_count = STATE.lastCategorizeResult.trees.length;
       }

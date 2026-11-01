@@ -1715,15 +1715,6 @@ class CategorizationIoMixin:
                                 "stockpiles": True,
                             }
                         self._ensure_categorization_deliverables_exist(cached_res)
-                        # Ensure central data/categorization_cache copy also exists
-                        central_path = os.path.join(CATEGORIZATION_CACHE_DIR, f"{scan_id}_categorization_v3.json")
-                        if not os.path.isfile(central_path):
-                            try:
-                                os.makedirs(CATEGORIZATION_CACHE_DIR, exist_ok=True)
-                                with open(central_path, "w", encoding="utf-8") as out_cf:
-                                    json.dump(cached_res, out_cf, ensure_ascii=False)
-                            except Exception:
-                                pass
                         return cached_res
                 except Exception:
                     pass
@@ -2128,27 +2119,41 @@ class CategorizationIoMixin:
             meta_pt = item_meta.get("trunk_twd97")
             if isinstance(meta_pt, list) and len(meta_pt) >= 2:
                 removed_centers.append({"category": "trees", "e": float(meta_pt[0]), "n": float(meta_pt[1]), "tol": 0.35})
-            for cname, clist in (("trees", cached_res.get("trees") or []), ("walls", cached_res.get("walls") or []), ("roads", cached_res.get("roads") or []), ("water_bodies", cached_res.get("water_bodies") or [])):
-                for it in clist:
-                    if str(it.get("id") or "") == item_id or str(it.get("orig_id") or "") == item_id:
-                        oid = str(it.get("orig_id") or it.get("id") or "").strip()
-                        if oid:
-                            matched_orig_ids.append(oid)
-                        pt = it.get("trunk_twd97") if cname == "trees" else it.get("center_twd97")
-                        if isinstance(pt, list) and len(pt) >= 2:
-                            rc_tol = 0.35 if cname == "trees" else 1.65
-                            removed_centers.append({"category": cname, "e": float(pt[0]), "n": float(pt[1]), "tol": rc_tol})
+
+            def _remove_target_from_list(clist: List[Dict[str, Any]], cname: str) -> List[Dict[str, Any]]:
+                if not clist:
+                    return []
+                # Prefer exact match on current display id (or explicit meta_oid) so renumbered items never collide with orig_id
+                exact_id_matches = [it for it in clist if str(it.get("id") or "") == item_id] if item_id else []
+                if exact_id_matches:
+                    targets = exact_id_matches
+                elif meta_oid:
+                    targets = [it for it in clist if str(it.get("orig_id") or "") == meta_oid]
+                else:
+                    targets = [it for it in clist if str(it.get("orig_id") or "") == item_id]
+                target_refs = {id(t) for t in targets}
+                for it in targets:
+                    oid = str(it.get("orig_id") or it.get("id") or "").strip()
+                    if oid:
+                        matched_orig_ids.append(oid)
+                    pt = it.get("trunk_twd97") if cname == "trees" else it.get("center_twd97")
+                    if isinstance(pt, list) and len(pt) >= 2:
+                        rc_tol = 0.35 if cname == "trees" else 1.65
+                        removed_centers.append({"category": cname, "e": float(pt[0]), "n": float(pt[1]), "tol": rc_tol})
+                return [it for it in clist if id(it) not in target_refs]
+
+            cached_res["trees"] = _remove_target_from_list(cached_res.get("trees") or [], "trees")
+            cached_res["walls"] = _remove_target_from_list(cached_res.get("walls") or [], "walls")
+            cached_res["roads"] = _remove_target_from_list(cached_res.get("roads") or [], "roads")
+            cached_res["water_bodies"] = _remove_target_from_list(cached_res.get("water_bodies") or [], "water_bodies")
+
             for oid in (matched_orig_ids or ([item_id] if item_id else [])):
                 if oid and oid not in removed_ids:
                     removed_ids.append(oid)
-            added_trees = [t for t in added_trees if str(t.get("id") or "") != item_id and str(t.get("orig_id") or "") != item_id]
-            added_walls = [w for w in added_walls if str(w.get("id") or "") != item_id and str(w.get("orig_id") or "") != item_id]
-            added_roads = [r for r in added_roads if str(r.get("id") or "") != item_id and str(r.get("orig_id") or "") != item_id]
-            added_water = [w for w in added_water if str(w.get("id") or "") != item_id and str(w.get("orig_id") or "") != item_id]
-            cached_res["trees"] = [t for t in (cached_res.get("trees") or []) if str(t.get("id") or "") != item_id and str(t.get("orig_id") or "") != item_id]
-            cached_res["walls"] = [w for w in (cached_res.get("walls") or []) if str(w.get("id") or "") != item_id and str(w.get("orig_id") or "") != item_id]
-            cached_res["roads"] = [r for r in (cached_res.get("roads") or []) if str(r.get("id") or "") != item_id and str(r.get("orig_id") or "") != item_id]
-            cached_res["water_bodies"] = [w for w in (cached_res.get("water_bodies") or []) if str(w.get("id") or "") != item_id and str(w.get("orig_id") or "") != item_id]
+            added_trees = [t for t in added_trees if str(t.get("id") or "") != item_id and str(t.get("orig_id") or "") not in matched_orig_ids]
+            added_walls = [w for w in added_walls if str(w.get("id") or "") != item_id and str(w.get("orig_id") or "") not in matched_orig_ids]
+            added_roads = [r for r in added_roads if str(r.get("id") or "") != item_id and str(r.get("orig_id") or "") not in matched_orig_ids]
+            added_water = [w for w in added_water if str(w.get("id") or "") != item_id and str(w.get("orig_id") or "") not in matched_orig_ids]
 
         elif action == "manual_add":
             cat_type = str(payload.get("category") or "").strip()
@@ -2163,7 +2168,7 @@ class CategorizationIoMixin:
                 dbh_method_str = "manual_user_pin"
                 if bool(item_data.get("auto_measure", True)):
                     try:
-                        proj_dir = scan.get("project_dir") or os.path.join(PROJECTS_DIR, scan_id)
+                        proj_dir = scan.get("project_dir") or os.path.join(SCANS_ROOT_DIR, scan_id)
                         npz_p = os.path.join(proj_dir, "_dsm_cache_v5.npz")
                         if os.path.isfile(npz_p):
                             with np.load(npz_p) as npz:
