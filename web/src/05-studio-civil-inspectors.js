@@ -2103,12 +2103,12 @@
             `<span style="color:#34d399;font-weight:800;">🌳 ${escapeHtml(t.id)}</span> · DBH <b>${dbhCm.toFixed(1)} cm</b> · H ${treeH.toFixed(1)}m`,
             "#10b981",
             {
-              offsetY: isTwin ? (idx % 2 === 0 ? -24 : 14) : -10,
+              offsetY: isTwin ? (tPt.x < basePt.x ? -22 : 16) : -10,
               priority: treePriorityBase - idx,
               featureId: t.id,
               catKey: "trees",
               isFocused: true,
-              minSep: isTwin ? 0.38 : undefined,
+              minSep: isTwin ? 0.18 : undefined,
             }
           );
           if (added) treeBadgesAdded++;
