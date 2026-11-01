@@ -23,20 +23,38 @@ from __future__ import annotations
 import math
 from typing import Any, Dict, List, Optional, Tuple
 
-import numpy as np
-from scipy.ndimage import (
-    binary_closing,
-    binary_dilation,
-    binary_erosion,
-    binary_fill_holes,
-     binary_opening,
-    distance_transform_edt,
-    gaussian_filter,
-    label as nd_label,
-    maximum_filter,
-    uniform_filter,
-)
-from scipy.spatial import ConvexHull, cKDTree
+try:
+    import numpy as np
+except ImportError:
+    np = None  # type: ignore
+
+try:
+    from scipy.ndimage import (
+        binary_closing,
+        binary_dilation,
+        binary_erosion,
+        binary_fill_holes,
+        binary_opening,
+        distance_transform_edt,
+        gaussian_filter,
+        label as nd_label,
+        maximum_filter,
+        uniform_filter,
+    )
+    from scipy.spatial import ConvexHull, cKDTree
+except ImportError:
+    binary_closing = None  # type: ignore
+    binary_dilation = None  # type: ignore
+    binary_erosion = None  # type: ignore
+    binary_fill_holes = None  # type: ignore
+    binary_opening = None  # type: ignore
+    distance_transform_edt = None  # type: ignore
+    gaussian_filter = None  # type: ignore
+    nd_label = None  # type: ignore
+    maximum_filter = None  # type: ignore
+    uniform_filter = None  # type: ignore
+    ConvexHull = None  # type: ignore
+    cKDTree = None  # type: ignore
 
 
 def fit_pratt_circle_2d_unclamped(

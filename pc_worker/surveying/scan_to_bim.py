@@ -743,16 +743,19 @@ class ScanToBimMixin:
         explicit_cat = payload.get("categorization_data") or payload.get("classified_objects")
         cat_data = explicit_cat if isinstance(explicit_cat, dict) else None
         if cat_data is None:
-            cat_data = getattr(self, "get_saved_categorization", lambda s: None)(scan_id)
+            prev_cat = getattr(self, "get_saved_categorization", lambda s: None)(scan_id)
+            cat_data = prev_cat
             if (
                 not isinstance(cat_data, dict)
                 or not cat_data.get("ok")
                 or int(cat_data.get("categorization_schema_version") or 0) < 4
             ):
                 try:
-                    cat_data = getattr(self, "categorize_scan_surfaces_and_objects", lambda p: {})(
+                    recomputed = getattr(self, "categorize_scan_surfaces_and_objects", lambda p: {})(
                         {"scan_id": scan_id, "force_recompute": True}
                     )
+                    if isinstance(recomputed, dict) and recomputed.get("ok"):
+                        cat_data = recomputed
                 except Exception:
                     if not isinstance(cat_data, dict) or not cat_data.get("ok"):
                         cat_data = getattr(self, "categorize_scan_surfaces_and_objects", lambda p: {})(
