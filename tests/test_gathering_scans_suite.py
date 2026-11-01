@@ -3477,6 +3477,7 @@ class GatheringScansTestSuite(unittest.TestCase):
         self.assertIn('localStorage.getItem("gs_util_keep_on_close_v2") === "1"', js12)
         self.assertIn(": false,", js12)
         self.assertIn("resolveUtilitiesOriginTwd97", js12)
+        self.assertIn("const isTranslucent = Boolean(UTILS_STATE.active) && hasVisibleUtilities3D() && pct > 1;", js12)
         self.assertNotIn("collectStudioGroundMeshes", js12)
         self.assertNotIn("getStudioRaycastMeshes", js12)
         self.assertIn('id="chkUtilKeepOnClose"', js12)
@@ -3616,12 +3617,16 @@ class GatheringScansTestSuite(unittest.TestCase):
             "lacking_volume_liters",
             "net_volume_liters",
             "est_mortar_bags_25kg",
-            "binLocalPoint(vB.x, vB.y, vB.z);",
+            "binLocalPoint(vB.x, vB.y, vB.z, isCoarse);",
+            "binCellSample(idx, ix, iy, iz, iSignedN, isCoarse);",
+            "cellFineMask",
+            "hasAnyLoadedScene",
+            "hasFullCoverageScene",
             "cellFrontN",
             "QA_STATE.flatnessCache.scanId !== curScanId",
         ):
             self.assertIn(required_token, js10, f"Missing {required_token} in 10-construction-qa-and-stakeout.js")
-        self.assertNotIn("binLocalPoint(vB.x, vB.y, vC.z);", js10)
+        self.assertNotIn("binLocalPoint(vB.x, vB.y, vC.z", js10)
 
 
 if __name__ == "__main__":

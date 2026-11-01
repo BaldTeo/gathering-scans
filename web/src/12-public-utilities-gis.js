@@ -334,12 +334,14 @@
     const roots = getStudioModelRoots(studioThree);
     if (!roots.length) return;
 
-    // Hook TilesRenderer 'load-model' once so newly streamed 3D tiles automatically inherit X-ray translucency
+    // Hook TilesRenderer 'load-model' once so newly streamed 3D tiles automatically inherit X-ray translucency while Utilities menu is open
     if (studioThree.tilesRenderer && !studioThree.tilesRenderer.__gsUtilXrayLoadBound) {
       studioThree.tilesRenderer.__gsUtilXrayLoadBound = true;
       studioThree.tilesRenderer.addEventListener("load-model", () => {
-        if (hasVisibleUtilities3D() && UTILS_STATE.groundXrayPct > 1) {
+        if (UTILS_STATE.active && UTILS_STATE.groundXrayPct > 1) {
           applyUtilitiesGroundXray(UTILS_STATE.groundXrayPct);
+        } else if (!UTILS_STATE.active) {
+          restoreUtilitiesGroundOpacity();
         }
         if (hasVisibleUtilities3D() && Array.isArray(UTILS_STATE.features) && UTILS_STATE.features.length > 0) {
           const curOrigin = resolveUtilitiesOriginTwd97();
@@ -354,7 +356,7 @@
       });
     }
 
-    const isTranslucent = hasVisibleUtilities3D() && pct > 1;
+    const isTranslucent = Boolean(UTILS_STATE.active) && hasVisibleUtilities3D() && pct > 1;
     roots.forEach((rootGroup) => {
       rootGroup.traverse((child) => {
         if (!child || !child.isMesh || !child.material) return;
@@ -395,7 +397,7 @@
   }
 
   /**
-   * Restores the 3D scan model opacity to 100% (1.0).
+   * Restores the 3D scan model opacity to 100% (1.0) / 0% X-Ray filter whenever the Utilities menu is closed.
    */
   function restoreUtilitiesGroundOpacity() {
     const studioThree = window.studioThree;
@@ -406,12 +408,19 @@
         if (!child || !child.isMesh || !child.material) return;
         const mats = Array.isArray(child.material) ? child.material : [child.material];
         mats.forEach((mat) => {
-          if (!mat || !mat.userData || !mat.userData.__origUtilXrayState) return;
-          const orig = mat.userData.__origUtilXrayState;
-          mat.transparent = orig.transparent;
-          mat.opacity = orig.opacity;
-          mat.depthWrite = orig.depthWrite;
-          mat.needsUpdate = true;
+          if (!mat) return;
+          if (mat.userData && mat.userData.__origUtilXrayState) {
+            const orig = mat.userData.__origUtilXrayState;
+            mat.transparent = orig.transparent;
+            mat.opacity = orig.opacity;
+            mat.depthWrite = orig.depthWrite;
+            mat.needsUpdate = true;
+          } else if (mat.transparent && typeof mat.opacity === "number" && mat.opacity > 0.05 && mat.opacity < 1.0) {
+            mat.transparent = false;
+            mat.opacity = 1.0;
+            mat.depthWrite = true;
+            mat.needsUpdate = true;
+          }
         });
       });
     });
@@ -483,18 +492,19 @@
 
   /**
    * Called when the side panel is closed or switched to another tool.
+   * Always cancels the Ground X-Ray opacity filter on the 3D scan (restoring 100% scan opacity),
+   * even when `keepLayersOnClose` ("Show when closed") is enabled.
    */
   function onUtilitiesPanelClosed() {
     stopLoadingProgressTicker();
     UTILS_STATE.active = false;
     hideUtilityHoverTooltip();
+    restoreUtilitiesGroundOpacity();
     if (UTILS_STATE.keepLayersOnClose && Array.isArray(UTILS_STATE.features) && UTILS_STATE.features.length > 0) {
       updateLayerVisibility3D();
-      applyUtilitiesGroundXray(UTILS_STATE.groundXrayPct);
       return;
     }
     clearUtilitiesVisuals3D();
-    restoreUtilitiesGroundOpacity();
   }
 
   /**
@@ -2257,6 +2267,12 @@
       studioThree.scene.add(group);
     }
 
+    if (UTILS_STATE.active && anyLayerVisible && UTILS_STATE.groundXrayPct > 1) {
+      applyUtilitiesGroundXray(UTILS_STATE.groundXrayPct);
+    } else if (!UTILS_STATE.active || !anyLayerVisible) {
+      restoreUtilitiesGroundOpacity();
+    }
+
     if (typeof studioThree.render === "function") {
       studioThree.render();
     } else if (studioThree.renderer && studioThree.camera) {
@@ -2295,6 +2311,12 @@
 
     if (!anyLayerVisible) {
       hideUtilityHoverTooltip();
+    }
+
+    if (UTILS_STATE.active && anyLayerVisible && UTILS_STATE.groundXrayPct > 1) {
+      applyUtilitiesGroundXray(UTILS_STATE.groundXrayPct);
+    } else {
+      restoreUtilitiesGroundOpacity();
     }
 
     if (studioThree && typeof studioThree.render === "function") {

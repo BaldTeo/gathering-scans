@@ -46,7 +46,11 @@
     const prevPanelTool = panel.getAttribute("data-active-tool") || "";
     const isG1 = typeof window.isStudioGroup1Tool === "function" && window.isStudioGroup1Tool(STATE.activeTool);
     const nextPanelTool = isG1 ? (window.UTILS_STATE?.active ? "utilities" : prevPanelTool || STATE.activeTool || "") : STATE.activeTool || "";
-    if (nextPanelTool !== "utilities" && !window.UTILS_STATE?.active && typeof window.onUtilitiesPanelClosed === "function") {
+    if (
+      nextPanelTool !== "utilities" &&
+      (window.UTILS_STATE?.active || prevPanelTool === "utilities") &&
+      typeof window.onUtilitiesPanelClosed === "function"
+    ) {
       window.onUtilitiesPanelClosed();
     }
     if (prevPanelTool === "categorize" && nextPanelTool !== "categorize") {

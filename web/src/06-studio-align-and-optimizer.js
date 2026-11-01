@@ -3965,7 +3965,7 @@
       if (["flatness", "trench", "stakeout"].includes(STATE.activeTool) && typeof window.onQaPanelsClosed === "function") {
         window.onQaPanelsClosed();
       }
-      if (STATE.activeTool === "utilities" && typeof window.onUtilitiesPanelClosed === "function") {
+      if ((STATE.activeTool === "utilities" || window.UTILS_STATE?.active) && typeof window.onUtilitiesPanelClosed === "function") {
         window.onUtilitiesPanelClosed();
       }
       if ((STATE.activeTool === "photos" || STATE.activeTool === "rtk") && typeof clearPhotoTargetVisuals3D === "function") {
