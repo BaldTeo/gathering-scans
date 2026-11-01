@@ -2879,9 +2879,14 @@ class GatheringScansTestSuite(unittest.TestCase):
         with open(os.path.join(BASE_DIR, "pc_worker", "surveying", "categorization_heuristics.py"), "r", encoding="utf-8") as f:
             heur_py = f.read()
 
-        # 1. Verify Scan-to-BIM files and UI buttons are removed
+        # 1. Verify Scan-to-BIM files, API routes, and UI buttons are removed
         self.assertFalse(os.path.isfile(os.path.join(BASE_DIR, "web", "src", "11-scan-to-bim-primitives.js")))
         self.assertFalse(os.path.isfile(os.path.join(BASE_DIR, "pc_worker", "surveying", "scan_to_bim.py")))
+        with open(os.path.join(BASE_DIR, "pc_worker", "server_api_routes.py"), "r", encoding="utf-8") as f:
+            routes_py = f.read()
+        self.assertNotIn("/api/survey/scan-to-bim", routes_py)
+        self.assertNotIn("fit_scan_to_bim_primitives", routes_py)
+        self.assertNotIn("export_scan_to_bim", routes_py)
         self.assertNotIn("11-scan-to-bim-primitives.js", index_html)
         self.assertNotIn("/src/11-scan-to-bim-primitives.js", sw_js)
         self.assertNotIn('id="btnStudioBim"', index_html)
@@ -2893,9 +2898,9 @@ class GatheringScansTestSuite(unittest.TestCase):
         self.assertIn("🌳 AI Trees & 1.3m Trunk DBH", js05)
         self.assertIn("STATE.categorizeFilters = { roads: false, trees: true, water: false, walls: false, stockpiles: false };", js05)
 
-        # 3. Verify chlorophyll blue-absorption (gb_diff) and building column / court pole rejection in heuristics
+        # 3. Verify chlorophyll blue/red-absorption (gb_diff, rb_diff) and building column / court pole rejection in heuristics
         self.assertIn("gb_diff = rgb[:, 1] - rgb[:, 2]", heur_py)
-        self.assertIn("fol_tri_mask = (exg >= 0.038)", heur_py)
+        self.assertIn("fol_tri_mask = (exg >= 0.038) & (rb_diff >= -0.055)", heur_py)
         self.assertIn("roof_soffit_a =", heur_py)
         self.assertIn("wall_facade_a =", heur_py)
         self.assertIn("bldg_to_fol_ratio =", heur_py)
@@ -3328,6 +3333,8 @@ class GatheringScansTestSuite(unittest.TestCase):
             "rosepark_20260918_merged",
             "ntudorm_20260915_baseline",
             "edited_qihu_unified_merged_scan_4_scans__edited_372953",
+            "catch_LishanFinal_HQ",
+            "catch_LishanFinal",
         ):
             nd_res = survey.categorize_scan_surfaces_and_objects({"scan_id": non_daan_sid, "force_recompute": False})
             self.assertEqual(len(nd_res.get("water_tanks") or []), 0, f"Expected 0 water tanks on {non_daan_sid}")

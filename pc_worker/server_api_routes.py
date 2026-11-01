@@ -1085,39 +1085,6 @@ class ServerWriteRoutesMixin:
                 self.send_json(res)
                 return
 
-            # 5j. Civil Surveying: Scan-to-BIM Simplified Classified Geometric Model & CAD/BIM Exporters
-            if path in ("/api/survey/scan-to-bim", "/api/surveying/scan-to-bim"):
-                s_id = str(payload.get("scan_id") or "").strip()
-                if ".." in s_id or "/" in s_id or "\\" in s_id:
-                    self.send_json({"error": "Invalid scan_id: path traversal forbidden"}, status=400)
-                    return
-                if share_token:
-                    ok_s, reason_s, link_s, _ = AUTH_SHARE.validate_share_access(
-                        share_token, requested_scan_id=payload.get("scan_id")
-                    )
-                    if not ok_s or not (link_s and link_s.get("allow_measurements", True)):
-                        self.send_json({"error": "Scan-to-BIM is disabled for this external share link."}, status=403)
-                        return
-                res = SURVEY.fit_scan_to_bim_primitives(payload)
-                self.send_json(res)
-                return
-
-            if path in ("/api/survey/scan-to-bim/export", "/api/surveying/scan-to-bim/export"):
-                s_id = str(payload.get("scan_id") or "").strip()
-                if ".." in s_id or "/" in s_id or "\\" in s_id:
-                    self.send_json({"error": "Invalid scan_id: path traversal forbidden"}, status=400)
-                    return
-                if share_token:
-                    ok_s, reason_s, link_s, _ = AUTH_SHARE.validate_share_access(
-                        share_token, requested_scan_id=payload.get("scan_id")
-                    )
-                    if not ok_s or not (link_s and link_s.get("allow_download", True)):
-                        self.send_json({"error": "BIM downloads are disabled for this external share link."}, status=403)
-                        return
-                res = SURVEY.export_scan_to_bim(payload)
-                self.send_json(res)
-                return
-
             # 5k. Civil Surveying: Real Public Utilities GIS Integration & MOI NGIS GML Parser
             if path in ("/api/survey/utilities-query", "/api/surveying/utilities-query"):
                 if share_token:

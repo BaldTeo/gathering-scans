@@ -1049,8 +1049,8 @@ class CategorizationHeuristicsMixin:
         all_xy_tree = cKDTree(centroids[:, :2])
         gb_diff = rgb[:, 1] - rgb[:, 2]
         gr_diff = rgb[:, 1] - rgb[:, 0]
-        # True chlorophyll foliage absorbs blue and red light (rejects blue/cyan basketball court poles & cool-shadowed concrete columns where B >= G)
-        fol_tri_mask = (exg >= 0.038) & ((gb_diff >= 0.012) | ((exg >= 0.065) & (gr_diff >= 0.030)))
+        # True chlorophyll foliage absorbs blue and red light (rejects blue/cyan basketball court poles & cool-shadowed concrete columns where B >= G or R - B < -0.055)
+        fol_tri_mask = (exg >= 0.038) & (rb_diff >= -0.055) & ((gb_diff >= 0.012) | ((exg >= 0.065) & (gr_diff >= 0.030)))
 
         def _has_neck_gap_bollard_at(cx_q: float, cy_q: float, th_g_q: float, idx_arr_q: np.ndarray, c_q: np.ndarray) -> bool:
             dt_q = np.hypot(c_q[:, 0] - cx_q, c_q[:, 1] - cy_q)
@@ -1553,7 +1553,7 @@ class CategorizationHeuristicsMixin:
                             dbh_cm = round(float(np.clip(blended_sec_dbh, 7.5, max_allowed_dbh)), 1)
                             dbh_method = "trunk_slice_1.3m_hybrid"
 
-            if bh_tree is not None and len(bh_tree.query_ball_point([trunk_e, trunk_n], r=0.95)) > 2200:
+            if bh_tree is not None and len(bh_tree.query_ball_point([trunk_e, trunk_n], r=0.95)) > 1650:
                 continue
             # Ensure refined trunk_e, trunk_n is not inside a building or retaining wall
             ti_chk = int(np.clip((trunk_e - e_min) / res, 0, nx - 1))
@@ -1587,21 +1587,24 @@ class CategorizationHeuristicsMixin:
                 cr_fol_frac = cr_fol_a / max(cr_tot_a, 1e-5)
                 med_cr_exg = float(np.median(exg[cr_idx]))
                 med_cr_gb = float(np.median(gb_diff[cr_idx]))
+                med_cr_rb = float(np.median(rb_diff[cr_idx]))
                 if (
                     n_cr_fol < 18
                     or cr_fol_frac < 0.34
                     or med_cr_exg < 0.025
+                    or med_cr_rb < -0.055
                     or (med_cr_gb < 0.010 and med_cr_exg < 0.065)
                 ):
                     continue
-                ic_fin_m = (dt_fin <= 1.15) & (z_rel_fin >= 1.95) & (z_rel_fin <= tree_h + 1.50)
+                ic_fin_m = (dt_fin <= 1.15) & (z_rel_fin >= 1.90) & (z_rel_fin <= tree_h + 1.50)
                 if not np.any(ic_fin_m):
                     continue
                 ic_idx = idx_arr26[ic_fin_m]
                 ic_fol = fol_tri_mask[ic_idx]
                 n_ic_fol = int(np.count_nonzero(ic_fol))
-                ic_fol_frac = float(area_3d[ic_idx[ic_fol]].sum()) / max(float(area_3d[ic_idx].sum()), 1e-5)
-                if n_ic_fol < 6 and ic_fol_frac < 0.25:
+                ic_fol_a = float(area_3d[ic_idx[ic_fol]].sum())
+                ic_fol_frac = ic_fol_a / max(float(area_3d[ic_idx].sum()), 1e-5)
+                if n_ic_fol < 5 or ic_fol_a < 0.22 or ic_fol_frac < 0.24:
                     continue
                 upper26_m = z_rel_fin >= 2.00
                 if np.any(upper26_m):
@@ -1614,6 +1617,7 @@ class CategorizationHeuristicsMixin:
                         (roof_soffit_a > 4.2 and cr_fol_frac < 0.56)
                         or (wall_facade_a > 9.5 and cr_fol_frac < 0.52)
                         or (bldg_to_fol_ratio > 1.35 and cr_fol_frac < 0.55 and med_cr_exg < 0.055)
+                        or ((roof_soffit_a + wall_facade_a) > 4.2 and (ic_fol_frac < 0.34 or ic_fol_a < 0.95))
                     ):
                         continue
                 # Fallback DBH from verified tight 3D trunk cylinder if bh_tree query had < 3 sectors
@@ -1632,9 +1636,15 @@ class CategorizationHeuristicsMixin:
                     continue
                 ts_fin_m = (dt_fin <= 0.68) & (z_rel_fin >= 0.45) & (z_rel_fin <= 1.90) & (nz_abs[idx_arr26] < 0.48)
                 n_ts_fin = int(np.count_nonzero(ts_fin_m))
+                if n_ts_fin > 640:
+                    continue
                 med_fin_sat = float(np.median(sat[idx_arr26[ts_fin_m]])) if n_ts_fin > 0 else med_ts_sat
                 med_fin_rb = float(np.median(rb_diff[idx_arr26[ts_fin_m]])) if n_ts_fin > 0 else med_ts_rb
+                med_fin_gb = float(np.median(gb_diff[idx_arr26[ts_fin_m]])) if n_ts_fin > 0 else 0.0
                 med_fin_exg = float(np.median(exg[idx_arr26[ts_fin_m]])) if n_ts_fin > 0 else med_ts_exg
+                # Reject blue/cyan painted basketball poles & court posts at breast height
+                if n_ts_fin >= 8 and (med_fin_rb < -0.045 or (med_fin_rb < -0.025 and med_fin_gb < 0.002)):
+                    continue
                 if n_ts_fin >= 8 and (not has_dense_green_crown or n_ts_fin >= 65) and (
                     med_fin_sat < 0.118 and med_fin_rb < 0.038 and med_fin_exg < 0.0245
                 ):
