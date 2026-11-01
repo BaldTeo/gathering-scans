@@ -410,23 +410,29 @@
   function prewarmScanUtilitiesCache500m(scanId) {
     const sid = String(scanId || "").trim();
     if (!sid || UTILS_STATE.masterCacheByScan[sid] || typeof apiPost !== "function") return;
+    const defaultDisplayR = Math.max(10.0, Math.min(1000.0, Number(UTILS_STATE.radiusM) || 250.0));
     setTimeout(async () => {
       try {
         if (UTILS_STATE.masterCacheByScan[sid]) return;
         const res = await apiPost("/api/survey/utilities-query", {
           scan_id: sid,
-          radius_m: 1000.0,
+          radius_m: defaultDisplayR,
+          server_master_radius_m: Number(UTILS_STATE.serverMasterRadiusM) || 1000.0,
           force_refresh: false,
         });
         if (res && res.status === "ok" && Array.isArray(res.features) && res.features.length > 0) {
-          UTILS_STATE.masterCacheByScan[sid] = {
-            center: res.center || null,
-            groundReferenceH: Number(res.ground_reference_h ?? res.center?.ground_h ?? res.center?.h),
-            radiusM: Math.max(1000.0, Number(res.master_cached_radius_m || res.master_radius_m || res.radius_m || 1000.0)),
-            features: res.features,
-            taipei8UtilityStatus: res.taipei_8utility_status || null,
-            timestamp: String(res.query_timestamp || ""),
-          };
+          if (!UTILS_STATE.masterCacheByScan[sid] || (UTILS_STATE.masterCacheByScan[sid].radiusM || 0) < defaultDisplayR) {
+            UTILS_STATE.masterCacheByScan[sid] = {
+              center: res.center || null,
+              groundReferenceH: Number(res.ground_reference_h ?? res.center?.ground_h ?? res.center?.h),
+              radiusM: Number(res.radius_m || defaultDisplayR),
+              serverMasterRadiusM: Math.max(1000.0, Number(res.master_cached_radius_m || res.master_radius_m || 1000.0)),
+              masterTotalFeatures: Number(res.master_total_features || res.total_features || res.features.length),
+              features: res.features,
+              taipei8UtilityStatus: res.taipei_8utility_status || null,
+              timestamp: String(res.query_timestamp || ""),
+            };
+          }
         }
       } catch (_) {}
     }, 600);
@@ -1163,7 +1169,8 @@
     try {
       const payload = {
         scan_id: scanId,
-        radius_m: queryRadiusM,
+        radius_m: displayRadiusM,
+        server_master_radius_m: queryRadiusM,
         force_refresh: Boolean(forceRefresh),
       };
       if (typeof localToTwd97 === "function") {
@@ -1196,15 +1203,23 @@
         await new Promise((resolve) => setTimeout(resolve, 16));
 
         const groundRefH = Number(res.ground_reference_h ?? res.center?.ground_h ?? res.center?.h);
+        const fetchedRadiusM = Number(res.radius_m || displayRadiusM);
+        const masterCachedR = Math.max(queryRadiusM, Number(res.master_cached_radius_m || res.master_radius_m || queryRadiusM));
+        const masterTotalCnt = Number(res.master_total_features || res.total_features || res.features.length);
         if (scanId) {
-          UTILS_STATE.masterCacheByScan[scanId] = {
-            center: res.center || null,
-            groundReferenceH: groundRefH,
-            radiusM: Math.max(queryRadiusM, Number(res.master_cached_radius_m || res.master_radius_m || queryRadiusM)),
-            features: res.features,
-            taipei8UtilityStatus: res.taipei_8utility_status || null,
-            timestamp: String(res.query_timestamp || ""),
-          };
+          const prevMaster = UTILS_STATE.masterCacheByScan[scanId];
+          if (!prevMaster || forceRefresh || fetchedRadiusM >= (prevMaster.radiusM || 0)) {
+            UTILS_STATE.masterCacheByScan[scanId] = {
+              center: res.center || null,
+              groundReferenceH: groundRefH,
+              radiusM: fetchedRadiusM,
+              serverMasterRadiusM: masterCachedR,
+              masterTotalFeatures: masterTotalCnt,
+              features: res.features,
+              taipei8UtilityStatus: res.taipei_8utility_status || null,
+              timestamp: String(res.query_timestamp || ""),
+            };
+          }
         }
 
         UTILS_STATE.loadedScanId = scanId;
@@ -1214,9 +1229,10 @@
         UTILS_STATE.cacheTimestamp = String(res.query_timestamp || "");
         UTILS_STATE.taipei8UtilityStatus = res.taipei_8utility_status || null;
 
+        const latestDisplayR = Math.max(10.0, Math.min(1000.0, Number(UTILS_STATE.radiusM) || displayRadiusM));
         const shownFeatures =
-          displayRadiusM < queryRadiusM - 1.0
-            ? filterMasterFeaturesToRadius(res.features, res.center, displayRadiusM)
+          latestDisplayR < fetchedRadiusM - 1.0
+            ? filterMasterFeaturesToRadius(res.features, res.center, latestDisplayR)
             : res.features;
         UTILS_STATE.features = mergeUserAsBuiltFeatures(scanId, shownFeatures);
 
@@ -1243,8 +1259,8 @@
         if (typeof showToast === "function") {
           showToast(
             t(
-              `已載入 ${UTILS_STATE.features.length} 筆管線 (顯示 ${Math.round(displayRadiusM)}m / 伺服器已快取 ${Math.round(queryRadiusM)}m 共 ${res.total_features} 筆)`,
-              `Loaded ${UTILS_STATE.features.length} utilities (${Math.round(displayRadiusM)}m shown / ${res.total_features} cached at ${Math.round(queryRadiusM)}m)`
+              `已載入 ${UTILS_STATE.features.length} 筆管線 (顯示 ${Math.round(latestDisplayR)}m / 伺服器已快取 ${Math.round(masterCachedR)}m 共 ${masterTotalCnt} 筆)`,
+              `Loaded ${UTILS_STATE.features.length} utilities (${Math.round(latestDisplayR)}m shown / ${masterTotalCnt} cached at ${Math.round(masterCachedR)}m)`
             )
           );
         }

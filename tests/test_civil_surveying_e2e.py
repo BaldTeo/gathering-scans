@@ -2650,21 +2650,21 @@ class TestPublicUtilitiesGISIntegration(unittest.TestCase):
         """
         import time
 
-        # 1 & 2. Default 250m shown radius & automatic 500m master cache persistence
+        # 1 & 2. Default 250m shown radius & automatic 1000m (1km) master cache persistence
         res_default = self.survey.query_public_utilities_gis({
             "scan_id": self.scan_id,
             "force_refresh": False,
         })
         self.assertEqual(res_default.get("status"), "ok")
         self.assertEqual(res_default.get("radius_m"), 250.0)
-        self.assertGreaterEqual(res_default.get("master_radius_m", 0.0), 500.0)
+        self.assertGreaterEqual(res_default.get("master_radius_m", 0.0), 1000.0)
         self.assertGreater(len(res_default.get("features", [])), 500)
 
-        # 3. QiHu Park repeat query latency via in-memory cache (< 50ms)
+        # 3. QiHu Park repeat query latency (< 50ms), genuine OSM waterways, & 1km pagination completeness
         qihu_payload = {
             "scan_id": "edited_qihu_unified_merged_scan_4_scans__edited_372953",
-            "center_e": 308297.27,
-            "center_n": 2773968.84,
+            "center_e": 300550.716,
+            "center_n": 2780975.538,
             "radius_m": 250.0,
             "force_refresh": False,
         }
@@ -2674,8 +2674,35 @@ class TestPublicUtilitiesGISIntegration(unittest.TestCase):
         res_qihu2 = self.survey.query_public_utilities_gis(qihu_payload)
         elapsed_ms = (time.perf_counter() - t0) * 1000.0
         self.assertEqual(res_qihu2.get("status"), "ok")
-        self.assertGreater(len(res_qihu2.get("features", [])), 1000)
+        self.assertGreaterEqual(res_qihu2.get("master_radius_m", 0.0), 1000.0)
+        self.assertGreater(len(res_qihu2.get("features", [])), 3000)
         self.assertLess(elapsed_ms, 50.0, f"QiHu repeat query took {elapsed_ms:.2f}ms (> 50ms)")
+
+        # Verify genuine OpenStreetMap waterways (磺港溪 #238866765 / 水磨坑溪 #287013231 / 北投溪 #1230087097) & zero truncation in 1km cache
+        res_qihu_1km = self.survey.query_public_utilities_gis({
+            "scan_id": "edited_qihu_unified_merged_scan_4_scans__edited_372953",
+            "center_e": 300550.716,
+            "center_n": 2780975.538,
+            "radius_m": 1000.0,
+            "force_refresh": False,
+        })
+        self.assertEqual(res_qihu_1km.get("status"), "ok")
+        self.assertGreater(len(res_qihu_1km.get("features", [])), 50000)
+        qihu_ids = {str(f.get("id") or "") for f in res_qihu_1km.get("features", [])}
+        for osm_wid in ("osm_waterway_238866765", "osm_waterway_287013231", "osm_waterway_1230087097"):
+            self.assertIn(osm_wid, qihu_ids, f"Genuine OSM waterway {osm_wid} missing in QiHu 1km cache")
+        way_238 = next(f for f in res_qihu_1km["features"] if f.get("id") == "osm_waterway_238866765")
+        self.assertIn("https://www.openstreetmap.org/way/238866765", str(way_238.get("osm_url") or ""))
+        north_cnt = sum(
+            1 for f in res_qihu_1km["features"]
+            if (f.get("coords") and f["coords"][0][1] >= 2780975.538) or (f.get("coord") and f["coord"][1] >= 2780975.538)
+        )
+        south_cnt = sum(
+            1 for f in res_qihu_1km["features"]
+            if (f.get("coords") and f["coords"][0][1] < 2780975.538) or (f.get("coord") and f["coord"][1] < 2780975.538)
+        )
+        self.assertGreater(north_cnt, 15000, "Northern half of QiHu 1km utilities truncated")
+        self.assertGreater(south_cnt, 15000, "Southern half of QiHu 1km utilities truncated (ArcGIS 2000-record cap)")
 
         # 6A. Rose Park stormwater drain culvert classification & zero duplicate coincident segments
         storm_feats = [f for f in res_default.get("features", []) if f.get("layer") == "storm"]
@@ -2741,7 +2768,7 @@ class TestPublicUtilitiesGISIntegration(unittest.TestCase):
             css_code = f.read()
 
         self.assertIn("radiusM: 250.0", js_code)
-        self.assertIn("serverMasterRadiusM: 500.0", js_code)
+        self.assertIn("serverMasterRadiusM: 1000.0", js_code)
         self.assertIn("studioThree.modelPivot", js_code)
         self.assertIn("seen3DSegments", js_code)
         self.assertIn("computeZeroRollBasis(", js_code)

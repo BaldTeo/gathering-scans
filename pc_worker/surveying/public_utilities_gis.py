@@ -302,9 +302,10 @@ def _load_utilities_json_cached(fp: str, _depth: int = 0) -> Optional[Dict[str, 
     """Loads a utilities cache JSON file with an in-memory mtime check (<0.1ms on repeat reads) and redirect support."""
     if not fp or not os.path.isfile(fp) or _depth > 3:
         return None
+    norm_key = os.path.normcase(os.path.abspath(fp))
     try:
         mtime = os.path.getmtime(fp)
-        cached = _UTILITIES_MEM_CACHE.get(fp)
+        cached = _UTILITIES_MEM_CACHE.get(norm_key)
         if cached is not None and cached[0] == mtime:
             return cached[1]
         with open(fp, "r", encoding="utf-8") as f:
@@ -312,7 +313,7 @@ def _load_utilities_json_cached(fp: str, _depth: int = 0) -> Optional[Dict[str, 
         if isinstance(data, dict):
             redirect_fn = data.get("redirect_master_cache")
             if redirect_fn and isinstance(redirect_fn, str):
-                target_fp = os.path.join(os.path.dirname(fp), redirect_fn)
+                target_fp = os.path.join(os.path.dirname(os.path.abspath(fp)), redirect_fn)
                 target_doc = _load_utilities_json_cached(target_fp, _depth + 1)
                 if isinstance(target_doc, dict):
                     merged = dict(target_doc)
@@ -320,10 +321,10 @@ def _load_utilities_json_cached(fp: str, _depth: int = 0) -> Optional[Dict[str, 
                         merged["scan_id"] = data["scan_id"]
                     if isinstance(data.get("center"), dict):
                         merged["center"] = data["center"]
-                    _UTILITIES_MEM_CACHE[fp] = (mtime, merged)
+                    _UTILITIES_MEM_CACHE[norm_key] = (mtime, merged)
                     return merged
             _hydrate_utilities_doc(data)
-            _UTILITIES_MEM_CACHE[fp] = (mtime, data)
+            _UTILITIES_MEM_CACHE[norm_key] = (mtime, data)
             return data
     except Exception:
         pass
@@ -335,7 +336,7 @@ def _save_utilities_json_cached(fp: str, data: Dict[str, Any]) -> None:
     if not fp or not isinstance(data, dict):
         return
     try:
-        os.makedirs(os.path.dirname(fp), exist_ok=True)
+        os.makedirs(os.path.dirname(os.path.abspath(fp)), exist_ok=True)
         _hydrate_utilities_doc(data)
         disk_data = dict(data)
         if isinstance(data.get("features"), list):
@@ -364,7 +365,8 @@ def _save_utilities_json_cached(fp: str, data: Dict[str, Any]) -> None:
             disk_data["features"] = slim_feats
         with open(fp, "w", encoding="utf-8") as f:
             json.dump(disk_data, f, ensure_ascii=False, separators=(",", ":"))
-        _UTILITIES_MEM_CACHE[fp] = (os.path.getmtime(fp), data)
+        norm_key = os.path.normcase(os.path.abspath(fp))
+        _UTILITIES_MEM_CACHE[norm_key] = (os.path.getmtime(fp), data)
         # If running inside the VPS Docker container (/app/data/utilities_cache), mirror to mounted /host_docker volume
         norm_fp = fp.replace("\\", "/")
         if norm_fp.startswith("/app/data/utilities_cache/") and os.path.isdir("/host_docker/gathering_scans"):
@@ -1092,8 +1094,12 @@ class PublicUtilitiesGISMixin:
                     best_rank = rank
                     best_cached_data = cached_data
                     best_cand_fp = cand_fp
+                # Fast path: if a 1000m master cache within 50m covers the request, no need to scan 30 other files on disk
+                if (cand_fp == master_cache_file or is_custom_override_center) and covers_req == 1 and c_rad >= 1000.0 and dist_center <= 50.0:
+                    break
 
             if best_cached_data is not None:
+                best_cached_data["_is_clean_deduped"] = True
                 # Automatically persist <safe_sid>_master_v3.json on the server if missing or stale (< best site master)
                 if (
                     scan_id
@@ -1131,37 +1137,72 @@ class PublicUtilitiesGISMixin:
                 raw_features = best_cached_data["features"]
                 req_set = set(requested_layers)
                 ref_ground_h = safe_float(best_cached_data.get("ground_reference_h"), ch) or ch
-                filtered_features = self._filter_cached_utilities_to_radius(
-                    raw_features=raw_features,
-                    req_set=req_set,
-                    ce=ce,
-                    cn=cn,
-                    xmin=xmin,
-                    ymin=ymin,
-                    xmax=xmax,
-                    ymax=ymax,
-                    radius_m=radius_m,
-                    is_exact_radius=False,
-                    sample_ground_z=lambda _e, _n: ref_ground_h,
-                )
-                layer_counts = {k: 0 for k in UTILITY_LAYERS.keys()}
-                total_pipe_length_m = 0.0
-                total_structures = 0
-                for f_item in filtered_features:
-                    lyr = f_item.get("layer")
-                    if lyr in layer_counts:
-                        layer_counts[lyr] += 1
-                    if f_item.get("type") in ("pipe", "box_culvert"):
-                        total_pipe_length_m += float(f_item.get("length_m") or 0.0)
-                    elif f_item.get("type") in ("manhole", "catch_basin", "hydrant", "pole"):
-                        total_structures += 1
+                c_rad_best = float(best_cached_data.get("radius_m") or 1000.0)
+                c_ctr_best = best_cached_data.get("center") or {}
+                dist_best = math.hypot((safe_float(c_ctr_best.get("e"), ce) or ce) - ce, (safe_float(c_ctr_best.get("n"), cn) or cn) - cn)
+                is_all_layers = len(req_set) == len(UTILITY_LAYERS)
+
+                # Fast O(1) in-memory response cache for repeat radius queries on the same master document (< 0.1ms)
+                f_cache_key = (id(raw_features), round(ce, 1), round(cn, 1), round(radius_m, 1), tuple(sorted(req_set)))
+                mem_filtered = best_cached_data.get("_radius_resp_cache", {}).get(f_cache_key)
+                if mem_filtered is not None:
+                    res_copy = dict(mem_filtered)
+                    res_copy["scan_id"] = scan_id
+                    return res_copy
+
+                if is_all_layers and abs(c_rad_best - radius_m) <= 2.0 and dist_best <= 15.0:
+                    filtered_features = raw_features
+                    layer_counts = dict(best_cached_data.get("layer_counts") or {})
+                    total_pipe_length_m = float(best_cached_data.get("total_pipe_length_m") or 0.0)
+                    total_structures = int(best_cached_data.get("total_structures") or 0)
+                    if not layer_counts or len(layer_counts) < len(UTILITY_LAYERS):
+                        layer_counts = {k: 0 for k in UTILITY_LAYERS.keys()}
+                        total_pipe_length_m = 0.0
+                        total_structures = 0
+                        for f_item in filtered_features:
+                            lyr = f_item.get("layer")
+                            if lyr in layer_counts:
+                                layer_counts[lyr] += 1
+                            if f_item.get("type") in ("pipe", "box_culvert"):
+                                total_pipe_length_m += float(f_item.get("length_m") or 0.0)
+                            elif f_item.get("type") in ("manhole", "catch_basin", "hydrant", "pole"):
+                                total_structures += 1
+                else:
+                    filtered_features = self._filter_cached_utilities_to_radius(
+                        raw_features=raw_features,
+                        req_set=req_set,
+                        ce=ce,
+                        cn=cn,
+                        xmin=xmin,
+                        ymin=ymin,
+                        xmax=xmax,
+                        ymax=ymax,
+                        radius_m=radius_m,
+                        is_exact_radius=(abs(c_rad_best - radius_m) <= 2.0 and dist_best <= 15.0),
+                        sample_ground_z=lambda _e, _n: ref_ground_h,
+                        skip_dedup=bool(best_cached_data.get("_is_clean_deduped")),
+                    )
+                    layer_counts = {k: 0 for k in UTILITY_LAYERS.keys()}
+                    total_pipe_length_m = 0.0
+                    total_structures = 0
+                    for f_item in filtered_features:
+                        lyr = f_item.get("layer")
+                        if lyr in layer_counts:
+                            layer_counts[lyr] += 1
+                        if f_item.get("type") in ("pipe", "box_culvert"):
+                            total_pipe_length_m += float(f_item.get("length_m") or 0.0)
+                        elif f_item.get("type") in ("manhole", "catch_basin", "hydrant", "pole"):
+                            total_structures += 1
 
                 filtered_res = dict(best_cached_data)
+                filtered_res.pop("_radius_resp_cache", None)
+                filtered_res.pop("_is_clean_deduped", None)
                 filtered_res["scan_id"] = scan_id
                 filtered_res["center"] = {"e": round(ce, 3), "n": round(cn, 3), "h": round(ref_ground_h, 3)}
                 filtered_res["radius_m"] = radius_m
                 filtered_res["master_cached_radius_m"] = float(best_cached_data.get("radius_m") or max(radius_m, 1000.0))
                 filtered_res["master_radius_m"] = filtered_res["master_cached_radius_m"]
+                filtered_res["master_total_features"] = len(raw_features)
                 filtered_res["bbox"] = {"xmin": xmin, "ymin": ymin, "xmax": xmax, "ymax": ymax}
                 filtered_res["features"] = filtered_features
                 filtered_res["layer_counts"] = layer_counts
@@ -1180,6 +1221,10 @@ class PublicUtilitiesGISMixin:
                         "layers": list(TAIPEI_8UTILITY_UNITS.values()),
                     }
                 filtered_res["cached"] = True
+                resp_cache = best_cached_data.setdefault("_radius_resp_cache", {})
+                if len(resp_cache) > 24:
+                    resp_cache.clear()
+                resp_cache[f_cache_key] = filtered_res
                 return filtered_res
 
         # Cache miss or force_refresh=True: resolve full scan record and build ground elevation sampler.
@@ -1289,6 +1334,7 @@ class PublicUtilitiesGISMixin:
         )
 
         # Persist 1000m (1km) master cache on server automatically whenever features are found
+        master_payload: Optional[Dict[str, Any]] = None
         if master_features:
             full_layer_counts = {k: 0 for k in UTILITY_LAYERS.keys()}
             full_pipe_len = 0.0
@@ -1329,11 +1375,12 @@ class PublicUtilitiesGISMixin:
                 _save_utilities_json_cached(fetch_rad_file, master_payload)
             if scan_dir_cache_file and not is_custom_override_center:
                 _save_utilities_json_cached(scan_dir_cache_file, master_payload)
+            master_payload["_is_clean_deduped"] = True
 
         # Always filter and deduplicate to requested radius_m and requested_layers for the response
         req_set = set(requested_layers)
         response_features = self._filter_cached_utilities_to_radius(
-            raw_features=master_features,
+            raw_features=master_payload["features"] if master_payload else master_features,
             req_set=req_set,
             ce=ce,
             cn=cn,
@@ -1344,6 +1391,7 @@ class PublicUtilitiesGISMixin:
             radius_m=radius_m,
             is_exact_radius=abs(fetch_radius_m - radius_m) < 0.5,
             sample_ground_z=sample_ground_z,
+            skip_dedup=True,
         )
 
         layer_counts = {k: 0 for k in UTILITY_LAYERS.keys()}
@@ -1366,6 +1414,7 @@ class PublicUtilitiesGISMixin:
             "radius_m": radius_m,
             "master_cached_radius_m": fetch_radius_m,
             "master_radius_m": fetch_radius_m,
+            "master_total_features": len(master_features),
             "bbox": {"xmin": xmin, "ymin": ymin, "xmax": xmax, "ymax": ymax},
             "crs": "TWD97 / TM2 zone 121 + TWVD 2001 height - EPSG:3826+8904",
             "layers": UTILITY_LAYERS,
@@ -1378,6 +1427,12 @@ class PublicUtilitiesGISMixin:
             "query_timestamp": datetime.now(timezone.utc).isoformat(),
             "cached": False,
         }
+
+        if master_payload is not None and isinstance(master_payload.get("features"), list):
+            f_cache_key = (id(master_payload["features"]), round(ce, 1), round(cn, 1), round(radius_m, 1), tuple(sorted(req_set)))
+            cached_res_copy = dict(result)
+            cached_res_copy["cached"] = True
+            master_payload.setdefault("_radius_resp_cache", {})[f_cache_key] = cached_res_copy
 
         if response_features and cache_file != os.path.join(UTILITIES_CACHE_DIR, f"{cache_sid}_{int(fetch_radius_m)}m_v3.json"):
             _save_utilities_json_cached(cache_file, result)
@@ -1397,6 +1452,7 @@ class PublicUtilitiesGISMixin:
         radius_m: float,
         is_exact_radius: bool,
         sample_ground_z: Callable[[float, float], float],
+        skip_dedup: bool = False,
     ) -> List[Dict[str, Any]]:
         """Filters, strips schematic/planning artifacts, and deduplicates cached scan utilities to any requested radius_m."""
         out: List[Dict[str, Any]] = []
@@ -1405,6 +1461,7 @@ class PublicUtilitiesGISMixin:
         sxmin, symin, sxmax, symax = xmin - 15.0, ymin - 15.0, xmax + 15.0, ymax + 15.0
         seen_line_geoms: set = set()
         seen_point_geoms: set = set()
+        all_layers_requested = len(req_set) == len(UTILITY_LAYERS)
 
         def _ensure_links(feat_dict: Dict[str, Any]) -> Dict[str, Any]:
             if "gov_links" in feat_dict and isinstance(feat_dict["gov_links"], dict):
@@ -1412,33 +1469,77 @@ class PublicUtilitiesGISMixin:
             return _enrich_feature_gov_links(dict(feat_dict), ce, cn)
 
         def _append_dedup(feat_dict: Dict[str, Any]) -> None:
+            if skip_dedup and "gov_links" in feat_dict:
+                out.append(feat_dict)
+                return
             lyr_k = str(feat_dict.get("layer") or "")
             ft_k = str(feat_dict.get("type") or "")
-            if ft_k in ("pipe", "box_culvert"):
-                cs = feat_dict.get("coords")
-                if isinstance(cs, list) and len(cs) >= 2:
-                    p_a = (round(float(cs[0][0]), 1), round(float(cs[0][1]), 1))
-                    p_b = (round(float(cs[-1][0]), 1), round(float(cs[-1][1]), 1))
-                    lkey = (lyr_k, min(p_a, p_b), max(p_a, p_b), len(cs))
-                    if lkey in seen_line_geoms:
-                        return
-                    seen_line_geoms.add(lkey)
-            elif ft_k in ("manhole", "catch_basin", "hydrant", "pole"):
-                cd = feat_dict.get("coord")
-                if isinstance(cd, list) and len(cd) >= 2:
-                    pkey = (lyr_k, ft_k, round(float(cd[0]), 1), round(float(cd[1]), 1))
-                    if pkey in seen_point_geoms:
-                        return
-                    seen_point_geoms.add(pkey)
+            if not skip_dedup:
+                if ft_k in ("pipe", "box_culvert"):
+                    cs = feat_dict.get("coords")
+                    if isinstance(cs, list) and len(cs) >= 2:
+                        p_a = (round(float(cs[0][0]), 1), round(float(cs[0][1]), 1))
+                        p_b = (round(float(cs[-1][0]), 1), round(float(cs[-1][1]), 1))
+                        lkey = (lyr_k, (p_a if p_a <= p_b else p_b), (p_b if p_a <= p_b else p_a), len(cs))
+                        if lkey in seen_line_geoms:
+                            return
+                        seen_line_geoms.add(lkey)
+                elif ft_k in ("manhole", "catch_basin", "hydrant", "pole"):
+                    cd = feat_dict.get("coord")
+                    if isinstance(cd, list) and len(cd) >= 2:
+                        pkey = (lyr_k, ft_k, round(float(cd[0]), 1), round(float(cd[1]), 1))
+                        if pkey in seen_point_geoms:
+                            return
+                        seen_point_geoms.add(pkey)
             out.append(_ensure_links(feat_dict))
 
         for f_item in raw_features:
-            lyr = f_item.get("layer")
-            if lyr not in req_set:
+            if not all_layers_requested and f_item.get("layer") not in req_set:
                 continue
+
+            if not is_exact_radius:
+                # Perform fast numeric spatial rejection FIRST before any string allocations
+                coord = f_item.get("coord")
+                if coord is not None:
+                    if len(coord) < 2:
+                        continue
+                    ex, ny = float(coord[0]), float(coord[1])
+                    if not (pxmin <= ex <= pxmax and pymin <= ny <= pymax):
+                        continue
+                    if skip_dedup and "gov_links" in f_item:
+                        fid_fast = f_item.get("id") or ""
+                        if not fid_fast.startswith(("scan_", "road_", "ntpc_rw_culvert_", "ntpc_rw_pipe_5_", "ntpc_rw_pipe_8_", "ntpc_rw_mh_")):
+                            out.append(f_item)
+                            continue
+                else:
+                    coords = f_item.get("coords")
+                    if not coords or len(coords) < 2:
+                        continue
+                    fid_fast = f_item.get("id") or ""
+                    if not fid_fast.startswith(("road_", "osm_corr_", "osm_duct_corr_", "osm_waterway_", "osm_power_", "scan_", "ntpc_rw_culvert_", "ntpc_rw_pipe_5_", "ntpc_rw_pipe_8_", "ntpc_rw_mh_")):
+                        c0, c1 = coords[0], coords[-1]
+                        x0, y0 = float(c0[0]), float(c0[1])
+                        x1, y1 = float(c1[0]), float(c1[1])
+                        if not ((sxmin <= x0 <= sxmax and symin <= y0 <= symax) or (sxmin <= x1 <= sxmax and symin <= y1 <= symax)):
+                            if len(coords) == 2 and (
+                                (x0 < sxmin and x1 < sxmin)
+                                or (x0 > sxmax and x1 > sxmax)
+                                or (y0 < symin and y1 < symin)
+                                or (y0 > symax and y1 > symax)
+                            ):
+                                continue
+                            if len(coords) == 2:
+                                mx, my = 0.5 * (x0 + x1), 0.5 * (y0 + y1)
+                                if not (sxmin <= mx <= sxmax and symin <= my <= symax):
+                                    continue
+                        elif skip_dedup and "gov_links" in f_item and "規劃" not in (f_item.get("name") or ""):
+                            out.append(f_item)
+                            continue
+
             fid = str(f_item.get("id") or "")
             if fid.startswith(("scan_", "road_", "ntpc_rw_culvert_", "ntpc_rw_pipe_5_", "ntpc_rw_pipe_8_", "ntpc_rw_mh_")):
                 continue
+            lyr = f_item.get("layer")
             if lyr == "as_built" and f_item.get("origin_class") != "user_or_scan_to_bim":
                 continue
             arc_url = str(f_item.get("arcgis_layer_url") or f_item.get("api_url") or "")
@@ -1502,10 +1603,24 @@ class PublicUtilitiesGISMixin:
                     f_copy["length_m"] = round(seg_len, 2)
                     _append_dedup(f_copy)
                 else:
-                    pts_2d = [(float(pt[0]), float(pt[1])) for pt in coords if isinstance(pt, list) and len(pt) >= 2]
-                    clipped_check = _clip_polyline_to_bbox(pts_2d, sxmin, symin, sxmax, symax)
-                    if len(clipped_check) >= 2:
+                    c0, c1 = coords[0], coords[-1]
+                    x0, y0 = float(c0[0]), float(c0[1])
+                    x1, y1 = float(c1[0]), float(c1[1])
+                    # Fast O(1) endpoint/bbox check for standard 2-point utility pipe segments
+                    if (sxmin <= x0 <= sxmax and symin <= y0 <= symax) or (sxmin <= x1 <= sxmax and symin <= y1 <= symax):
                         _append_dedup(f_item)
+                    elif len(coords) == 2 and (
+                        (x0 < sxmin and x1 < sxmin)
+                        or (x0 > sxmax and x1 > sxmax)
+                        or (y0 < symin and y1 < symin)
+                        or (y0 > symax and y1 > symax)
+                    ):
+                        continue
+                    else:
+                        pts_2d = [(float(pt[0]), float(pt[1])) for pt in coords if isinstance(pt, list) and len(pt) >= 2]
+                        clipped_check = _clip_polyline_to_bbox(pts_2d, sxmin, symin, sxmax, symax)
+                        if len(clipped_check) >= 2:
+                            _append_dedup(f_item)
             else:
                 _append_dedup(f_item)
 
