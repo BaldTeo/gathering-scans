@@ -3007,6 +3007,14 @@
           const worldPerPixel = (2 * Math.tan(fovRad / 2) * dist) / h;
           const rad = Math.max(0.002, (obj.userData.pixelRadius || 1.35) * worldPerPixel * 0.55);
           obj.scale.set(rad, 1, rad);
+        } else if (obj.userData.isTreeCamBiasElement && obj.userData.baseAnchorPt) {
+          const bp = obj.userData.baseAnchorPt;
+          const dx = cam.position.x - bp.x;
+          const dz = cam.position.z - bp.z;
+          const len = Math.hypot(dx, dz);
+          if (len > 1e-3) {
+            obj.position.set(bp.x + (dx / len) * 0.14, bp.y, bp.z + (dz / len) * 0.14);
+          }
         }
       });
     });

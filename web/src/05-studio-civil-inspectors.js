@@ -2040,11 +2040,14 @@
         trunkMesh.position.copy(midPt).add(camBias);
         trunkMesh.quaternion.setFromUnitVectors(upVec, stemDir);
         trunkMesh.renderOrder = 995;
+        trunkMesh.userData.isTreeCamBiasElement = true;
+        trunkMesh.userData.baseAnchorPt = midPt.clone();
         grp.add(trunkMesh);
 
         // 1.3m Breast-Height (DBH) bright measurement collar ring aligned coaxially with the 3D stem
         const dbhFrac = Math.max(0.2, Math.min(0.9, 1.3 / Math.max(tPt.y - bPt.y, 1.4)));
-        const dbhPt = new THREE.Vector3().lerpVectors(bPt, tPt, dbhFrac).add(camBias);
+        const dbhBasePt = new THREE.Vector3().lerpVectors(bPt, tPt, dbhFrac);
+        const dbhPt = dbhBasePt.clone().add(camBias);
         const dbhRingGeo = new THREE.RingGeometry(rTrunk * 1.05, rTrunk * 1.65, 24);
         dbhRingGeo.rotateX(-Math.PI / 2);
         const dbhRingMat = new THREE.MeshBasicMaterial({
@@ -2059,6 +2062,8 @@
         dbhRing.position.copy(dbhPt);
         dbhRing.quaternion.setFromUnitVectors(upVec, stemDir);
         dbhRing.renderOrder = 999;
+        dbhRing.userData.isTreeCamBiasElement = true;
+        dbhRing.userData.baseAnchorPt = dbhBasePt;
         grp.add(dbhRing);
 
         // Translucent 3D Canopy Crown Sphere/Dome + Crisp Emerald Crown Equatorial Ring
