@@ -1419,7 +1419,7 @@
     }
 
     // 8. If current active Studio tool is no longer permitted after role change, reset cleanly
-    const advTools = new Set(["contours", "profile", "section", "categorize"]);
+    const advTools = new Set(["profile", "section", "categorize"]);
     const wfTools = new Set(["optimizer", "crs", "generate_scan", "crop", "crop_delete", "align_merge"]);
     if (!info.canRunWorkflows && STATE.multiAlign?.active && typeof exitMultiScanAlignMode === "function") {
       exitMultiScanAlignMode(true);

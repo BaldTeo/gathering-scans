@@ -205,7 +205,15 @@
       QA_STATE.isPickingUtilityPoint = false;
       QA_STATE.isPickingComparePoly = false;
       QA_STATE.isPickingStakeoutPoint = false;
+      if (window.STATE) {
+        window.STATE.isPickingStationAlignment = false;
+        window.STATE.isPickingGcpPoint = false;
+      }
       return;
+    }
+    if (window.STATE) {
+      if (active !== "stationing") window.STATE.isPickingStationAlignment = false;
+      if (active !== "gcp_qa") window.STATE.isPickingGcpPoint = false;
     }
     if (active !== "drainage" && typeof window.clearDrainageVisuals3D === "function") {
       window.clearDrainageVisuals3D();
@@ -4696,6 +4704,19 @@
       maxPt.z = Math.max(maxPt.z, posVec.z);
     });
 
+    if (res && pts.length > 0) {
+      if (typeof res.csv_export === "string") {
+        const hdr = res.csv_export.split("\n").filter((l) => l.startsWith("#") || l.startsWith("PtID,"));
+        const body = pts.map((p) => `${p.ptid},${Number(p.easting).toFixed(3)},${Number(p.northing).toFixed(3)},${Number(p.elevation).toFixed(3)},${p.code}`);
+        res.csv_export = hdr.concat(body).join("\n");
+      }
+      if (typeof res.txt_export === "string") {
+        const hdr = res.txt_export.split("\n").filter((l) => l.startsWith("#"));
+        const body = pts.map((p) => `${p.ptid} ${Number(p.easting).toFixed(3)} ${Number(p.northing).toFixed(3)} ${Number(p.elevation).toFixed(3)} ${p.code}`);
+        res.txt_export = hdr.concat(body).join("\n");
+      }
+    }
+
     if (window.studioThree.overlayGroup) {
       window.studioThree.overlayGroup.add(stakeout3DGroup);
     } else {
@@ -4827,7 +4848,7 @@
       }
       return true;
     }
-    if ((tool === "stationing" || (window.STATE && window.STATE.isPickingStationAlignment)) && typeof window.handleStationAlignment3DPick === "function") {
+    if (window.STATE && window.STATE.isPickingStationAlignment && typeof window.handleStationAlignment3DPick === "function") {
       return window.handleStationAlignment3DPick(pt, twd);
     }
     if (tool === "flatness" || QA_STATE.isPickingFlatnessPoint) {
@@ -4878,7 +4899,7 @@
       }
       return true;
     }
-    if (tool === "stakeout" || QA_STATE.isPickingStakeoutPoint) {
+    if (QA_STATE.isPickingStakeoutPoint) {
       const customRadio = document.querySelector('input[name="stkSourceMode"][value="custom"]');
       if (customRadio && !customRadio.checked) {
         customRadio.checked = true;

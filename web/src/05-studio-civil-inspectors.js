@@ -1219,7 +1219,7 @@
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;" class="gs-form-group">
           <div>
             <label>${tr("測量工程師", "Surveyor")}</label>
-            <input type="text" class="gs-input" id="cntEngineerName" value="${escapeHtml(STATE.currentUser?.name || "雲在天")}" />
+            <input type="text" class="gs-input" id="cntEngineerName" value="${escapeHtml(STATE.currentUser?.name || tr("雲在天", "Survey Engineer"))}" />
           </div>
           <div>
             <label>${tr("邊界遮罩", "Mask Boundary")}</label>

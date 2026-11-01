@@ -1064,16 +1064,67 @@ class ConstructionQAMixin:
 
         design_z_offset = safe_float(payload.get("design_z_offset"), 0.0) or 0.0
 
+        ground_ref_z = ch
+        if isinstance(dsm, dict) and dsm.get("dsm_raw") is not None:
+            try:
+                raw_arr = dsm["dsm_raw"]
+                hull_arr = dsm.get("hull_mask")
+                valid_vals = raw_arr[hull_arr > 0] if hull_arr is not None and np.any(hull_arr > 0) else raw_arr[np.isfinite(raw_arr)]
+                if valid_vals.size > 0:
+                    ground_ref_z = float(np.percentile(valid_vals, 25))
+            except Exception:
+                ground_ref_z = ch
+
         def _sample_z(ev: float, nv: float, fallback_z: float) -> float:
             if isinstance(dsm, dict) and hasattr(self, "_sample_dsm_elevation"):
                 try:
                     sampled = self._sample_dsm_elevation(dsm, ev, nv)
-                    zh = sampled[0] if isinstance(sampled, (tuple, list)) else sampled
-                    if zh is not None and math.isfinite(float(zh)):
-                        return float(zh) + design_z_offset
+                    zh = float(sampled[0]) if isinstance(sampled, (tuple, list)) else float(sampled)
+                    if math.isfinite(zh):
+                        if zh > ground_ref_z + 1.4:
+                            min_local_z = zh
+                            for r_probe in (2.0, 4.0, 6.0):
+                                for ang_deg in range(0, 360, 45):
+                                    ang_rad = math.radians(ang_deg)
+                                    s_nb = self._sample_dsm_elevation(dsm, ev + r_probe * math.cos(ang_rad), nv + r_probe * math.sin(ang_rad))
+                                    z_nb = float(s_nb[0]) if isinstance(s_nb, (tuple, list)) else float(s_nb)
+                                    if math.isfinite(z_nb) and z_nb < min_local_z:
+                                        min_local_z = z_nb
+                            if zh - min_local_z > 1.1:
+                                zh = min_local_z
+                        return zh + design_z_offset
                 except Exception:
                     pass
             return float(fallback_z) + design_z_offset
+
+        def _nudge_to_bare_ground(ev: float, nv: float) -> Tuple[float, float, float]:
+            if not isinstance(dsm, dict) or not hasattr(self, "_sample_dsm_elevation"):
+                return ev, nv, _sample_z(ev, nv, ch)
+            best_e, best_n = ev, nv
+            best_z = _sample_z(ev, nv, ch)
+            best_score = float("inf")
+            for r_step in (0.0, 1.5, 3.0, 4.5, 6.0, 7.5, 9.0):
+                angles = [0] if r_step == 0.0 else list(range(0, 360, 30))
+                for ang_deg in angles:
+                    ang_rad = math.radians(ang_deg)
+                    ce_p = ev + r_step * math.cos(ang_rad)
+                    cn_p = nv + r_step * math.sin(ang_rad)
+                    try:
+                        s_raw = self._sample_dsm_elevation(dsm, ce_p, cn_p)
+                        if not isinstance(s_raw, (tuple, list)) or len(s_raw) < 4 or not s_raw[3]:
+                            continue
+                        z_raw = float(s_raw[0])
+                        slope_mag = math.hypot(float(s_raw[1]), float(s_raw[2]))
+                        canopy_excess = max(0.0, z_raw - (ground_ref_z + 0.9))
+                        score = canopy_excess * 4.0 + slope_mag * 2.5 + r_step * 0.06
+                        if score < best_score:
+                            best_score = score
+                            best_e, best_n, best_z = ce_p, cn_p, z_raw + design_z_offset
+                        if canopy_excess <= 0.15 and slope_mag <= 0.22:
+                            return best_e, best_n, best_z
+                    except Exception:
+                        continue
+            return best_e, best_n, best_z
 
         raw_points = payload.get("points") or payload.get("stakeout_points") or []
         source_mode = str(payload.get("source_mode") or "custom").strip().lower()
@@ -1150,7 +1201,7 @@ class ConstructionQAMixin:
                         }
                     )
 
-        # Fallback points if empty — sampled directly on terrain DSM
+        # Fallback points if empty — sampled directly on bare-ground terrain DSM
         if len(cleaned_points) == 0:
             span_e = 6.0
             span_n = 6.0
@@ -1163,8 +1214,8 @@ class ConstructionQAMixin:
                 ("STK-03", mid_e + span_e, mid_n + span_n, "FOUNDATION_NE"),
                 ("STK-04", mid_e - span_e, mid_n + span_n, "FOUNDATION_NW"),
             ]
-            for sid, se, sn, scode in seed_defs:
-                sz = _sample_z(se, sn, ch)
+            for sid, se_raw, sn_raw, scode in seed_defs:
+                se, sn, sz = _nudge_to_bare_ground(se_raw, sn_raw)
                 cleaned_points.append(
                     {
                         "ptid": sid,

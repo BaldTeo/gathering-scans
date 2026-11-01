@@ -110,34 +110,112 @@
     `;
   }
 
+  function resetSurveyPickingStates() {
+    if (window.STATE) {
+      window.STATE.isPickingStationAlignment = false;
+      window.STATE.isPickingGcpPoint = false;
+      window.STATE.stakeoutPickActive = false;
+    }
+  }
+
   function bindSurveyContainerSubtabs(activeTab) {
     document.getElementById("subtabStakeout")?.addEventListener("click", () => {
-      if (activeTab !== "stakeout" && typeof window.openRtkStakeoutInspector === "function") {
-        window.openRtkStakeoutInspector();
+      if (activeTab !== "stakeout") {
+        resetSurveyPickingStates();
+        if (typeof window.openRtkStakeoutInspector === "function") window.openRtkStakeoutInspector();
       }
     });
     document.getElementById("subtabStationing")?.addEventListener("click", () => {
       if (activeTab !== "stationing") {
+        resetSurveyPickingStates();
         openEnhancedStationingAndAeaInspector();
       }
     });
     document.getElementById("subtabGcpQa")?.addEventListener("click", () => {
       if (activeTab !== "gcp_qa") {
+        resetSurveyPickingStates();
         openEnhancedGcpAccuracyQaInspector();
       }
     });
     document.getElementById("subtabContours")?.addEventListener("click", () => {
       if (activeTab !== "contours") {
+        resetSurveyPickingStates();
         if (typeof setActiveStudioTool === "function") setActiveStudioTool("contours");
         if (typeof window.openContoursInspector === "function") window.openContoursInspector();
       }
     });
   }
 
+  let _cachedGroundRefScanId = null;
+  let _cachedGroundRefY = 0;
+
+  function getScanGroundReferenceLocalY() {
+    const scanId = (window.STATE && window.STATE.activeScanId) || "";
+    if (_cachedGroundRefScanId === scanId && Number.isFinite(_cachedGroundRefY)) {
+      return _cachedGroundRefY;
+    }
+    if (typeof window.sampleStudioMeshElevationAtLocalXZ !== "function") return 0;
+    const r = Math.min(28, Math.max(8, (Number(window.studioThree?.boundingSphere?.radius) || 35) * 0.45));
+    const ys = [];
+    for (let ix = -2; ix <= 2; ix++) {
+      for (let iz = -2; iz <= 2; iz++) {
+        const hit = window.sampleStudioMeshElevationAtLocalXZ((ix * r) / 2, (iz * r) / 2, 0);
+        if (hit && hit.hit && Number.isFinite(hit.y)) ys.push(hit.y);
+      }
+    }
+    if (ys.length >= 3) {
+      ys.sort((a, b) => a - b);
+      _cachedGroundRefY = ys[Math.floor(ys.length * 0.25)];
+      _cachedGroundRefScanId = scanId;
+      return _cachedGroundRefY;
+    }
+    return 0;
+  }
+
   /**
-   * Exact inverse of localToTwd97 with optional 3D mesh surface draping.
+   * Samples the 3D mesh elevation at (lx, lz) while rejecting overhanging tree canopy spikes.
+   * When the top-down ray hits a tree crown (> refGroundY + maxCanopyJump), probes around the point
+   * for bare ground or clamps to the expected ground elevation.
+   */
+  function sampleBareGroundMeshY(lx, lz, expectedGroundY = null, maxCanopyJump = 1.15) {
+    const baseRefY = getScanGroundReferenceLocalY();
+    const refY =
+      Number.isFinite(expectedGroundY) && Math.abs(expectedGroundY - baseRefY) < 6.0
+        ? expectedGroundY
+        : baseRefY;
+    if (typeof window.sampleStudioMeshElevationAtLocalXZ !== "function") {
+      return { y: refY, hit: false };
+    }
+    const sHit = window.sampleStudioMeshElevationAtLocalXZ(lx, lz, refY);
+    if (!sHit || !sHit.hit || !Number.isFinite(sHit.y)) {
+      return { y: refY, hit: false };
+    }
+    if (sHit.y <= refY + maxCanopyJump) {
+      return { y: sHit.y, hit: true };
+    }
+    // Ray hit a tall canopy/obstacle above ground — search nearby bare ground within 1.5m..4.5m
+    let minNearY = sHit.y;
+    const probeRadii = [1.5, 3.0, 4.5];
+    for (let ir = 0; ir < probeRadii.length; ir++) {
+      const pr = probeRadii[ir];
+      for (let ia = 0; ia < 8; ia++) {
+        const ang = (ia * Math.PI) / 4;
+        const nh = window.sampleStudioMeshElevationAtLocalXZ(lx + pr * Math.cos(ang), lz + pr * Math.sin(ang), refY);
+        if (nh && nh.hit && Number.isFinite(nh.y) && nh.y < minNearY) {
+          minNearY = nh.y;
+        }
+      }
+      if (minNearY <= refY + maxCanopyJump) {
+        return { y: minNearY, hit: true };
+      }
+    }
+    return { y: Math.min(minNearY, refY + 0.35), hit: true };
+  }
+
+  /**
+   * Exact inverse of localToTwd97 with canopy-safe 3D mesh surface draping.
    * Resolves TWD97 (Easting, Northing, TWVD2001 Elevation) into Three.js local coordinates (x, y, z)
-   * and drapes onto the loaded 3D scan mesh so markers never float or sink out of view.
+   * and drapes onto the bare-ground 3D scan mesh so markers never float on tree crowns or sink out of view.
    */
   function surveyTwd97ToLocalVec3(e, n, h, drapeToMesh = true, explicitLocal = null) {
     const THREE = window.THREE;
@@ -195,9 +273,9 @@
 
     let hitMesh = false;
     if (typeof window.sampleStudioMeshElevationAtLocalXZ === "function") {
-      let sHit = window.sampleStudioMeshElevationAtLocalXZ(lx, lz, ly);
+      let sHit = sampleBareGroundMeshY(lx, lz, ly, 1.2);
       if ((!sHit || !sHit.hit) && hasExplicit && Math.hypot(lx - expX, lz - expZ) > 0.25) {
-        const altHit = window.sampleStudioMeshElevationAtLocalXZ(expX, expZ, Number.isFinite(expY) ? expY : ly);
+        const altHit = sampleBareGroundMeshY(expX, expZ, Number.isFinite(expY) ? expY : ly, 1.2);
         if (altHit && altHit.hit) {
           lx = expX;
           lz = expZ;
@@ -236,6 +314,7 @@
   }
 
   window.surveyTwd97ToLocalVec3 = surveyTwd97ToLocalVec3;
+  window.sampleBareGroundMeshY = sampleBareGroundMeshY;
   window.focusStudioCameraOnLocalPoint = focusStudioCameraOnLocalPoint;
   window.renderSurveyToolExplanationBannerHtml = renderSurveyToolExplanationBannerHtml;
   window.renderSurveyContainerSubtabsHtml = renderSurveyContainerSubtabsHtml;
@@ -717,6 +796,7 @@
    * Handles 3D picking when user clicks in Three.js Studio mode with GCP tool active.
    */
   function handleEnhancedGcpQa3DPick(pt, twd) {
+    if (window.STATE && window.STATE.activeTool === "gcp_qa" && !window.STATE.isPickingGcpPoint) return;
     const t = typeof tr === "function" ? tr : (zh, en) => zh;
     const txtEl = document.getElementById("txtGcpCsvInput");
     if (!txtEl) return;
@@ -886,7 +966,7 @@
             EPSG:3826 + TWVD2001 | N=${resList.length}
           </span>
           <span class="gcp-grade-badge ${gradeClass}">
-            Grade ${esc(grade)} (${rmse3dCm} cm)
+            ${t(`${esc(grade)} 級`, `Grade ${esc(grade)}`)} (${rmse3dCm} cm)
           </span>
         </div>
 
@@ -952,7 +1032,7 @@
 
         <div class="gs-form-group" style="margin-bottom:2px;">
           <label style="display:flex;justify-content:space-between;align-items:center;">
-            <span>${t("檢核點座標表 (或點擊 3D 模型新增)", "Check Points CSV (or click 3D model)")}</span>
+            <span>${t("檢核點座標表 (開啟「加點」可點選 3D 模型)", "Check Points CSV (click Pick to sample 3D model)")}</span>
           </label>
           <textarea class="gs-input" id="txtGcpCsvInput" rows="3" placeholder="Point, E, N, H, [TBM]" style="font-family:var(--font-mono);font-size:10.5px;padding:5px 7px;">${esc(csvDefault)}</textarea>
         </div>
@@ -960,6 +1040,9 @@
         <div style="display:flex;gap:6px;">
           <button type="button" class="btn-xs primary" id="btnComputeGcpQa" style="flex:1;justify-content:center;" title="${t("計算 3D 空間精度與殘差", "Compute 3D Spatial Accuracy & Residuals")}">
             ${SVG_ICONS.CALC} ${t("檢核", "Check")}
+          </button>
+          <button type="button" class="btn-xs ${window.STATE && window.STATE.isPickingGcpPoint ? "primary" : ""}" id="btnPickGcpPoint" title="${t("於 3D 模型點選新增檢核點", "Pick a Check Point on the 3D scan")}">
+            ${SVG_ICONS.TARGET} ${t("加點", "Pick")}
           </button>
           <button type="button" class="btn-xs" id="btnLoadSampleGcpPoints" title="${t("自動在工區分佈 6 處標準檢核點", "Auto-Generate 6 Site Check Points")}">
             ${SVG_ICONS.SAMPLE} ${t("佈點", "Sample")}
@@ -1038,12 +1121,28 @@
     });
 
     document.getElementById("btnComputeGcpQa")?.addEventListener("click", () => {
+      if (window.STATE) window.STATE.isPickingGcpPoint = false;
       const txt = document.getElementById("txtGcpCsvInput")?.value || "";
       const parsed = parseEnhancedGcpCsvInput(txt);
       runEnhancedGcpAccuracyQaEvaluation(parsed);
     });
 
+    document.getElementById("btnPickGcpPoint")?.addEventListener("click", () => {
+      if (!window.STATE) return;
+      window.STATE.isPickingGcpPoint = !window.STATE.isPickingGcpPoint;
+      const btn = document.getElementById("btnPickGcpPoint");
+      if (btn) btn.classList.toggle("primary", Boolean(window.STATE.isPickingGcpPoint));
+      if (typeof showToast === "function") {
+        showToast(
+          window.STATE.isPickingGcpPoint
+            ? t("請在 3D 模型表面點擊以新增檢核點", "Click on the 3D surface to add a Check Point")
+            : t("已關閉 3D 檢核點點選模式", "3D Check Point picking disabled")
+        );
+      }
+    });
+
     document.getElementById("btnLoadSampleGcpPoints")?.addEventListener("click", () => {
+      if (window.STATE) window.STATE.isPickingGcpPoint = false;
       runEnhancedGcpAccuracyQaEvaluation([]);
     });
 
@@ -1320,7 +1419,7 @@
     const clVecs = [];
     const swathHalf = Math.max(2.0, (Number(stationResult.swath_width_m) || 16.0) * 0.5);
 
-    stations.forEach((st, idx) => {
+    stations.forEach((st) => {
       const explicitLoc = (st.local_x !== undefined && st.local_z !== undefined)
         ? [st.local_x, st.local_y || 0, st.local_z]
         : null;
@@ -1330,7 +1429,26 @@
       clVecs.push(new THREE.Vector3(clVec.x, clVec.y + 0.16, clVec.z));
     });
 
-    // 1. Render Draped 3D Centerline Polyline with dense intermediate terrain sampling
+    // Establish corridor bare-ground local Y reference so overhanging roadside trees never cause vertical spikes
+    const sortedClYs = stations
+      .map((s) => s._resolvedLocalVec?.y)
+      .filter((v) => Number.isFinite(v))
+      .sort((a, b) => a - b);
+    const corridorGroundRefY = sortedClYs.length > 0
+      ? sortedClYs[Math.floor(sortedClYs.length * 0.3)]
+      : getScanGroundReferenceLocalY();
+
+    stations.forEach((st, idx) => {
+      const v = st._resolvedLocalVec;
+      if (v && v.y > corridorGroundRefY + 0.85) {
+        const diffY = v.y - corridorGroundRefY;
+        v.y = corridorGroundRefY;
+        if (Number.isFinite(v.surfaceH)) v.surfaceH = Number((v.surfaceH - diffY).toFixed(3));
+        if (clVecs[idx]) clVecs[idx].y = v.y + 0.16;
+      }
+    });
+
+    // 1. Render Draped 3D Centerline Polyline with canopy-safe intermediate terrain sampling
     if (clVecs.length >= 2) {
       const denseClPts = [];
       for (let i = 0; i < clVecs.length - 1; i++) {
@@ -1342,11 +1460,9 @@
           const tFrac = s / steps;
           const mx = a.x + (b.x - a.x) * tFrac;
           const mz = a.z + (b.z - a.z) * tFrac;
-          let my = a.y + (b.y - a.y) * tFrac;
-          if (typeof window.sampleStudioMeshElevationAtLocalXZ === "function") {
-            const hit = window.sampleStudioMeshElevationAtLocalXZ(mx, mz, my - 0.16);
-            if (hit && hit.hit) my = hit.y + 0.16;
-          }
+          const chordGroundY = (a.y - 0.16) + ((b.y - 0.16) - (a.y - 0.16)) * tFrac;
+          const gHit = sampleBareGroundMeshY(mx, mz, chordGroundY, 0.75);
+          const my = (gHit && gHit.hit ? Math.min(gHit.y, chordGroundY + 0.65) : chordGroundY) + 0.16;
           denseClPts.push(new THREE.Vector3(mx, my, mz));
         }
       }
@@ -1385,7 +1501,7 @@
         nz /= nLen;
       }
 
-      // Draw perpendicular 3D ground cross-section swath line draped on mesh
+      // Draw perpendicular 3D ground cross-section swath line draped on bare-ground mesh (canopy-filtered)
       const groundSwathPts = [];
       const templateSwathPts = [];
       const profileArr = Array.isArray(st.cross_profile) && st.cross_profile.length >= 2
@@ -1396,13 +1512,13 @@
         const u = Number(cp.u) || 0;
         const sx = clVec.x + u * nx;
         const sz = clVec.z + u * nz;
-        const dzGround = (Number(cp.z_ground) || st.cl_ground_z) - (Number(st.cl_ground_z) || 0);
-        const dzTmpl = (Number(cp.z_template) || st.cl_design_z) - (Number(st.cl_ground_z) || 0);
-        let syGround = clVec.y + dzGround;
-        if (typeof window.sampleStudioMeshElevationAtLocalXZ === "function") {
-          const hit = window.sampleStudioMeshElevationAtLocalXZ(sx, sz, syGround);
-          if (hit && hit.hit) syGround = hit.y;
-        }
+        const rawDzGround = (Number(cp.z_ground) || st.cl_ground_z) - (Number(st.cl_ground_z) || 0);
+        const dzGround = Math.max(-2.5, Math.min(0.85, rawDzGround));
+        const rawDzTmpl = (Number(cp.z_template) || st.cl_design_z) - (Number(st.cl_ground_z) || 0);
+        const dzTmpl = Math.max(-3.0, Math.min(1.2, rawDzTmpl));
+        const expectedSwathY = clVec.y + dzGround;
+        const gHit = sampleBareGroundMeshY(sx, sz, expectedSwathY, 0.75);
+        const syGround = gHit && gHit.hit ? Math.min(gHit.y, clVec.y + 0.75) : expectedSwathY;
         const syTmpl = clVec.y + dzTmpl;
         groundSwathPts.push(new THREE.Vector3(sx, syGround + 0.12, sz));
         templateSwathPts.push(new THREE.Vector3(sx, syTmpl + 0.14, sz));
@@ -1555,6 +1671,7 @@
     const totalFill = stationResult.total_fill_volume_m3 || 0.0;
     const netVol = stationResult.net_volume_m3 || 0.0;
     const hasCustomAlign = Boolean(window.STATE && Array.isArray(window.STATE.stationAlignmentPoints) && window.STATE.stationAlignmentPoints.length >= 2);
+    const curWidthM = Number(stationResult.width_m || stationResult.road_width_m || 7.0);
 
     renderStationing3DOverlay(stationResult, 0);
 
@@ -1624,7 +1741,7 @@
           <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;">
             <div>
               <label style="font-size:10px;color:var(--ui-text-secondary);display:block;margin-bottom:2px;">${t("路寬 / 溝底 (m)", "Width (m)")}</label>
-              <input type="number" id="txtStationWidth" class="gs-input" value="7.0" step="0.5" style="width:100%;height:26px;font-size:11px;padding:3px 6px;" />
+              <input type="number" id="txtStationWidth" class="gs-input" value="${curWidthM.toFixed(1)}" step="0.5" style="width:100%;height:26px;font-size:11px;padding:3px 6px;" />
             </div>
             <div>
               <label style="font-size:10px;color:var(--ui-text-secondary);display:block;margin-bottom:2px;">${t("掃描走廊 (m)", "Swath (m)")}</label>
@@ -1636,7 +1753,7 @@
             <button type="button" class="btn-xs primary" id="btnRecomputeStationing" style="flex:1;justify-content:center;" title="${t("重新計算樁號斷面與 3D 走廊", "Recompute Stationing & 3D Corridor")}">
               ${SVG_ICONS.ROAD} ${t("樁號", "Compute")}
             </button>
-            <button type="button" class="btn-xs" id="btnPickAlignment" style="flex:1;justify-content:center;" title="${t("在 3D 視圖點選中心線起終點", "Pick Centerline Points in 3D")}">
+            <button type="button" class="btn-xs ${window.STATE && window.STATE.isPickingStationAlignment ? "primary" : ""}" id="btnPickAlignment" style="flex:1;justify-content:center;" title="${t("在 3D 視圖點選中心線起終點", "Pick Centerline Points in 3D")}">
               ${SVG_ICONS.TARGET} ${t("選線", "Pick Line")}
             </button>
             ${hasCustomAlign ? `
@@ -1738,6 +1855,7 @@
             template_type: tmplVal,
             road_width: widthVal,
             bottom_width: widthVal,
+            bed_width: widthVal,
             alignment: (window.STATE && Array.isArray(window.STATE.stationAlignmentPoints) && window.STATE.stationAlignmentPoints.length >= 2) ? window.STATE.stationAlignmentPoints : null,
           });
           if (window.STATE) window.STATE.isPickingStationAlignment = false;
@@ -1749,10 +1867,16 @@
     });
 
     document.getElementById("btnPickAlignment")?.addEventListener("click", () => {
-      if (window.STATE) {
-        window.STATE.isPickingStationAlignment = true;
-        window.STATE.stationAlignmentPoints = [];
+      if (!window.STATE) return;
+      if (window.STATE.isPickingStationAlignment) {
+        window.STATE.isPickingStationAlignment = false;
+        const pickBtn = document.getElementById("btnPickAlignment");
+        if (pickBtn) pickBtn.classList.remove("primary");
+        renderStationing3DOverlay(stationResult, Number(document.getElementById("selActiveStation")?.value) || 0);
+        return;
       }
+      window.STATE.isPickingStationAlignment = true;
+      window.STATE.stationAlignmentPoints = [];
       clearStationingVisuals3D();
       const pickBtn = document.getElementById("btnPickAlignment");
       if (pickBtn) pickBtn.classList.add("primary");

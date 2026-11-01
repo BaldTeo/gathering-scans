@@ -2845,16 +2845,77 @@ class ContoursAndCadMixin:
                 if not pts or math.hypot(parsed_pt[0] - pts[-1][0], parsed_pt[1] - pts[-1][1]) > 0.05:
                     pts.append(parsed_pt)
 
-        # Default alignment across scan domain if none provided
+        # Build canopy-suppressed ground DSM for real scans so overhanging trees do not spike road cross-sections
+        raw_grid = dsm["dsm_raw"]
+        cnt_grid = dsm.get("dsm_contour", raw_grid)
+        is_real_scan = bool(raw_grid.shape == cnt_grid.shape and float(np.max(np.abs(raw_grid - cnt_grid))) > 1e-3)
+        dsm_ground = dsm
+        if is_real_scan:
+            try:
+                from scipy.ndimage import minimum_filter, maximum_filter
+                win_px = max(3, min(35, int(round(7.0 / max(0.25, float(dsm["res"])))) | 1))
+                eroded = minimum_filter(raw_grid, size=win_px, mode="nearest")
+                opened = gaussian_filter(maximum_filter(eroded, size=win_px, mode="nearest"), sigma=1.2).astype(np.float32)
+                canopy_mask = (raw_grid - opened) > 1.10
+                bare_grid = np.where(canopy_mask, opened, 0.65 * raw_grid + 0.35 * opened).astype(np.float32)
+                dsm_ground = dict(dsm)
+                dsm_ground["dsm_raw"] = bare_grid
+            except Exception:
+                dsm_ground = dsm
+
+        # Default alignment across scan domain if none provided — select cleanest bare-ground corridor
         if len(pts) < 2:
             span_e = e_max - e_min
             span_n = n_max - n_min
             mid_e = 0.5 * (e_min + e_max)
             mid_n = 0.5 * (n_min + n_max)
-            p0 = (mid_e - 0.35 * span_e, mid_n - 0.28 * span_n, None)
-            p_mid = (mid_e - 0.05 * span_e, mid_n + 0.04 * span_n, None)
-            p1 = (mid_e + 0.35 * span_e, mid_n + 0.28 * span_n, None)
-            pts = [p0, p_mid, p1]
+            cand_corridors = [
+                [
+                    (mid_e - 0.35 * span_e, mid_n - 0.28 * span_n, None),
+                    (mid_e - 0.05 * span_e, mid_n + 0.04 * span_n, None),
+                    (mid_e + 0.35 * span_e, mid_n + 0.28 * span_n, None),
+                ],
+                [
+                    (mid_e - 0.22 * span_e, mid_n - 0.22 * span_n, None),
+                    (mid_e + 0.02 * span_e, mid_n - 0.02 * span_n, None),
+                    (mid_e + 0.25 * span_e, mid_n + 0.18 * span_n, None),
+                ],
+                [
+                    (mid_e - 0.24 * span_e, mid_n + 0.18 * span_n, None),
+                    (mid_e, mid_n, None),
+                    (mid_e + 0.24 * span_e, mid_n - 0.18 * span_n, None),
+                ],
+                [
+                    (mid_e - 0.26 * span_e, mid_n, None),
+                    (mid_e, mid_n, None),
+                    (mid_e + 0.26 * span_e, mid_n, None),
+                ],
+            ]
+            best_pts = cand_corridors[0]
+            if is_real_scan:
+                best_score = float("inf")
+                for c_pts in cand_corridors:
+                    zs_raw = []
+                    for k in range(9):
+                        t_k = k / 8.0
+                        if t_k <= 0.5:
+                            u_k = t_k * 2.0
+                            ek = c_pts[0][0] + u_k * (c_pts[1][0] - c_pts[0][0])
+                            nk = c_pts[0][1] + u_k * (c_pts[1][1] - c_pts[0][1])
+                        else:
+                            u_k = (t_k - 0.5) * 2.0
+                            ek = c_pts[1][0] + u_k * (c_pts[2][0] - c_pts[1][0])
+                            nk = c_pts[1][1] + u_k * (c_pts[2][1] - c_pts[1][1])
+                        zr, _, _, _ = self._sample_dsm_elevation(dsm, ek, nk)
+                        zb, _, _, _ = self._sample_dsm_elevation(dsm_ground, ek, nk)
+                        zs_raw.append((zr, zb))
+                    canopy_pen = sum(max(0.0, zr - zb) for zr, zb in zs_raw)
+                    z_std = float(np.std([zb for _, zb in zs_raw]))
+                    score = canopy_pen * 3.0 + z_std
+                    if score < best_score:
+                        best_score = score
+                        best_pts = c_pts
+            pts = best_pts
 
         # 2. Cumulative alignment chainage
         cum_s = [0.0]
@@ -2887,8 +2948,8 @@ class ContoursAndCadMixin:
         custom_design_z = safe_float(payload.get("design_elevation"))
 
         # Reference ground elevations at alignment start and end
-        z_start_grd, _, _, _ = self._sample_dsm_elevation(dsm, pts[0][0], pts[0][1])
-        z_end_grd, _, _, _ = self._sample_dsm_elevation(dsm, pts[-1][0], pts[-1][1])
+        z_start_grd, _, _, _ = self._sample_dsm_elevation(dsm_ground, pts[0][0], pts[0][1])
+        z_end_grd, _, _, _ = self._sample_dsm_elevation(dsm_ground, pts[-1][0], pts[-1][1])
         z_start_grd += v_shift
         z_end_grd += v_shift
 
@@ -2934,7 +2995,7 @@ class ContoursAndCadMixin:
             n_n = t_e
 
             # Centerline ground elevation
-            z_cl_grd, _, _, _ = self._sample_dsm_elevation(dsm, e_cl, n_cl)
+            z_cl_grd, _, _, _ = self._sample_dsm_elevation(dsm_ground, e_cl, n_cl)
             z_cl_grd += v_shift
 
             # Centerline design elevation
@@ -2951,7 +3012,7 @@ class ContoursAndCadMixin:
             for u in u_offsets:
                 e_u = e_cl + u * n_e
                 n_u = n_cl + u * n_n
-                z_g, _, _, is_in_hull = self._sample_dsm_elevation(dsm, e_u, n_u)
+                z_g, _, _, is_in_hull = self._sample_dsm_elevation(dsm_ground, e_u, n_u)
                 z_g += v_shift
 
                 # Template profile
@@ -3098,6 +3159,8 @@ class ContoursAndCadMixin:
             "interval_m": interval_m,
             "swath_width_m": swath_width_m,
             "template_type": template_type,
+            "width_m": round(road_width if template_type == "roadway" else (bottom_width if template_type == "trench" else bed_width), 2),
+            "road_width_m": round(road_width, 2),
             "total_cut_volume_m3": round(total_cut_vol, 2),
             "total_fill_volume_m3": round(total_fill_vol, 2),
             "net_volume_m3": round(net_vol, 2),
