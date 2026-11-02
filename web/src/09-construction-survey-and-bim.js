@@ -147,14 +147,21 @@
   }
 
   let _cachedGroundRefScanId = null;
+  let _cachedGroundRefHasIdx = false;
   let _cachedGroundRefY = 0;
 
   function getScanGroundReferenceLocalY() {
     const scanId = (window.STATE && window.STATE.activeScanId) || "";
-    if (_cachedGroundRefScanId === scanId && Number.isFinite(_cachedGroundRefY)) {
+    const hasFastIdx = Boolean(window.studioThree && window.studioThree._laserSpatialIndex);
+    if (_cachedGroundRefScanId === scanId && _cachedGroundRefHasIdx === hasFastIdx && Number.isFinite(_cachedGroundRefY)) {
       return _cachedGroundRefY;
     }
-    if (typeof window.sampleStudioMeshElevationAtLocalXZ !== "function") return 0;
+    if (!hasFastIdx || typeof window.sampleStudioMeshElevationAtLocalXZ !== "function") {
+      _cachedGroundRefScanId = scanId;
+      _cachedGroundRefHasIdx = false;
+      _cachedGroundRefY = 0;
+      return 0;
+    }
     const r = Math.min(28, Math.max(8, (Number(window.studioThree?.boundingSphere?.radius) || 35) * 0.45));
     const ys = [];
     for (let ix = -2; ix <= 2; ix++) {
@@ -163,27 +170,29 @@
         if (hit && hit.hit && Number.isFinite(hit.y)) ys.push(hit.y);
       }
     }
+    _cachedGroundRefScanId = scanId;
+    _cachedGroundRefHasIdx = hasFastIdx;
     if (ys.length >= 3) {
       ys.sort((a, b) => a - b);
       _cachedGroundRefY = ys[Math.floor(ys.length * 0.25)];
-      _cachedGroundRefScanId = scanId;
       return _cachedGroundRefY;
     }
+    _cachedGroundRefY = 0;
     return 0;
   }
 
   /**
    * Samples the 3D mesh elevation at (lx, lz) while rejecting overhanging tree canopy spikes.
-   * When the top-down ray hits a tree crown (> refGroundY + maxCanopyJump), probes around the point
-   * for bare ground or clamps to the expected ground elevation.
+   * Uses O(1) spatial grid when available; avoids unindexed brute-force multi-ray loops on large scans.
    */
   function sampleBareGroundMeshY(lx, lz, expectedGroundY = null, maxCanopyJump = 1.15) {
     const baseRefY = getScanGroundReferenceLocalY();
     const refY =
-      Number.isFinite(expectedGroundY) && Math.abs(expectedGroundY - baseRefY) < 6.0
+      Number.isFinite(expectedGroundY) && Math.abs(expectedGroundY - baseRefY) < 12.0
         ? expectedGroundY
         : baseRefY;
-    if (typeof window.sampleStudioMeshElevationAtLocalXZ !== "function") {
+    const hasFastIdx = Boolean(window.studioThree && window.studioThree._laserSpatialIndex);
+    if (!hasFastIdx || typeof window.sampleStudioMeshElevationAtLocalXZ !== "function") {
       return { y: refY, hit: false };
     }
     const sHit = window.sampleStudioMeshElevationAtLocalXZ(lx, lz, refY);
@@ -193,7 +202,7 @@
     if (sHit.y <= refY + maxCanopyJump) {
       return { y: sHit.y, hit: true };
     }
-    // Ray hit a tall canopy/obstacle above ground — search nearby bare ground within 1.5m..4.5m
+    // Ray hit a tall canopy/obstacle above ground — search nearby bare ground within 1.5m..4.5m in O(1) grid
     let minNearY = sHit.y;
     const probeRadii = [1.5, 3.0, 4.5];
     for (let ir = 0; ir < probeRadii.length; ir++) {
@@ -272,7 +281,8 @@
     }
 
     let hitMesh = false;
-    if (typeof window.sampleStudioMeshElevationAtLocalXZ === "function") {
+    const hasFastIdx = Boolean(window.studioThree && window.studioThree._laserSpatialIndex);
+    if (hasFastIdx && typeof window.sampleStudioMeshElevationAtLocalXZ === "function") {
       let sHit = sampleBareGroundMeshY(lx, lz, ly, 1.2);
       if ((!sHit || !sHit.hit) && hasExplicit && Math.hypot(lx - expX, lz - expZ) > 0.25) {
         const altHit = sampleBareGroundMeshY(expX, expZ, Number.isFinite(expY) ? expY : ly, 1.2);
@@ -1420,6 +1430,10 @@
     const swathHalf = Math.max(2.0, (Number(stationResult.swath_width_m) || 16.0) * 0.5);
 
     stations.forEach((st) => {
+      if (st._resolvedLocalVec && Number.isFinite(st._resolvedLocalVec.x)) {
+        clVecs.push(new THREE.Vector3(st._resolvedLocalVec.x, st._resolvedLocalVec.y + 0.16, st._resolvedLocalVec.z));
+        return;
+      }
       const explicitLoc = (st.local_x !== undefined && st.local_z !== undefined)
         ? [st.local_x, st.local_y || 0, st.local_z]
         : null;
@@ -1448,25 +1462,30 @@
       }
     });
 
-    // 1. Render Draped 3D Centerline Polyline with canopy-safe intermediate terrain sampling
+    // 1. Render Draped 3D Centerline Polyline with cached canopy-safe intermediate terrain sampling
     if (clVecs.length >= 2) {
-      const denseClPts = [];
-      for (let i = 0; i < clVecs.length - 1; i++) {
-        const a = clVecs[i];
-        const b = clVecs[i + 1];
-        const segLen = a.distanceTo(b);
-        const steps = Math.max(1, Math.min(12, Math.ceil(segLen / 1.5)));
-        for (let s = 0; s < steps; s++) {
-          const tFrac = s / steps;
-          const mx = a.x + (b.x - a.x) * tFrac;
-          const mz = a.z + (b.z - a.z) * tFrac;
-          const chordGroundY = (a.y - 0.16) + ((b.y - 0.16) - (a.y - 0.16)) * tFrac;
-          const gHit = sampleBareGroundMeshY(mx, mz, chordGroundY, 0.75);
-          const my = (gHit && gHit.hit ? Math.min(gHit.y, chordGroundY + 0.65) : chordGroundY) + 0.16;
-          denseClPts.push(new THREE.Vector3(mx, my, mz));
+      let denseClPts = Array.isArray(stationResult._cachedDenseClPts) ? stationResult._cachedDenseClPts : null;
+      if (!denseClPts || !denseClPts.length) {
+        denseClPts = [];
+        const hasFastIdx = Boolean(window.studioThree && window.studioThree._laserSpatialIndex);
+        for (let i = 0; i < clVecs.length - 1; i++) {
+          const a = clVecs[i];
+          const b = clVecs[i + 1];
+          const segLen = a.distanceTo(b);
+          const steps = Math.max(1, Math.min(8, Math.ceil(segLen / 2.0)));
+          for (let s = 0; s < steps; s++) {
+            const tFrac = s / steps;
+            const mx = a.x + (b.x - a.x) * tFrac;
+            const mz = a.z + (b.z - a.z) * tFrac;
+            const chordGroundY = (a.y - 0.16) + ((b.y - 0.16) - (a.y - 0.16)) * tFrac;
+            const gHit = hasFastIdx ? sampleBareGroundMeshY(mx, mz, chordGroundY, 0.75) : null;
+            const my = (gHit && gHit.hit ? Math.min(gHit.y, chordGroundY + 0.65) : chordGroundY) + 0.16;
+            denseClPts.push(new THREE.Vector3(mx, my, mz));
+          }
         }
+        denseClPts.push(clVecs[clVecs.length - 1].clone());
+        stationResult._cachedDenseClPts = denseClPts;
       }
-      denseClPts.push(clVecs[clVecs.length - 1].clone());
 
       const clGeom = new THREE.BufferGeometry().setFromPoints(denseClPts);
       const clLine = new THREE.Line(
@@ -1501,28 +1520,32 @@
         nz /= nLen;
       }
 
-      // Draw perpendicular 3D ground cross-section swath line draped on bare-ground mesh (canopy-filtered)
-      const groundSwathPts = [];
-      const templateSwathPts = [];
-      const profileArr = Array.isArray(st.cross_profile) && st.cross_profile.length >= 2
-        ? st.cross_profile
-        : [{ u: -swathHalf, z_ground: st.cl_ground_z, z_template: st.cl_design_z }, { u: swathHalf, z_ground: st.cl_ground_z, z_template: st.cl_design_z }];
+      // Draw perpendicular 3D ground cross-section swath line draped on bare-ground DSM profile
+      let groundSwathPts = st._cachedGroundSwathPts;
+      let templateSwathPts = st._cachedTemplateSwathPts;
+      if (!groundSwathPts || !templateSwathPts) {
+        groundSwathPts = [];
+        templateSwathPts = [];
+        const profileArr = Array.isArray(st.cross_profile) && st.cross_profile.length >= 2
+          ? st.cross_profile
+          : [{ u: -swathHalf, z_ground: st.cl_ground_z, z_template: st.cl_design_z }, { u: swathHalf, z_ground: st.cl_ground_z, z_template: st.cl_design_z }];
 
-      profileArr.forEach((cp) => {
-        const u = Number(cp.u) || 0;
-        const sx = clVec.x + u * nx;
-        const sz = clVec.z + u * nz;
-        const rawDzGround = (Number(cp.z_ground) || st.cl_ground_z) - (Number(st.cl_ground_z) || 0);
-        const dzGround = Math.max(-2.5, Math.min(0.85, rawDzGround));
-        const rawDzTmpl = (Number(cp.z_template) || st.cl_design_z) - (Number(st.cl_ground_z) || 0);
-        const dzTmpl = Math.max(-3.0, Math.min(1.2, rawDzTmpl));
-        const expectedSwathY = clVec.y + dzGround;
-        const gHit = sampleBareGroundMeshY(sx, sz, expectedSwathY, 0.75);
-        const syGround = gHit && gHit.hit ? Math.min(gHit.y, clVec.y + 0.75) : expectedSwathY;
-        const syTmpl = clVec.y + dzTmpl;
-        groundSwathPts.push(new THREE.Vector3(sx, syGround + 0.12, sz));
-        templateSwathPts.push(new THREE.Vector3(sx, syTmpl + 0.14, sz));
-      });
+        profileArr.forEach((cp) => {
+          const u = Number(cp.u) || 0;
+          const sx = clVec.x + u * nx;
+          const sz = clVec.z + u * nz;
+          const rawDzGround = (Number(cp.z_ground) || st.cl_ground_z) - (Number(st.cl_ground_z) || 0);
+          const dzGround = Math.max(-2.5, Math.min(0.85, rawDzGround));
+          const rawDzTmpl = (Number(cp.z_template) || st.cl_design_z) - (Number(st.cl_ground_z) || 0);
+          const dzTmpl = Math.max(-3.0, Math.min(1.2, rawDzTmpl));
+          const syGround = clVec.y + dzGround;
+          const syTmpl = clVec.y + dzTmpl;
+          groundSwathPts.push(new THREE.Vector3(sx, syGround + 0.12, sz));
+          templateSwathPts.push(new THREE.Vector3(sx, syTmpl + 0.14, sz));
+        });
+        st._cachedGroundSwathPts = groundSwathPts;
+        st._cachedTemplateSwathPts = templateSwathPts;
+      }
 
       if (groundSwathPts.length >= 2) {
         const swGeom = new THREE.BufferGeometry().setFromPoints(groundSwathPts);
@@ -1673,17 +1696,15 @@
     const hasCustomAlign = Boolean(window.STATE && Array.isArray(window.STATE.stationAlignmentPoints) && window.STATE.stationAlignmentPoints.length >= 2);
     const curWidthM = Number(stationResult.width_m || stationResult.road_width_m || 7.0);
 
-    renderStationing3DOverlay(stationResult, 0);
-
     let tableRowsHtml = "";
     stations.forEach((st, idx) => {
       tableRowsHtml += `
         <tr data-st-idx="${idx}" style="cursor:pointer;" title="${t("點擊聚焦此樁號 3D 橫斷面", "Click to focus station in 3D")}">
-          <td style="font-weight:700;color:var(--ui-accent);">${st.chainage_code}</td>
-          <td>${st.cut_area_m2.toFixed(1)}</td>
-          <td>${st.fill_area_m2.toFixed(1)}</td>
-          <td>${(st.segment_cut_vol_m3 || 0).toFixed(1)}</td>
-          <td>${(st.segment_fill_vol_m3 || 0).toFixed(1)}</td>
+          <td style="font-weight:700;color:var(--ui-accent);">${st.chainage_code || ""}</td>
+          <td>${Number(st.cut_area_m2 || 0).toFixed(1)}</td>
+          <td>${Number(st.fill_area_m2 || 0).toFixed(1)}</td>
+          <td>${Number(st.segment_cut_vol_m3 || 0).toFixed(1)}</td>
+          <td>${Number(st.segment_fill_vol_m3 || 0).toFixed(1)}</td>
         </tr>
       `;
     });
