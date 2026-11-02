@@ -4291,11 +4291,18 @@ vm.runInContext(fs.readFileSync('./web/src/12-public-utilities-gis.js', 'utf8'),
         self.assertFalse(sig_oct.parameters["preserve_existing_crop"].default)
 
         # 2. Verify build_low_quality_preview_glb defaults to sharp 110k tris, 2048px JPEG, allow_aggressive=False (never -sa UV corruption)
+        from pc_worker.preview_generator import ensure_scan_low_quality_preview
         sig_prev = inspect.signature(build_low_quality_preview_glb)
         self.assertEqual(sig_prev.parameters["target_triangles"].default, 110000)
         self.assertEqual(sig_prev.parameters["max_tex_dim"].default, 2048)
         self.assertFalse(sig_prev.parameters["allow_aggressive"].default)
         self.assertTrue(callable(simplify_glb_via_welded_qem))
+        qem_src = inspect.getsource(simplify_glb_via_welded_qem)
+        self.assertIn("KHR_texture_transform", qem_src)
+        self.assertIn("orig_inset", qem_src)
+        self.assertIn("perms = ((0, 1, 2)", qem_src)
+        ensure_src = inspect.getsource(ensure_scan_low_quality_preview)
+        self.assertIn('_l1.glb"', ensure_src)
 
         # 3. Verify edited_daan_652376 ('DaAn') is uncropped on disk (full ~87m x 80m park, > 400 tiles)
         daan_dir = r"C:\GatheringScans\edited_daan_652376"

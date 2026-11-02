@@ -3095,7 +3095,7 @@ class OptimizerBridge:
                                 base_pil_lod = Image.open(io.BytesIO(exact_jpeg_for_glb)).convert("RGB")
                             except Exception:
                                 base_pil_lod = None
-                        for lod_tag, si_ratio, max_dim_lod, jq_lod in (("l1", 0.50, 2048, 86), ("l0", 0.22, 768, 78)):
+                        for lod_tag, si_ratio, max_dim_lod, jq_lod in (("l1", 0.50, 2048, 86), ("l0", 0.25, 1536, 84)):
                             lod_out_p = os.path.join(tiles_work_dir, f"tile_s{p_idx}_{lod_tag}.glb")
                             tmp_lod_g = lod_out_p + ".tmp.glb"
                             try:

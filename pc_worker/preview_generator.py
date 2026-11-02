@@ -35,6 +35,7 @@ except ImportError:
 
 try:
     from PIL import Image
+    Image.MAX_IMAGE_PIXELS = None
 except ImportError:
     Image = None  # type: ignore
 
@@ -101,7 +102,7 @@ def _downscale_glb_textures(raw_bytes: bytes, max_dim: int = 1536, jpeg_quality:
             isinstance((t.get("extensions") or {}).get("EXT_texture_webp"), dict)
             for t in (j.get("textures") or [])
         )
-        eff_max_dim = max(1024, int(round(max_dim / (len(images) ** 0.35)))) if len(images) > 1 else max_dim
+        eff_max_dim = max(1280, int(round(max_dim / (len(images) ** 0.25)))) if len(images) > 1 else max_dim
         img_bv_map: Dict[int, bytes] = {}
         for im in images:
             bvi = im.get("bufferView")
@@ -377,17 +378,19 @@ def simplify_glb_via_welded_qem(
     vt_bits: int = 14,
 ) -> bool:
     """
-    Simplifies a single-texture GLB whose triangles have unwelded per-triangle UV islands
-    (where standard `gltfpack -si` without `-sa` locks UV seams and cannot reduce triangle count,
-    while `-sa` collapses disjoint UV islands and corrupts 70%+ of triangle UVs).
+    Simplifies single- or multi-primitive textured GLBs whose triangles have unwelded per-triangle
+    UV islands (where standard `gltfpack -si` without `-sa` locks UV seams and cannot reduce triangle
+    count, while `-sa` collapses disjoint UV islands and corrupts 70%+ of triangle UVs).
 
     Algorithm:
-    1. Decodes the GLB into float32 local positions, UVs, and triangle indices.
+    1. Decodes the GLB into float32 local positions, UVs (applying any `KHR_texture_transform`
+       scale/offset so UVs are normalized to [0, 1]), and triangle indices per primitive.
     2. Welds 3D vertex positions (ignoring UV seams) into a temporary position-only GLB and
        simplifies it with `gltfpack -si <ratio> -slb -noq` (pure Quadric Error Metric, NO `-sa`).
     3. Transfers UVs from the original mesh to each simplified triangle via `cKDTree` over
-       original vertices and triangle centroids, snapping any seam-crossing triangle (`span > 0.035`)
-       to the single nearest original triangle's UV island (`0.0%` stretched UVs).
+       inset original triangle corners (`0.85 * corner + 0.15 * centroid`), and snaps any
+       seam-crossing (`span > 0.035`) or degenerate (`uv_area2 < 1e-10`) triangle to the nearest
+       original triangle's UV island using the minimum-cost bijective corner permutation (`0.0%` stretched UVs).
     4. Compresses the resulting GLB with `gltfpack -vp <vp_bits> -vt <vt_bits> -cc`.
     """
     if np is None or not os.path.isfile(in_glb_path) or not os.path.isfile(GLTFPACK_EXE):
@@ -407,7 +410,7 @@ def simplify_glb_via_welded_qem(
         res_dec = subprocess.run(
             [GLTFPACK_EXE, "-i", in_glb_path, "-o", tmp_dec, "-noq"],
             capture_output=True,
-            timeout=60,
+            timeout=90,
             creationflags=win_flag,
         )
         if res_dec.returncode != 0 or not os.path.isfile(tmp_dec) or os.path.getsize(tmp_dec) < 128:
@@ -421,16 +424,11 @@ def simplify_glb_via_welded_qem(
 
         meshes = j_dec.get("meshes") or []
         images = j_dec.get("images") or []
+        mats = j_dec.get("materials") or []
+        texs = j_dec.get("textures") or []
         bvs = j_dec.get("bufferViews") or []
         accs = j_dec.get("accessors") or []
-        if len(meshes) != 1 or len(images) != 1:
-            return False
-        prims = meshes[0].get("primitives") or []
-        if len(prims) != 1:
-            return False
-        prim = prims[0]
-        attrs = prim.get("attributes") or {}
-        if "POSITION" not in attrs or "TEXCOORD_0" not in attrs or "indices" not in prim:
+        if not meshes or not images or len(images) > 16:
             return False
 
         def _read_acc(acc_idx: int) -> np.ndarray:
@@ -451,226 +449,349 @@ def simplify_glb_via_welded_qem(
             arr = np.frombuffer(part, dtype=dt)
             return arr.reshape(cnt, ncomp) if ncomp > 1 else arr
 
-        pos_o = np.ascontiguousarray(_read_acc(int(attrs["POSITION"])), dtype=np.float32)
-        uv_o = np.ascontiguousarray(_read_acc(int(attrs["TEXCOORD_0"])), dtype=np.float32)
-        idx_o = np.ascontiguousarray(_read_acc(int(prim["indices"])), dtype=np.uint32).reshape(-1, 3)
-        orig_tris = len(idx_o)
-        if orig_tris <= target_triangles or orig_tris < 100:
+        prim_items: List[Dict[str, Any]] = []
+        for m in meshes:
+            for prim in m.get("primitives") or []:
+                attrs = prim.get("attributes") or {}
+                if "POSITION" not in attrs or "TEXCOORD_0" not in attrs or "indices" not in prim:
+                    return False
+                pos_o = np.ascontiguousarray(_read_acc(int(attrs["POSITION"])), dtype=np.float32)
+                raw_uv_o = np.ascontiguousarray(_read_acc(int(attrs["TEXCOORD_0"])), dtype=np.float32)
+                idx_o = np.ascontiguousarray(_read_acc(int(prim["indices"])), dtype=np.uint32).reshape(-1, 3)
+                if len(idx_o) == 0:
+                    continue
+                uv_scale = np.array([1.0, 1.0], dtype=np.float32)
+                uv_offset = np.array([0.0, 0.0], dtype=np.float32)
+                img_idx = min(len(prim_items), len(images) - 1)
+                mat_idx = prim.get("material")
+                if mat_idx is not None and 0 <= int(mat_idx) < len(mats):
+                    pbr = mats[int(mat_idx)].get("pbrMetallicRoughness") or {}
+                    bct = pbr.get("baseColorTexture") or {}
+                    t_idx = bct.get("index")
+                    if t_idx is not None and 0 <= int(t_idx) < len(texs):
+                        tx_obj = texs[int(t_idx)]
+                        src_i = tx_obj.get("source")
+                        if src_i is None:
+                            src_i = ((tx_obj.get("extensions") or {}).get("EXT_texture_webp") or {}).get("source")
+                        if src_i is not None and 0 <= int(src_i) < len(images):
+                            img_idx = int(src_i)
+                    khr_tt = (bct.get("extensions") or {}).get("KHR_texture_transform") or {}
+                    if "scale" in khr_tt and len(khr_tt["scale"]) >= 2:
+                        uv_scale = np.array(khr_tt["scale"][:2], dtype=np.float32)
+                    if "offset" in khr_tt and len(khr_tt["offset"]) >= 2:
+                        uv_offset = np.array(khr_tt["offset"][:2], dtype=np.float32)
+                uv_o = np.ascontiguousarray(raw_uv_o * uv_scale + uv_offset, dtype=np.float32)
+                prim_items.append({"pos_o": pos_o, "uv_o": uv_o, "idx_o": idx_o, "img_idx": img_idx})
+
+        if not prim_items or len(prim_items) > 16:
+            return False
+        total_orig_tris = sum(len(it["idx_o"]) for it in prim_items)
+        if total_orig_tris <= target_triangles or total_orig_tris < 100:
             return False
 
-        img_bv = bvs[int(images[0]["bufferView"])]
-        img_off = int(img_bv.get("byteOffset", 0))
-        img_len = int(img_bv.get("byteLength", 0))
-        img_bytes = bytes(b_dec[img_off : img_off + img_len])
-        img_mime = images[0].get("mimeType") or "image/jpeg"
+        perms = ((0, 1, 2), (0, 2, 1), (1, 0, 2), (1, 2, 0), (2, 0, 1), (2, 1, 0))
+        simplified_prims: List[Tuple[np.ndarray, np.ndarray, np.ndarray, int]] = []
+        total_simp_tris = 0
 
-        # 1. Weld identical 3D positions so QEM simplification operates across UV island seams
-        _, uniq_first, inv = np.unique(np.round(pos_o, 4), axis=0, return_index=True, return_inverse=True)
-        pos_w = np.ascontiguousarray(pos_o[uniq_first], dtype=np.float32)
-        idx_w = np.ascontiguousarray(inv[idx_o], dtype=np.uint32)
+        for it in prim_items:
+            pos_o = it["pos_o"]
+            uv_o = it["uv_o"]
+            idx_o = it["idx_o"]
+            img_idx = it["img_idx"]
+            orig_tris_p = len(idx_o)
+            prim_target = max(50, int(round(float(target_triangles) * (float(orig_tris_p) / float(total_orig_tris)))))
 
-        b_idx_w = idx_w.tobytes()
-        b_pos_w = pos_w.tobytes()
-        bin_w = bytearray()
-        off_idx_w = 0
-        bin_w.extend(b_idx_w)
-        while len(bin_w) % 4:
-            bin_w.append(0)
-        off_pos_w = len(bin_w)
-        bin_w.extend(b_pos_w)
-        while len(bin_w) % 4:
-            bin_w.append(0)
+            if orig_tris_p <= max(80, int(prim_target * 1.08)):
+                s_tris_p = pos_o[idx_o]
+                s_uvs_p = uv_o[idx_o]
+                out_pos_p = np.ascontiguousarray(s_tris_p.reshape(-1, 3), dtype=np.float32)
+                out_uv_p = np.ascontiguousarray(s_uvs_p.reshape(-1, 2), dtype=np.float32)
+                out_idx_p = np.arange(len(out_pos_p), dtype=np.uint32)
+                simplified_prims.append((out_pos_p, out_uv_p, out_idx_p, img_idx))
+                total_simp_tris += orig_tris_p
+                continue
 
-        j_w = {
-            "asset": {"version": "2.0"},
-            "scene": 0,
-            "scenes": [{"nodes": [0]}],
-            "nodes": [{"mesh": 0}],
-            "meshes": [{"primitives": [{"attributes": {"POSITION": 1}, "indices": 0, "mode": 4}]}],
-            "bufferViews": [
-                {"buffer": 0, "byteOffset": off_idx_w, "byteLength": len(b_idx_w), "target": 34963},
-                {"buffer": 0, "byteOffset": off_pos_w, "byteLength": len(b_pos_w), "target": 34962},
-            ],
-            "accessors": [
-                {"bufferView": 0, "byteOffset": 0, "componentType": 5125, "count": int(idx_w.size), "type": "SCALAR"},
+            # 1. Weld identical 3D positions so QEM simplification operates across UV island seams
+            _, uniq_first, inv = np.unique(np.round(pos_o, 4), axis=0, return_index=True, return_inverse=True)
+            pos_w = np.ascontiguousarray(pos_o[uniq_first], dtype=np.float32)
+            idx_w = np.ascontiguousarray(inv[idx_o], dtype=np.uint32)
+
+            b_idx_w = idx_w.tobytes()
+            b_pos_w = pos_w.tobytes()
+            bin_w = bytearray()
+            off_idx_w = 0
+            bin_w.extend(b_idx_w)
+            while len(bin_w) % 4:
+                bin_w.append(0)
+            off_pos_w = len(bin_w)
+            bin_w.extend(b_pos_w)
+            while len(bin_w) % 4:
+                bin_w.append(0)
+
+            j_w = {
+                "asset": {"version": "2.0"},
+                "scene": 0,
+                "scenes": [{"nodes": [0]}],
+                "nodes": [{"mesh": 0}],
+                "meshes": [{"primitives": [{"attributes": {"POSITION": 1}, "indices": 0, "mode": 4}]}],
+                "bufferViews": [
+                    {"buffer": 0, "byteOffset": off_idx_w, "byteLength": len(b_idx_w), "target": 34963},
+                    {"buffer": 0, "byteOffset": off_pos_w, "byteLength": len(b_pos_w), "target": 34962},
+                ],
+                "accessors": [
+                    {"bufferView": 0, "byteOffset": 0, "componentType": 5125, "count": int(idx_w.size), "type": "SCALAR"},
+                    {
+                        "bufferView": 1,
+                        "byteOffset": 0,
+                        "componentType": 5126,
+                        "count": int(len(pos_w)),
+                        "type": "VEC3",
+                        "min": pos_w.min(axis=0).tolist(),
+                        "max": pos_w.max(axis=0).tolist(),
+                    },
+                ],
+                "buffers": [{"byteLength": len(bin_w)}],
+            }
+            jb_w = json.dumps(j_w, separators=(",", ":")).encode("utf-8")
+            while len(jb_w) % 4:
+                jb_w += b" "
+
+            fd_pin, tmp_pos_in = tempfile.mkstemp(suffix=".glb", prefix="gs_wqem_pin_")
+            os.close(fd_pin)
+            tmp_files.append(tmp_pos_in)
+            with open(tmp_pos_in, "wb") as wf:
+                wf.write(struct.pack("<4sII", b"glTF", 2, 12 + 8 + len(jb_w) + 8 + len(bin_w)))
+                wf.write(struct.pack("<I4s", len(jb_w), b"JSON"))
+                wf.write(jb_w)
+                wf.write(struct.pack("<I4s", len(bin_w), b"BIN\x00"))
+                wf.write(bin_w)
+
+            fd_pout, tmp_pos_out = tempfile.mkstemp(suffix=".glb", prefix="gs_wqem_pout_")
+            os.close(fd_pout)
+            tmp_files.append(tmp_pos_out)
+            ratio = max(0.015, min(0.95, float(prim_target) / float(orig_tris_p)))
+            res_simp = subprocess.run(
+                [GLTFPACK_EXE, "-i", tmp_pos_in, "-o", tmp_pos_out, "-si", f"{ratio:.4f}", "-slb", "-noq"],
+                capture_output=True,
+                timeout=90,
+                creationflags=win_flag,
+            )
+            if res_simp.returncode != 0 or not os.path.isfile(tmp_pos_out) or os.path.getsize(tmp_pos_out) < 128:
+                return False
+
+            with open(tmp_pos_out, "rb") as rf:
+                simp_bytes = rf.read()
+            jl_s, _ = struct.unpack_from("<I4s", simp_bytes, 12)
+            j_s = json.loads(simp_bytes[20 : 20 + jl_s].decode("utf-8"))
+            b_s = memoryview(simp_bytes)[28 + jl_s :]
+            accs_s = j_s.get("accessors") or []
+            bvs_s = j_s.get("bufferViews") or []
+            prim_s = j_s["meshes"][0]["primitives"][0]
+
+            def _read_acc_s(acc_idx: int) -> np.ndarray:
+                acc = accs_s[acc_idx]
+                bv = bvs_s[acc["bufferView"]]
+                off = int(bv.get("byteOffset", 0)) + int(acc.get("byteOffset", 0))
+                cnt = int(acc["count"])
+                ctype = int(acc["componentType"])
+                dt = {5126: np.float32, 5123: np.uint16, 5125: np.uint32, 5121: np.uint8}[ctype]
+                ncomp = {"SCALAR": 1, "VEC2": 2, "VEC3": 3, "VEC4": 4}[acc["type"]]
+                stride = int(bv.get("byteStride") or (np.dtype(dt).itemsize * ncomp))
+                raw_mv = b_s[off : off + stride * cnt]
+                if stride == np.dtype(dt).itemsize * ncomp:
+                    arr = np.frombuffer(raw_mv, dtype=dt, count=cnt * ncomp)
+                    return arr.reshape(cnt, ncomp) if ncomp > 1 else arr
+                u8 = np.frombuffer(raw_mv, dtype=np.uint8).reshape(cnt, stride)
+                part = u8[:, : np.dtype(dt).itemsize * ncomp].copy()
+                arr = np.frombuffer(part, dtype=dt)
+                return arr.reshape(cnt, ncomp) if ncomp > 1 else arr
+
+            pos_s = np.ascontiguousarray(_read_acc_s(int(prim_s["attributes"]["POSITION"])), dtype=np.float32)
+            idx_s = np.ascontiguousarray(_read_acc_s(int(prim_s["indices"])), dtype=np.uint32).reshape(-1, 3)
+            n_simp = len(idx_s)
+            if n_simp < 30:
+                return False
+
+            # 2. Transfer UVs via inset corner KDTree + bijective permutation snapping (0.0% stretched UVs)
+            s_tris = pos_s[idx_s]  # (n_simp, 3, 3)
+            s_cent = s_tris.mean(axis=1)  # (n_simp, 3)
+
+            orig_tris_pos = pos_o[idx_o]
+            orig_tris_uv = uv_o[idx_o]
+            orig_cent = orig_tris_pos.mean(axis=1)
+
+            orig_inset = np.ascontiguousarray(
+                (orig_tris_pos * 0.85 + orig_cent[:, None, :] * 0.15).reshape(-1, 3),
+                dtype=np.float32,
+            )
+            orig_inset_uv = np.ascontiguousarray(orig_tris_uv.reshape(-1, 2), dtype=np.float32)
+            tree_inset = cKDTree(orig_inset)
+            s_uvs = np.empty((n_simp, 3, 2), dtype=np.float32)
+            for k in range(3):
+                inset_pt = s_tris[:, k, :] * 0.85 + s_cent * 0.15
+                _, vi = tree_inset.query(inset_pt)
+                s_uvs[:, k, :] = orig_inset_uv[vi]
+
+            d01 = np.abs(s_uvs[:, 0, :] - s_uvs[:, 1, :]).max(axis=1)
+            d12 = np.abs(s_uvs[:, 1, :] - s_uvs[:, 2, :]).max(axis=1)
+            d20 = np.abs(s_uvs[:, 2, :] - s_uvs[:, 0, :]).max(axis=1)
+            span = np.maximum(np.maximum(d01, d12), d20)
+            du1 = s_uvs[:, 1, :] - s_uvs[:, 0, :]
+            du2 = s_uvs[:, 2, :] - s_uvs[:, 0, :]
+            uv_area2 = np.abs(du1[:, 0] * du2[:, 1] - du1[:, 1] * du2[:, 0])
+            bad_mask = (span > 0.035) | (uv_area2 < 1e-10)
+            if np.any(bad_mask):
+                tree_cent = cKDTree(orig_cent)
+                _, near_ti = tree_cent.query(s_cent[bad_mask])
+                cand_pos = orig_tris_pos[near_ti]  # (B, 3, 3)
+                cand_uv = orig_tris_uv[near_ti]  # (B, 3, 2)
+                bad_s_pos = s_tris[bad_mask]  # (B, 3, 3)
+                cost_mat = np.empty((len(near_ti), 6), dtype=np.float32)
+                for p_i, (c0, c1, c2) in enumerate(perms):
+                    cost_mat[:, p_i] = (
+                        np.sum((bad_s_pos[:, 0, :] - cand_pos[:, c0, :]) ** 2, axis=1)
+                        + np.sum((bad_s_pos[:, 1, :] - cand_pos[:, c1, :]) ** 2, axis=1)
+                        + np.sum((bad_s_pos[:, 2, :] - cand_pos[:, c2, :]) ** 2, axis=1)
+                    )
+                best_perm = np.argmin(cost_mat, axis=1)
+                snapped_uv = np.empty_like(cand_uv)
+                for p_i, (c0, c1, c2) in enumerate(perms):
+                    m = best_perm == p_i
+                    if np.any(m):
+                        snapped_uv[m, 0, :] = cand_uv[m, c0, :]
+                        snapped_uv[m, 1, :] = cand_uv[m, c1, :]
+                        snapped_uv[m, 2, :] = cand_uv[m, c2, :]
+                s_uvs[bad_mask] = snapped_uv
+
+            out_pos_p = np.ascontiguousarray(s_tris.reshape(-1, 3), dtype=np.float32)
+            out_uv_p = np.ascontiguousarray(s_uvs.reshape(-1, 2), dtype=np.float32)
+            out_idx_p = np.arange(len(out_pos_p), dtype=np.uint32)
+            simplified_prims.append((out_pos_p, out_uv_p, out_idx_p, img_idx))
+            total_simp_tris += n_simp
+
+        if total_simp_tris >= int(total_orig_tris * 0.90):
+            return False
+
+        bin_o = bytearray()
+        out_bvs: List[Dict[str, Any]] = []
+        out_accs: List[Dict[str, Any]] = []
+        out_prims: List[Dict[str, Any]] = []
+        out_mats: List[Dict[str, Any]] = []
+        out_texs: List[Dict[str, Any]] = []
+        out_imgs: List[Dict[str, Any]] = []
+
+        img_remap: Dict[int, int] = {}
+        for out_pos_p, out_uv_p, out_idx_p, img_idx in simplified_prims:
+            if img_idx not in img_remap:
+                img_remap[img_idx] = len(out_imgs)
+                src_im = images[img_idx]
+                img_bv_src = bvs[int(src_im["bufferView"])]
+                img_off_src = int(img_bv_src.get("byteOffset", 0))
+                img_len_src = int(img_bv_src.get("byteLength", 0))
+                img_bytes_src = bytes(b_dec[img_off_src : img_off_src + img_len_src])
+                img_mime_src = src_im.get("mimeType") or "image/jpeg"
+                if img_mime_src == "image/webp" and Image is not None:
+                    try:
+                        pil_w = Image.open(io.BytesIO(img_bytes_src)).convert("RGB")
+                        w_buf = io.BytesIO()
+                        pil_w.save(w_buf, format="JPEG", quality=88, optimize=True)
+                        img_bytes_src = w_buf.getvalue()
+                        img_mime_src = "image/jpeg"
+                    except Exception:
+                        pass
+                out_imgs.append({"_bytes": img_bytes_src, "mimeType": img_mime_src})
+
+            mapped_im_idx = img_remap[img_idx]
+            mat_out_idx = len(out_mats)
+            out_texs.append({"sampler": 0, "source": mapped_im_idx})
+            out_mats.append(
                 {
-                    "bufferView": 1,
+                    "pbrMetallicRoughness": {
+                        "baseColorTexture": {"index": mat_out_idx},
+                        "metallicFactor": 0.0,
+                        "roughnessFactor": 1.0,
+                    },
+                    "doubleSided": True,
+                }
+            )
+
+            b_idx_p = out_idx_p.tobytes()
+            b_pos_p = out_pos_p.tobytes()
+            b_uv_p = out_uv_p.tobytes()
+
+            off_idx_p = len(bin_o)
+            bin_o.extend(b_idx_p)
+            while len(bin_o) % 4:
+                bin_o.append(0)
+            bv_idx_i = len(out_bvs)
+            out_bvs.append({"buffer": 0, "byteOffset": off_idx_p, "byteLength": len(b_idx_p), "target": 34963})
+            acc_idx_i = len(out_accs)
+            out_accs.append(
+                {"bufferView": bv_idx_i, "byteOffset": 0, "componentType": 5125, "count": int(out_idx_p.size), "type": "SCALAR"}
+            )
+
+            off_pos_p = len(bin_o)
+            bin_o.extend(b_pos_p)
+            while len(bin_o) % 4:
+                bin_o.append(0)
+            bv_pos_i = len(out_bvs)
+            out_bvs.append({"buffer": 0, "byteOffset": off_pos_p, "byteLength": len(b_pos_p), "target": 34962})
+            acc_pos_i = len(out_accs)
+            out_accs.append(
+                {
+                    "bufferView": bv_pos_i,
                     "byteOffset": 0,
                     "componentType": 5126,
-                    "count": int(len(pos_w)),
+                    "count": int(len(out_pos_p)),
                     "type": "VEC3",
-                    "min": pos_w.min(axis=0).tolist(),
-                    "max": pos_w.max(axis=0).tolist(),
-                },
-            ],
-            "buffers": [{"byteLength": len(bin_w)}],
-        }
-        jb_w = json.dumps(j_w, separators=(",", ":")).encode("utf-8")
-        while len(jb_w) % 4:
-            jb_w += b" "
+                    "min": out_pos_p.min(axis=0).tolist(),
+                    "max": out_pos_p.max(axis=0).tolist(),
+                }
+            )
 
-        fd_pin, tmp_pos_in = tempfile.mkstemp(suffix=".glb", prefix="gs_wqem_pin_")
-        os.close(fd_pin)
-        tmp_files.append(tmp_pos_in)
-        with open(tmp_pos_in, "wb") as wf:
-            wf.write(struct.pack("<4sII", b"glTF", 2, 12 + 8 + len(jb_w) + 8 + len(bin_w)))
-            wf.write(struct.pack("<I4s", len(jb_w), b"JSON"))
-            wf.write(jb_w)
-            wf.write(struct.pack("<I4s", len(bin_w), b"BIN\x00"))
-            wf.write(bin_w)
+            off_uv_p = len(bin_o)
+            bin_o.extend(b_uv_p)
+            while len(bin_o) % 4:
+                bin_o.append(0)
+            bv_uv_i = len(out_bvs)
+            out_bvs.append({"buffer": 0, "byteOffset": off_uv_p, "byteLength": len(b_uv_p), "target": 34962})
+            acc_uv_i = len(out_accs)
+            out_accs.append(
+                {"bufferView": bv_uv_i, "byteOffset": 0, "componentType": 5126, "count": int(len(out_uv_p)), "type": "VEC2"}
+            )
 
-        fd_pout, tmp_pos_out = tempfile.mkstemp(suffix=".glb", prefix="gs_wqem_pout_")
-        os.close(fd_pout)
-        tmp_files.append(tmp_pos_out)
-        ratio = max(0.02, min(0.95, float(target_triangles) / float(orig_tris)))
-        res_simp = subprocess.run(
-            [GLTFPACK_EXE, "-i", tmp_pos_in, "-o", tmp_pos_out, "-si", f"{ratio:.4f}", "-slb", "-noq"],
-            capture_output=True,
-            timeout=60,
-            creationflags=win_flag,
-        )
-        if res_simp.returncode != 0 or not os.path.isfile(tmp_pos_out) or os.path.getsize(tmp_pos_out) < 128:
-            return False
+            out_prims.append(
+                {
+                    "attributes": {"POSITION": acc_pos_i, "TEXCOORD_0": acc_uv_i},
+                    "indices": acc_idx_i,
+                    "material": mat_out_idx,
+                    "mode": 4,
+                }
+            )
 
-        with open(tmp_pos_out, "rb") as rf:
-            simp_bytes = rf.read()
-        jl_s, _ = struct.unpack_from("<I4s", simp_bytes, 12)
-        j_s = json.loads(simp_bytes[20 : 20 + jl_s].decode("utf-8"))
-        b_s = memoryview(simp_bytes)[28 + jl_s :]
-        accs_s = j_s.get("accessors") or []
-        bvs_s = j_s.get("bufferViews") or []
-        prim_s = j_s["meshes"][0]["primitives"][0]
-
-        def _read_acc_s(acc_idx: int) -> np.ndarray:
-            acc = accs_s[acc_idx]
-            bv = bvs_s[acc["bufferView"]]
-            off = int(bv.get("byteOffset", 0)) + int(acc.get("byteOffset", 0))
-            cnt = int(acc["count"])
-            ctype = int(acc["componentType"])
-            dt = {5126: np.float32, 5123: np.uint16, 5125: np.uint32, 5121: np.uint8}[ctype]
-            ncomp = {"SCALAR": 1, "VEC2": 2, "VEC3": 3, "VEC4": 4}[acc["type"]]
-            stride = int(bv.get("byteStride") or (np.dtype(dt).itemsize * ncomp))
-            raw_mv = b_s[off : off + stride * cnt]
-            if stride == np.dtype(dt).itemsize * ncomp:
-                arr = np.frombuffer(raw_mv, dtype=dt, count=cnt * ncomp)
-                return arr.reshape(cnt, ncomp) if ncomp > 1 else arr
-            u8 = np.frombuffer(raw_mv, dtype=np.uint8).reshape(cnt, stride)
-            part = u8[:, : np.dtype(dt).itemsize * ncomp].copy()
-            arr = np.frombuffer(part, dtype=dt)
-            return arr.reshape(cnt, ncomp) if ncomp > 1 else arr
-
-        pos_s = np.ascontiguousarray(_read_acc_s(int(prim_s["attributes"]["POSITION"])), dtype=np.float32)
-        idx_s = np.ascontiguousarray(_read_acc_s(int(prim_s["indices"])), dtype=np.uint32).reshape(-1, 3)
-        n_simp = len(idx_s)
-        if n_simp < 50 or n_simp >= int(orig_tris * 0.90):
-            return False
-
-        # 2. Transfer UVs from original mesh while guaranteeing 0.0% cross-island stretched UVs
-        s_tris = pos_s[idx_s]  # (n_simp, 3, 3)
-        s_cent = s_tris.mean(axis=1)  # (n_simp, 3)
-
-        tree_vert = cKDTree(pos_o)
-        s_uvs = np.empty((n_simp, 3, 2), dtype=np.float32)
-        for k in range(3):
-            inset_pt = s_tris[:, k, :] * 0.82 + s_cent * 0.18
-            _, vi = tree_vert.query(inset_pt)
-            s_uvs[:, k, :] = uv_o[vi]
-
-        d01 = np.abs(s_uvs[:, 0, :] - s_uvs[:, 1, :]).max(axis=1)
-        d12 = np.abs(s_uvs[:, 1, :] - s_uvs[:, 2, :]).max(axis=1)
-        d20 = np.abs(s_uvs[:, 2, :] - s_uvs[:, 0, :]).max(axis=1)
-        span = np.maximum(np.maximum(d01, d12), d20)
-        bad_mask = span > 0.035
-        if np.any(bad_mask):
-            orig_tris_pos = pos_o[idx_o]
-            orig_cent = orig_tris_pos.mean(axis=1)
-            tree_cent = cKDTree(orig_cent)
-            _, near_ti = tree_cent.query(s_cent[bad_mask])
-            cand_pos = orig_tris_pos[near_ti]  # (B, 3, 3)
-            cand_uv = uv_o[idx_o[near_ti]]  # (B, 3, 2)
-            bad_s_pos = s_tris[bad_mask]  # (B, 3, 3)
-            # Match each simplified triangle corner to the closest 3D corner of the nearest original triangle
-            snapped_uv = np.empty_like(cand_uv)
-            for k in range(3):
-                dists = np.sum((cand_pos - bad_s_pos[:, k : k + 1, :]) ** 2, axis=2)  # (B, 3)
-                best_c = np.argmin(dists, axis=1)
-                snapped_uv[:, k, :] = cand_uv[np.arange(len(near_ti)), best_c, :]
-            s_uvs[bad_mask] = snapped_uv
-
-        out_pos = np.ascontiguousarray(s_tris.reshape(-1, 3), dtype=np.float32)
-        out_uv = np.ascontiguousarray(s_uvs.reshape(-1, 2), dtype=np.float32)
-        out_idx = np.arange(len(out_pos), dtype=np.uint32)
-
-        b_idx_o = out_idx.tobytes()
-        b_pos_o = out_pos.tobytes()
-        b_uv_o = out_uv.tobytes()
-        bin_o = bytearray()
-        off_idx_o = 0
-        bin_o.extend(b_idx_o)
-        while len(bin_o) % 4:
-            bin_o.append(0)
-        off_pos_o = len(bin_o)
-        bin_o.extend(b_pos_o)
-        while len(bin_o) % 4:
-            bin_o.append(0)
-        off_uv_o = len(bin_o)
-        bin_o.extend(b_uv_o)
-        while len(bin_o) % 4:
-            bin_o.append(0)
-        off_img_o = len(bin_o)
-        bin_o.extend(img_bytes)
-        while len(bin_o) % 4:
-            bin_o.append(0)
+        final_imgs: List[Dict[str, Any]] = []
+        for im_entry in out_imgs:
+            ib = im_entry["_bytes"]
+            off_im = len(bin_o)
+            bin_o.extend(ib)
+            while len(bin_o) % 4:
+                bin_o.append(0)
+            bv_im_i = len(out_bvs)
+            out_bvs.append({"buffer": 0, "byteOffset": off_im, "byteLength": len(ib)})
+            final_imgs.append({"bufferView": bv_im_i, "mimeType": im_entry["mimeType"]})
 
         j_out = {
             "asset": {"version": "2.0"},
             "scene": 0,
             "scenes": [{"nodes": [0]}],
             "nodes": [{"mesh": 0}],
-            "meshes": [
-                {
-                    "primitives": [
-                        {
-                            "attributes": {"POSITION": 1, "TEXCOORD_0": 2},
-                            "indices": 0,
-                            "material": 0,
-                            "mode": 4,
-                        }
-                    ]
-                }
-            ],
-            "materials": [
-                {
-                    "pbrMetallicRoughness": {
-                        "baseColorTexture": {"index": 0},
-                        "metallicFactor": 0.0,
-                        "roughnessFactor": 1.0,
-                    },
-                    "doubleSided": True,
-                }
-            ],
-            "textures": [{"sampler": 0, "source": 0}],
+            "meshes": [{"primitives": out_prims}],
+            "materials": out_mats,
+            "textures": out_texs,
             "samplers": [{"magFilter": 9729, "minFilter": 9987, "wrapS": 33071, "wrapT": 33071}],
-            "images": [{"bufferView": 3, "mimeType": img_mime}],
-            "bufferViews": [
-                {"buffer": 0, "byteOffset": off_idx_o, "byteLength": len(b_idx_o), "target": 34963},
-                {"buffer": 0, "byteOffset": off_pos_o, "byteLength": len(b_pos_o), "target": 34962},
-                {"buffer": 0, "byteOffset": off_uv_o, "byteLength": len(b_uv_o), "target": 34962},
-                {"buffer": 0, "byteOffset": off_img_o, "byteLength": len(img_bytes)},
-            ],
-            "accessors": [
-                {"bufferView": 0, "byteOffset": 0, "componentType": 5125, "count": int(out_idx.size), "type": "SCALAR"},
-                {
-                    "bufferView": 1,
-                    "byteOffset": 0,
-                    "componentType": 5126,
-                    "count": int(len(out_pos)),
-                    "type": "VEC3",
-                    "min": out_pos.min(axis=0).tolist(),
-                    "max": out_pos.max(axis=0).tolist(),
-                },
-                {"bufferView": 2, "byteOffset": 0, "componentType": 5126, "count": int(len(out_uv)), "type": "VEC2"},
-            ],
+            "images": final_imgs,
+            "bufferViews": out_bvs,
+            "accessors": out_accs,
             "buffers": [{"byteLength": len(bin_o)}],
         }
         jb_out = json.dumps(j_out, separators=(",", ":")).encode("utf-8")
@@ -690,7 +811,7 @@ def simplify_glb_via_welded_qem(
         res_pack = subprocess.run(
             [GLTFPACK_EXE, "-i", tmp_merged, "-o", out_glb_path, "-vp", str(vp_bits), "-vt", str(vt_bits), "-cc"],
             capture_output=True,
-            timeout=60,
+            timeout=90,
             creationflags=win_flag,
         )
         return res_pack.returncode == 0 and os.path.isfile(out_glb_path) and os.path.getsize(out_glb_path) > 128
@@ -881,6 +1002,8 @@ def ensure_scan_low_quality_preview(tileset_path: str, force: bool = False) -> O
         # Single-root tileset (Native Octree or Quadtree root GLB): ~110k tris and 2048px JPEG (~0.9-2.5 MB)
         clean_r_uri = r_uri.split("?")[0]
         src_glb = os.path.join(base_dir, clean_r_uri)
+        if src_glb.lower().endswith("_l0.glb") and os.path.isfile(src_glb[:-7] + "_l1.glb"):
+            src_glb = src_glb[:-7] + "_l1.glb"
         rel_clean = clean_r_uri.replace("\\", "/").lstrip("/")
         dst_rel = f"preview_low/{rel_clean}"
         dst_glb = os.path.join(base_dir, dst_rel)
@@ -924,6 +1047,8 @@ def ensure_scan_low_quality_preview(tileset_path: str, force: bool = False) -> O
             if uri:
                 clean_uri = uri.split("?")[0]
                 src_glb = os.path.join(base_dir, clean_uri)
+                if src_glb.lower().endswith("_l0.glb") and os.path.isfile(src_glb[:-7] + "_l1.glb"):
+                    src_glb = src_glb[:-7] + "_l1.glb"
                 rel_clean = clean_uri.replace("\\", "/").lstrip("/")
                 dst_rel = f"preview_low/{rel_clean}"
                 dst_glb = os.path.join(base_dir, dst_rel)
