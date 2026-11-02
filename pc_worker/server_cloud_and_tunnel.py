@@ -400,6 +400,8 @@ def _load_cloud_manifest() -> Dict[str, Any]:
 
 def _save_cloud_manifest(manifest: Dict[str, Any]) -> None:
     global _CLOUD_MANIFEST_MEM
+    if not isinstance(manifest, dict) or ("scans" not in manifest and "packages" not in manifest):
+        return
     _CLOUD_MANIFEST_MEM = manifest
     for cand in {CLOUD_MANIFEST_PATH, os.path.join(DATA_DIR, "gdrive_cloud_manifest.json")}:
         try:
@@ -437,7 +439,9 @@ def _load_cloud_auth() -> Dict[str, Any]:
 
 
 def _save_cloud_auth(auth_data: Dict[str, Any]) -> None:
-    global _CLOUD_AUTH_MEM
+    global _CLOUD_AUTH_MEM, _GDRIVE_GLOBAL_BYPASS_UNTIL
+    _GDRIVE_GLOBAL_BYPASS_UNTIL = 0.0
+    _GDRIVE_NEGATIVE_FID_CACHE.clear()
     merged = {**_load_cloud_auth(), **auth_data}
     merged.setdefault("expected_service_account_email", GDRIVE_SERVICE_ACCOUNT_EMAIL)
     merged.setdefault("expected_project_id", GDRIVE_SERVICE_ACCOUNT_PROJECT_ID)
@@ -764,6 +768,7 @@ def _test_gdrive_service_account(custom_sa: Optional[Dict[str, Any]] = None) -> 
 
 
 _GDRIVE_NEGATIVE_FID_CACHE: Dict[str, float] = {}
+_GDRIVE_GLOBAL_BYPASS_UNTIL: float = 0.0
 
 
 def _fetch_gdrive_byte_slice(file_ids: list, start_byte: int, length: int) -> Optional[bytes]:
@@ -773,6 +778,7 @@ def _fetch_gdrive_byte_slice(file_ids: list, start_byte: int, length: int) -> Op
     Tries Drive API v3 (if Bearer token available) and direct `drive.usercontent.google.com`
     (for link-shared `StreamPackages` folders).
     """
+    global _GDRIVE_GLOBAL_BYPASS_UNTIL
     import urllib.request
 
     if length <= 0:
@@ -782,10 +788,13 @@ def _fetch_gdrive_byte_slice(file_ids: list, start_byte: int, length: int) -> Op
         return None
 
     now = time.time()
+    if now < _GDRIVE_GLOBAL_BYPASS_UNTIL:
+        return None
     end_byte = start_byte + length - 1
     range_hdr = f"bytes={start_byte}-{end_byte}"
     bearer = _get_gdrive_bearer_token()
 
+    attempted_network = False
     for fid in clean_ids:
         neg_key = f"{fid}:{'auth' if bearer else 'anon'}"
         if now - _GDRIVE_NEGATIVE_FID_CACHE.get(neg_key, 0.0) < 300.0:
@@ -805,10 +814,11 @@ def _fetch_gdrive_byte_slice(file_ids: list, start_byte: int, length: int) -> Op
             )
         )
         got_slice = False
+        attempted_network = True
         for url, hdrs in urls_to_try:
             try:
                 req = urllib.request.Request(url, headers=hdrs, method="GET")
-                with urllib.request.urlopen(req, timeout=8) as r:
+                with urllib.request.urlopen(req, timeout=4) as r:
                     ctype = (r.headers.get("Content-Type") or "").lower()
                     if ctype.startswith("text/html"):
                         continue
@@ -820,6 +830,8 @@ def _fetch_gdrive_byte_slice(file_ids: list, start_byte: int, length: int) -> Op
                 continue
         if not got_slice:
             _GDRIVE_NEGATIVE_FID_CACHE[neg_key] = now
+    if attempted_network:
+        _GDRIVE_GLOBAL_BYPASS_UNTIL = now + 600.0
     return None
 
 
@@ -1302,6 +1314,7 @@ class CloudAndTunnelHandlerMixin:
             if len(_VPS_RAM_FALLBACK_CACHE) > 2000:
                 _VPS_RAM_FALLBACK_CACHE.clear()
             _VPS_RAM_FALLBACK_CACHE[self.path] = (200, hdrs, data)
+            _VPS_RAM_FALLBACK_CACHE[path] = (200, hdrs, data)
 
         self.send_response(200)
         for hk, hv in hdrs.items():
@@ -1752,7 +1765,10 @@ class CloudAndTunnelHandlerMixin:
                     if cacheable:
                         if len(_VPS_RAM_FALLBACK_CACHE) > 2000:
                             _VPS_RAM_FALLBACK_CACHE.clear()
-                        _VPS_RAM_FALLBACK_CACHE[self.path] = (status_code, filtered_hdrs, bytes(buf_for_cache))
+                        cache_entry = (status_code, filtered_hdrs, bytes(buf_for_cache))
+                        _VPS_RAM_FALLBACK_CACHE[self.path] = cache_entry
+                        if path.startswith("/stream/") or path.endswith("/thumbnail"):
+                            _VPS_RAM_FALLBACK_CACHE[path] = cache_entry
                     if path == "/api/scans":
                         try:
                             raw_payload = bytes(buf_for_cache)

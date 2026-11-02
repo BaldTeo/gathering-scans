@@ -1129,6 +1129,7 @@ def build_tileset_from_pix4d_native_octree(
             if new_cov_area and new_cov_area > 0:
                 meta_obj["covered_area_m2"] = new_cov_area
             if occ_mask is None:
+                meta_obj["uploaded_at"] = round(time.time(), 3)
                 meta_obj.pop("applied_adjustments", None)
                 tex_res = int(meta_obj.get("texture_resolution") or 16384)
                 tex_k = "16K" if tex_res >= 12288 else ("8K" if tex_res >= 6144 else ("4K" if tex_res >= 3072 else "2K"))
@@ -1163,6 +1164,7 @@ def build_tileset_from_pix4d_native_octree(
                 if new_cov_area and new_cov_area > 0:
                     upd["covered_area_m2"] = new_cov_area
                 if occ_mask is None:
+                    upd["uploaded_at"] = round(time.time(), 3)
                     upd["applied_adjustments"] = []
                     tex_res = int(upd.get("texture_resolution") or 16384)
                     tex_k = "16K" if tex_res >= 12288 else ("8K" if tex_res >= 6144 else ("4K" if tex_res >= 3072 else "2K"))

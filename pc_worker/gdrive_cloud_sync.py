@@ -549,6 +549,15 @@ def sync_all_scans_to_gdrive_and_vps(db: Any, auth_share: Any = None, force: boo
     """
     acquired = _CLOUD_SYNC_LOCK.acquire(blocking=force)
     if not acquired:
+        if os.path.isfile(CLOUD_MANIFEST_PATH):
+            try:
+                with open(CLOUD_MANIFEST_PATH, "r", encoding="utf-8") as f:
+                    cur_m = json.load(f)
+                if isinstance(cur_m, dict) and ("scans" in cur_m or "packages" in cur_m):
+                    cur_m["status"] = "busy"
+                    return cur_m
+            except Exception:
+                pass
         return {"status": "busy"}
     try:
         return _sync_all_scans_to_gdrive_and_vps_locked(db, auth_share=auth_share, force=force)

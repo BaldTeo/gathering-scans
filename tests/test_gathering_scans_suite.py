@@ -4230,11 +4230,39 @@ vm.runInContext(fs.readFileSync('./web/src/12-public-utilities-gis.js', 'utf8'),
             self.assertTrue(os.path.isfile(daan_prev_glb))
             self.assertLess(os.path.getsize(daan_prev_glb), 1_200_000)
 
-        # 4. Verify Map View loads preview_tileset.json across all devices in rough mode
+        # 4. Verify Map View loads preview_tileset.json across all devices in rough mode and tie-breaks same-date scans
         with open(os.path.join(BASE_DIR, "web", "src", "02-map-and-timeline.js"), "r", encoding="utf-8") as f:
             js02 = f.read()
         self.assertIn('const useRoughTilesetOnly = !previewThree._forceFullTilesetFallback && lodMode === "rough";', js02)
         self.assertIn("if (isPreviewTileset) {", js02)
+        self.assertIn("Number(b.tileset_version || b.uploaded_at || 0) - Number(a.tileset_version || a.uploaded_at || 0)", js02)
+
+        # 5. Verify run_pix4dmatic_pipeline uses proj_dir (never undefined project_dir) when archiving tileset_prev_rerun
+        from pc_worker.pix4d_runner import run_pix4dmatic_pipeline
+        runner_src = inspect.getsource(run_pix4dmatic_pipeline)
+        self.assertNotIn("os.path.join(project_dir", runner_src)
+        self.assertIn('os.path.join(proj_dir, "tileset")', runner_src)
+        self.assertIn('os.path.join(proj_dir, "tileset_prev_rerun")', runner_src)
+
+        # 6. Verify _CLOUD_SYNC_LOCK contention returns existing manifest and _save_cloud_manifest guards against status-only dicts
+        from pc_worker.gdrive_cloud_sync import _CLOUD_SYNC_LOCK, sync_all_scans_to_gdrive_and_vps
+        from pc_worker.server_cloud_and_tunnel import CLOUD_MANIFEST_PATH, _save_cloud_manifest
+        acquired = _CLOUD_SYNC_LOCK.acquire(blocking=False)
+        try:
+            busy_ret = sync_all_scans_to_gdrive_and_vps(self.db, None, force=False)
+            self.assertEqual(busy_ret.get("status"), "busy")
+            if os.path.isfile(CLOUD_MANIFEST_PATH):
+                self.assertIn("scans", busy_ret)
+                self.assertGreater(len(busy_ret.get("scans") or []), 0)
+        finally:
+            if acquired:
+                _CLOUD_SYNC_LOCK.release()
+        _save_cloud_manifest({"status": "busy"})
+        if os.path.isfile(CLOUD_MANIFEST_PATH):
+            with open(CLOUD_MANIFEST_PATH, "r", encoding="utf-8") as mf:
+                saved_m = _json.load(mf)
+            self.assertIn("scans", saved_m)
+            self.assertGreater(len(saved_m.get("scans") or []), 0)
 
 
 if __name__ == "__main__":

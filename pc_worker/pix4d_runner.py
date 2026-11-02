@@ -2480,6 +2480,27 @@ def run_pix4dmatic_pipeline(
                 except Exception:
                     shutil.rmtree(old_obj_dir, ignore_errors=True)
 
+            # Archive any previously cropped/edited tileset so a PIX4Dmatic rerun starts uncropped
+            old_ts_dir = os.path.join(proj_dir, "tileset")
+            prev_rerun_ts_dir = os.path.join(proj_dir, "tileset_prev_rerun")
+            if os.path.isdir(old_ts_dir):
+                if os.path.isdir(prev_rerun_ts_dir):
+                    shutil.rmtree(prev_rerun_ts_dir, ignore_errors=True)
+                try:
+                    os.replace(old_ts_dir, prev_rerun_ts_dir)
+                except Exception:
+                    pass
+            if os.path.isfile(meta_fp):
+                try:
+                    with open(meta_fp, "r", encoding="utf-8") as mf:
+                        mdata = json.load(mf)
+                    if isinstance(mdata, dict) and "applied_adjustments" in mdata:
+                        mdata.pop("applied_adjustments", None)
+                        with open(meta_fp, "w", encoding="utf-8") as mf:
+                            json.dump(mdata, mf, ensure_ascii=False, indent=2)
+                except Exception:
+                    pass
+
             if not existing_project_only:
                 if os.path.isdir(nested_proj_dir):
                     shutil.rmtree(nested_proj_dir, ignore_errors=True)
@@ -2487,27 +2508,6 @@ def run_pix4dmatic_pipeline(
                     try:
                         os.remove(p4m_path)
                     except OSError:
-                        pass
-                # Archive any previously cropped/edited tileset so a fresh PIX4Dmatic rerun starts uncropped
-                old_ts_dir = os.path.join(project_dir, "tileset")
-                prev_rerun_ts_dir = os.path.join(project_dir, "tileset_prev_rerun")
-                if os.path.isdir(old_ts_dir):
-                    if os.path.isdir(prev_rerun_ts_dir):
-                        shutil.rmtree(prev_rerun_ts_dir, ignore_errors=True)
-                    try:
-                        os.replace(old_ts_dir, prev_rerun_ts_dir)
-                    except Exception:
-                        pass
-                meta_fp = os.path.join(project_dir, "scan_meta.json")
-                if os.path.isfile(meta_fp):
-                    try:
-                        with open(meta_fp, "r", encoding="utf-8") as mf:
-                            mdata = json.load(mf)
-                        if isinstance(mdata, dict) and "applied_adjustments" in mdata:
-                            mdata.pop("applied_adjustments", None)
-                            with open(meta_fp, "w", encoding="utf-8") as mf:
-                                json.dump(mdata, mf, indent=2)
-                    except Exception:
                         pass
 
                 if part_paths:
@@ -2919,6 +2919,17 @@ def run_pix4dmatic_pipeline(
     elif os.path.isdir(prev_obj_dir) and not os.path.isdir(old_obj_dir):
         try:
             os.replace(prev_obj_dir, old_obj_dir)
+        except Exception:
+            pass
+
+    prev_rerun_ts_dir = os.path.join(proj_dir, "tileset_prev_rerun")
+    cur_ts_dir = os.path.join(proj_dir, "tileset")
+    if tileset_path and os.path.isfile(tileset_path):
+        if os.path.isdir(prev_rerun_ts_dir):
+            shutil.rmtree(prev_rerun_ts_dir, ignore_errors=True)
+    elif os.path.isdir(prev_rerun_ts_dir) and not os.path.isdir(cur_ts_dir):
+        try:
+            os.replace(prev_rerun_ts_dir, cur_ts_dir)
         except Exception:
             pass
 

@@ -1,37 +1,10 @@
 /**
  * GatheringScans Module 10: Construction QA, Open-Trench Utility 3D Tracer & RTK Stakeout
- * =======================================================================================
- * Implements Milestone 4 & Milestone 5 Civil Engineering & Construction QA tools:
- * 1. 3D Surface Flatness, Levelness & Wall Plumbness Inspector:
- *    - Reference Plane modes: Horizontal, Vertical Plumb, Best-Fit Least Squares
- *    - User-selectable tolerance thresholds (mm)
- *    - Deviation heatmap grid, Pass Rate %, Max High / Max Low 3D pins
- *    - Plumb Tilt Ratio (1:N, mm/m) and ASTM E1155 approximation (F_F / F_L)
- * 2. Open-Trench Buried Utility 3D As-Built Tracer:
- *    - 3D polyline tracing (Invert, Crown, Ground)
- *    - Pipe diameter & type selection (DRAIN, SEWER, WATER, GAS, ELEC, TELECOM)
- *    - Cumulative stationing (0K+000) and segment gradients (% and 1:N)
- *    - Depth of cover evaluation and 3D DXF / CSV export
- * 3. Compare View ΔV Volume Takeoff:
- *    - Polygon-bounded epoch-to-epoch difference volume takeoff
- *    - Mass conservation (BCM, LCM, CCM, Tonnes) and dump truck haulage trips
- * 4. RTK Stakeout Export strictly in Easting, Northing, Elevation (E, N, Z) order:
- *    - PtID, Easting, Northing, Elevation, Code
- *    - Standard CSV, space-delimited TXT (Leica/Trimble), 3D DXF R12
- *    - Printable A4 Construction Field Sheet with sign-off blocks
- *
- * Compliance:
- * - Strictly under 5,000 lines modular ceiling
- * - ZERO Unicode emojis (crisp inline SVGs only)
- * - Comprehensive Bright & Dark Theme Support (via CSS Custom Properties)
- * - Strict 1-word action button labels
- * - TWD97 (121) + TWVD2001 coordinate ordering strictly E, N, Z
+ * Strict < 5,000-line modular architecture, zero Unicode emojis, TWD97 (121) + TWVD2001 (E, N, Z).
  */
-
 (function () {
   "use strict";
 
-  // Crisp inline SVG icons (BIM CAD stroke style, stroke="currentColor", stroke-width="2", fill="none")
   const QA_SVGS = {
     FLATNESS: `<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="gs-icon"><path d="M3 12h18"></path><path d="M3 6h18"></path><path d="M3 18h18"></path></svg>`,
     PLUMB: `<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="gs-icon"><line x1="12" y1="2" x2="12" y2="18"></line><circle cx="12" cy="19.5" r="2.5"></circle></svg>`,
@@ -51,18 +24,13 @@
     EYE: `<svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="gs-icon"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>`,
   };
 
-  // Safe float parsing helper
   function safeFloat(val, fallback) {
     if (val === undefined || val === null) return fallback;
     const s = String(val).trim();
-    if (!s || s.toLowerCase() === "undefined" || s.toLowerCase() === "null" || s.toLowerCase() === "nan") {
-      return fallback;
-    }
+    if (!s || s.toLowerCase() === "undefined" || s.toLowerCase() === "null" || s.toLowerCase() === "nan") return fallback;
     const f = parseFloat(s);
     return Number.isFinite(f) ? f : fallback;
   }
-
-  // Translation helper
   const t = (zh, en) => (typeof tr === "function" ? tr(zh, en) : zh);
 
   // Active 3D overlay groups
@@ -82,6 +50,9 @@
     flatnessExtrudeDirMode: "auto",
     flatnessCurvedOffsetMode: "auto_center",
     flatnessExtrudeDepthM: 1.8,
+    flatnessHasCustomExtrudeDepth: false,
+    flatnessManualArcRadiusM: null,
+    polygonIsRibbonDerived: false,
     curvedPickStage: "",
     curvedSplinePoints: [],
     curvedExtrudeTargetPt: null,
@@ -91,6 +62,7 @@
     flatnessVolumeMode: "threshold",
     flatnessDisplayMode: "tiles",
     flatnessShowPass3D: false,
+    flatnessShowRegionLabels: false,
     flatnessResolutionCm: 15,
     flatnessReportIncludeMaterial: false,
     flatnessObjectsByScan: {},
@@ -258,19 +230,10 @@
    * Returns eigenvalues [d0, d1, d2] and orthonormal eigenvectors [v0, v1, v2] sorted ascending by eigenvalue.
    */
   function solveSymmetric3x3Eigen(m00, m01, m02, m11, m12, m22) {
-    const A = [
-      [m00, m01, m02],
-      [m01, m11, m12],
-      [m02, m12, m22],
-    ];
-    const V = [
-      [1, 0, 0],
-      [0, 1, 0],
-      [0, 0, 1],
-    ];
+    const A = [[m00, m01, m02], [m01, m11, m12], [m02, m12, m22]];
+    const V = [[1, 0, 0], [0, 1, 0], [0, 0, 1]];
     for (let iter = 0; iter < 18; iter++) {
-      let p = 0, q = 1;
-      let maxOff = Math.abs(A[0][1]);
+      let p = 0, q = 1, maxOff = Math.abs(A[0][1]);
       if (Math.abs(A[0][2]) > maxOff) { maxOff = Math.abs(A[0][2]); p = 0; q = 2; }
       if (Math.abs(A[1][2]) > maxOff) { maxOff = Math.abs(A[1][2]); p = 1; q = 2; }
       if (maxOff < 1e-12) break;
@@ -293,54 +256,18 @@
         V[i][q] = s * vip + c * viq;
       }
     }
-    const items = [0, 1, 2].map((col) => ({
-      val: A[col][col],
-      vec: { x: V[0][col], y: V[1][col], z: V[2][col] },
-    }));
-    items.sort((a, b) => a.val - b.val);
-    return items;
+    return [0, 1, 2].map((col) => ({ val: A[col][col], vec: { x: V[0][col], y: V[1][col], z: V[2][col] } })).sort((a, b) => a.val - b.val);
   }
+  function vecNorm(v) { const len = Math.hypot(v.x, v.y, v.z) || 1.0; return { x: v.x / len, y: v.y / len, z: v.z / len }; }
+  function vecCross(a, b) { return { x: a.y * b.z - a.z * b.y, y: a.z * b.x - a.x * b.z, z: a.x * b.y - a.y * b.x }; }
+  function vecDot(a, b) { return a.x * b.x + a.y * b.y + a.z * b.z; }
 
-  function vecNorm(v) {
-    const len = Math.hypot(v.x, v.y, v.z) || 1.0;
-    return { x: v.x / len, y: v.y / len, z: v.z / len };
-  }
-
-  function vecCross(a, b) {
-    return {
-      x: a.y * b.z - a.z * b.y,
-      y: a.z * b.x - a.x * b.z,
-      z: a.x * b.y - a.y * b.x,
-    };
-  }
-
-  function vecDot(a, b) {
-    return a.x * b.x + a.y * b.y + a.z * b.z;
-  }
-
-  /**
-   * Fits a 3D reference plane to a point set (in local Three.js Y-up coordinates).
-   * Supports:
-   * - "best_fit_3d" (Default): Orthogonal PCA Best-Fit Plane (adapts to floors, ramps, and vertical walls)
-   * - "horizontal": Horizontal Floor Plane (normal = +Y)
-   * - "vertical_plumb": Vertical Plumb Wall Plane (normal horizontal in XZ plane)
-   */
   function fitFlatnessReferencePlane(points, planeMode = "best_fit_3d") {
     const nPts = Array.isArray(points) ? points.length : 0;
     if (nPts === 0) {
       return {
-        center: { x: 0, y: 0, z: 0 },
-        normal: { x: 0, y: 1, z: 0 },
-        uAxis: { x: 1, y: 0, z: 0 },
-        vAxis: { x: 0, y: 0, z: 1 },
-        planeMode,
-        slopePct: 0,
-        slopeDeg: 0,
-        tiltRatio: "1:INF",
-        plumbMmPerM: 0,
-        azimuthDeg: 0,
-        surfaceClassZh: "水平面",
-        surfaceClassEn: "Horizontal",
+        center: { x: 0, y: 0, z: 0 }, normal: { x: 0, y: 1, z: 0 }, uAxis: { x: 1, y: 0, z: 0 }, vAxis: { x: 0, y: 0, z: 1 },
+        planeMode, slopePct: 0, slopeDeg: 0, tiltRatio: "1:INF", plumbMmPerM: 0, azimuthDeg: 0, surfaceClassZh: "水平面", surfaceClassEn: "Horizontal",
       };
     }
 
@@ -1350,6 +1277,8 @@
                 extrudeDirMode: QA_STATE.flatnessExtrudeDirMode || "auto",
                 offsetMode: QA_STATE.flatnessCurvedOffsetMode || "auto_center",
                 extrudeDepthM: QA_STATE.flatnessExtrudeDepthM || 1.8,
+                hasCustomExtrudeDepth: Boolean(QA_STATE.flatnessHasCustomExtrudeDepth),
+                manualRadiusM: QA_STATE.flatnessManualArcRadiusM,
                 splinePts: QA_STATE.curvedSplinePoints,
                 extrudeTargetPt: QA_STATE.curvedExtrudeTargetPt,
                 hasExplicitSpline: Boolean(QA_STATE.curvedHasExplicitSpline && Array.isArray(QA_STATE.curvedSplinePoints) && QA_STATE.curvedSplinePoints.length >= 2),
@@ -1643,26 +1572,51 @@
   function createFlatnessTagSprite(tagText, subText, isActive = false, isPlumbWall = false) {
     const THREE = window.THREE;
     if (!THREE || typeof document === "undefined") return null;
+    const isLight =
+      document.documentElement?.getAttribute("data-theme") === "light" ||
+      document.body?.classList?.contains("theme-light");
     const cvs = document.createElement("canvas");
-    cvs.width = 256;
-    cvs.height = 76;
+    cvs.width = 192;
+    cvs.height = 48;
     const ctx = cvs.getContext("2d");
     if (!ctx) return null;
-    ctx.fillStyle = isActive ? "rgba(15, 23, 42, 0.94)" : "rgba(15, 23, 42, 0.82)";
-    ctx.strokeStyle = isPlumbWall ? "#f59e0b" : isActive ? "#38bdf8" : "#94a3b8";
-    ctx.lineWidth = isActive ? 3.5 : 2.0;
-    ctx.fillRect(4, 4, 248, 68);
-    ctx.strokeRect(4, 4, 248, 68);
-    ctx.fillStyle = isPlumbWall ? "#fbbf24" : "#38bdf8";
-    ctx.font = "bold 24px Inter, Microsoft JhengHei, sans-serif";
-    ctx.fillText(String(tagText || "F1"), 16, 34);
-    ctx.fillStyle = "#f8fafc";
-    ctx.font = "600 17px Inter, Microsoft JhengHei, sans-serif";
-    ctx.fillText(String(subText || ""), 16, 58);
+    ctx.fillStyle = isLight
+      ? isActive
+        ? "rgba(255, 255, 255, 0.96)"
+        : "rgba(248, 250, 252, 0.90)"
+      : isActive
+      ? "rgba(15, 23, 42, 0.94)"
+      : "rgba(15, 23, 42, 0.82)";
+    ctx.strokeStyle = isPlumbWall
+      ? isLight
+        ? "#d97706"
+        : "#f59e0b"
+      : isActive
+      ? isLight
+        ? "#0284c7"
+        : "#38bdf8"
+      : isLight
+      ? "#64748b"
+      : "#94a3b8";
+    ctx.lineWidth = isActive ? 2.5 : 1.5;
+    ctx.fillRect(2, 2, 188, 44);
+    ctx.strokeRect(2, 2, 188, 44);
+    ctx.fillStyle = isPlumbWall
+      ? isLight
+        ? "#b45309"
+        : "#fbbf24"
+      : isLight
+      ? "#0369a1"
+      : "#38bdf8";
+    ctx.font = "bold 16px Inter, Microsoft JhengHei, sans-serif";
+    ctx.fillText(String(tagText || "F1"), 10, 20);
+    ctx.fillStyle = isLight ? "#0f172a" : "#f8fafc";
+    ctx.font = "600 12.5px Inter, Microsoft JhengHei, sans-serif";
+    ctx.fillText(String(subText || ""), 10, 38);
     const tex = new THREE.CanvasTexture(cvs);
     const mat = new THREE.SpriteMaterial({ map: tex, transparent: true, depthTest: false });
     const sp = new THREE.Sprite(mat);
-    sp.scale.set(1.8, 0.54, 1);
+    sp.scale.set(0.88, 0.22, 1);
     sp.renderOrder = 999;
     return sp;
   }
@@ -1684,6 +1638,7 @@
       appendSingleFlatnessObjectTo3DGroup(surfaceQa3DGroup, obj.cache, obj.metrics, {
         isActive: obj.id === QA_STATE.activeFlatnessObjectId,
         showPass3D: Boolean(obj.showPass3D),
+        showRegionLabels: Boolean(QA_STATE.flatnessShowRegionLabels),
         displayMode: obj.displayMode || "tiles",
         label: obj.code || `F${i + 1}`,
       });
@@ -1733,6 +1688,9 @@
         curveType: QA_STATE.flatnessCurveType,
         extrudeDirMode: QA_STATE.flatnessExtrudeDirMode,
         extrudeDepthM: QA_STATE.flatnessExtrudeDepthM,
+        hasCustomExtrudeDepth: Boolean(QA_STATE.flatnessHasCustomExtrudeDepth),
+        manualRadiusM: QA_STATE.flatnessManualArcRadiusM,
+        polyPts: window.STATE && Array.isArray(window.STATE.flatnessPolygonPoints) ? window.STATE.flatnessPolygonPoints : null,
         extrudeTargetPt: QA_STATE.curvedExtrudeTargetPt,
       });
       if (draftGrp) surfaceQa3DGroup.add(draftGrp);
@@ -1744,6 +1702,7 @@
       window.studioThree.scene.add(surfaceQa3DGroup);
     }
 
+    if (typeof updateZoomInvariantElements === "function") updateZoomInvariantElements();
     if (typeof update2DBadgePositions === "function") update2DBadgePositions();
 
     const countBadge = document.getElementById("lblFlatnessVertexCount");
@@ -1787,6 +1746,7 @@
         {
           isActive: isAct,
           showPass3D: isAct ? showPass3D : Boolean(obj.showPass3D),
+          showRegionLabels: Boolean(QA_STATE.flatnessShowRegionLabels),
           displayMode: isAct ? QA_STATE.flatnessDisplayMode || "tiles" : obj.displayMode || "tiles",
           label: obj.code || `F${i + 1}`,
         }
@@ -1797,6 +1757,7 @@
       appendSingleFlatnessObjectTo3DGroup(surfaceQa3DGroup, cache, metrics, {
         isActive: true,
         showPass3D,
+        showRegionLabels: Boolean(QA_STATE.flatnessShowRegionLabels),
         displayMode: QA_STATE.flatnessDisplayMode || "tiles",
         label: "F1",
       });
@@ -1820,6 +1781,7 @@
     if (!THREE || !grp || !cache || !cache.plane) return;
     const isActive = Boolean(opts.isActive);
     const showPass3D = Boolean(opts.showPass3D);
+    const showRegionLabels = Boolean(opts.showRegionLabels ?? QA_STATE.flatnessShowRegionLabels);
     const displayMode = opts.displayMode === "points" ? "points" : "tiles";
     const objLabel = opts.label || "";
     const plane = cache.plane;
@@ -1893,11 +1855,11 @@
       grp.add(planeMesh);
     }
 
-    if (objLabel) {
+    if (showRegionLabels && objLabel) {
       const subTxt = `${metrics?.pass_rate_pct ?? 0}% (±${metrics?.tolerance_mm ?? 3}mm)`;
       const tagSp = createFlatnessTagSprite(objLabel, subTxt, isActive, isPlumbWall);
       if (tagSp) {
-        tagSp.position.copy(fc).addScaledVector(fn, 0.38);
+        tagSp.position.copy(fc).addScaledVector(fn, 0.28);
         grp.add(tagSp);
       }
     }
@@ -2103,12 +2065,15 @@
     QA_STATE.flatnessResolutionCm = Number(obj.resolutionCm || obj.cache?.resolutionCm) || 15;
     QA_STATE.flatnessCache = obj.cache;
     QA_STATE.surfaceQaLastResult = obj.metrics;
+    QA_STATE.polygonIsRibbonDerived = Boolean(obj.polygonIsRibbonDerived);
+    QA_STATE.flatnessHasCustomExtrudeDepth = Boolean(obj.hasCustomExtrudeDepth);
     const cMeta = obj.curvedMeta || obj.cache?.curvedMeta || null;
     if (cMeta) {
       QA_STATE.flatnessCurveType = cMeta.curveType || QA_STATE.flatnessCurveType || "spline";
       QA_STATE.flatnessExtrudeDirMode = cMeta.extrudeDirMode || QA_STATE.flatnessExtrudeDirMode || "auto";
       QA_STATE.flatnessCurvedOffsetMode = cMeta.offsetMode || QA_STATE.flatnessCurvedOffsetMode || "auto_center";
       QA_STATE.flatnessExtrudeDepthM = Number(cMeta.extrudeDepthM) || QA_STATE.flatnessExtrudeDepthM || 1.8;
+      QA_STATE.flatnessManualArcRadiusM = cMeta.manualRadiusM ?? obj.manualRadiusM ?? null;
       if (Array.isArray(cMeta.splinePts) && cMeta.splinePts.length >= 2) {
         QA_STATE.curvedSplinePoints = cMeta.splinePts.map((p) => ({ x: Number(p.x) || 0, y: Number(p.y) || 0, z: Number(p.z) || 0 }));
       }
@@ -2118,6 +2083,7 @@
       QA_STATE.curvedSplinePoints = [];
       QA_STATE.curvedExtrudeTargetPt = null;
       QA_STATE.curvedHasExplicitSpline = false;
+      QA_STATE.flatnessManualArcRadiusM = null;
     }
     syncCurvedSplineHandlesToStudioState(cMeta);
 
@@ -2155,6 +2121,10 @@
     const extM = Number(QA_STATE.flatnessExtrudeDepthM) || 1.8;
     if (rngExt) rngExt.value = String(Math.min(15, Math.max(0.2, extM)));
     if (inpExt) inpExt.value = extM.toFixed(2);
+    const inpArcR = document.getElementById("inpFlatnessArcRadiusM");
+    if (inpArcR) {
+      inpArcR.value = Number.isFinite(Number(QA_STATE.flatnessManualArcRadiusM)) && Number(QA_STATE.flatnessManualArcRadiusM) >= 0.12 ? Number(QA_STATE.flatnessManualArcRadiusM).toFixed(2) : "";
+    }
     const lblRadBadge = document.getElementById("lblFlatnessCurvedRadiusBadge");
     if (lblRadBadge) {
       const radV = Number(cMeta?.radiusM ?? cMeta?.curvatureRadiusM);
@@ -2179,6 +2149,8 @@
 
     const chkPass = document.getElementById("chkFlatnessShowPass3D");
     if (chkPass) chkPass.checked = QA_STATE.flatnessShowPass3D;
+    const chkLabels = document.getElementById("chkFlatnessShowRegionLabels");
+    if (chkLabels) chkLabels.checked = Boolean(QA_STATE.flatnessShowRegionLabels);
   }
 
   function selectFlatnessObject(objId, focusCam = true) {
@@ -2265,6 +2237,9 @@
     QA_STATE.curvedExtrudeTargetPt = null;
     QA_STATE.curvedHasExplicitSpline = false;
     QA_STATE.curvedPickStage = "";
+    QA_STATE.polygonIsRibbonDerived = false;
+    QA_STATE.flatnessHasCustomExtrudeDepth = false;
+    QA_STATE.flatnessManualArcRadiusM = null;
     syncCurvedSplineHandlesToStudioState(null);
     if (window.STATE) {
       window.STATE.measurePoints = [];
@@ -2505,11 +2480,17 @@
                 <span style="font-size:9.5px;">${t("僅填至高點", "Fill Only")}</span>
               </label>
             </div>
-            <div style="display:flex;align-items:center;justify-content:space-between;gap:6px;margin-bottom:5px;">
-              <label style="display:flex;align-items:center;gap:5px;font-size:10.5px;color:var(--ui-text-secondary);cursor:pointer;">
-                <input type="checkbox" id="chkFlatnessShowPass3D" ${QA_STATE.flatnessShowPass3D ? "checked" : ""} />
-                <span>${t("顯示合格格 (綠)", "Show Pass (Green)")}</span>
-              </label>
+            <div style="display:flex;align-items:center;justify-content:space-between;gap:6px;margin-bottom:5px;flex-wrap:wrap;">
+              <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+                <label style="display:flex;align-items:center;gap:4px;font-size:10px;color:var(--ui-text-secondary);cursor:pointer;">
+                  <input type="checkbox" id="chkFlatnessShowPass3D" ${QA_STATE.flatnessShowPass3D ? "checked" : ""} />
+                  <span>${t("顯示合格格 (綠)", "Show Pass")}</span>
+                </label>
+                <label style="display:flex;align-items:center;gap:4px;font-size:10px;color:var(--ui-text-secondary);cursor:pointer;" title="${t("於 3D 檢測區塊顯示小型標籤 (預設隱藏)", "Show compact 3D region label tag (hidden by default)")}">
+                  <input type="checkbox" id="chkFlatnessShowRegionLabels" ${QA_STATE.flatnessShowRegionLabels ? "checked" : ""} />
+                  <span>${t("顯示區塊標籤", "Region Labels")}</span>
+                </label>
+              </div>
               <div style="display:inline-flex;gap:3px;" role="group" aria-label="3D Display Mode">
                 <button type="button" class="btn-xs ${dispMode === "tiles" ? "primary" : ""}" data-flatness-disp-mode="tiles" style="padding:2px 7px;font-size:10px;" title="${t("以規則網格色塊顯示", "Display as regular grid tiles")}">
                   ${t("色塊", "Tiles")}
@@ -2573,6 +2554,10 @@
     const showPassEl = document.getElementById("chkFlatnessShowPass3D");
     const showPass = showPassEl ? Boolean(showPassEl.checked) : Boolean(QA_STATE.flatnessShowPass3D);
     QA_STATE.flatnessShowPass3D = showPass;
+    const showLabelsEl = document.getElementById("chkFlatnessShowRegionLabels");
+    if (showLabelsEl) {
+      QA_STATE.flatnessShowRegionLabels = Boolean(showLabelsEl.checked);
+    }
     const incMatEl = document.getElementById("chkFlatnessReportIncludeMaterial");
     if (incMatEl) {
       QA_STATE.flatnessReportIncludeMaterial = Boolean(incMatEl.checked);
@@ -2598,7 +2583,6 @@
     if (!metrics) return;
     QA_STATE.surfaceQaLastResult = metrics;
 
-    // Persist updated settings onto the currently selected saved flatness object
     const activeObj = getActiveFlatnessObject();
     if (activeObj) {
       activeObj.toleranceMm = tolMm;
@@ -2618,8 +2602,6 @@
   }
 
   async function lockFlatnessPolygonAndAnalyze(lockedPtsInput = null, opts = null) {
-    // Distinguish editing the currently active saved object (vertex drag, plane mode change, or resolution change)
-    // vs. closing a brand-new polygon on the 3D surface
     const isEditingActiveObject = Boolean(
       (opts && opts.updateActiveObject) ||
         (QA_STATE.activeFlatnessObjectId &&
@@ -2627,6 +2609,7 @@
           window.STATE &&
           lockedPtsInput === window.STATE.flatnessPolygonPoints)
     );
+    QA_STATE.polygonIsRibbonDerived = Boolean(opts && opts.fromRibbonFallback);
 
     const rawPts =
       Array.isArray(lockedPtsInput) && lockedPtsInput.length >= 3
@@ -2701,7 +2684,6 @@
       const volMode = QA_STATE.flatnessVolumeMode || "threshold";
       const metrics = evaluateCachedFlatnessWithTolerance(cache, tolMm, volMode);
 
-      // Save or update in per-scan Saved Flatness Objects list
       const objs = getFlatnessObjectsForActiveScan();
       let savedObj = isEditingActiveObject ? getActiveFlatnessObject() : null;
       const surfaceTitleZh =
@@ -2723,6 +2705,9 @@
         savedObj.showPass3D = Boolean(QA_STATE.flatnessShowPass3D);
         savedObj.curvedMeta = cache.curvedMeta || null;
         savedObj.curvedHasExplicitSpline = Boolean(QA_STATE.curvedHasExplicitSpline);
+        savedObj.polygonIsRibbonDerived = Boolean(QA_STATE.polygonIsRibbonDerived);
+        savedObj.hasCustomExtrudeDepth = Boolean(QA_STATE.flatnessHasCustomExtrudeDepth);
+        savedObj.manualRadiusM = QA_STATE.flatnessManualArcRadiusM;
         savedObj.cache = cache;
         savedObj.metrics = metrics;
         savedObj.result = metrics;
@@ -2749,6 +2734,9 @@
           showPass3D: Boolean(QA_STATE.flatnessShowPass3D),
           curvedMeta: cache.curvedMeta || null,
           curvedHasExplicitSpline: Boolean(QA_STATE.curvedHasExplicitSpline),
+          polygonIsRibbonDerived: Boolean(QA_STATE.polygonIsRibbonDerived),
+          hasCustomExtrudeDepth: Boolean(QA_STATE.flatnessHasCustomExtrudeDepth),
+          manualRadiusM: QA_STATE.flatnessManualArcRadiusM,
           cache,
           metrics,
           result: metrics,
@@ -2783,19 +2771,18 @@
           `Saved ${savedObj.code} (${cache.totalAreaM2} m², ${cache.cells.length} cells @ ${cache.resolutionCm}cm) — drag pins or click 'New'`
         );
       }
-      const lblCurvedSt = document.getElementById("lblFlatnessCurvedStatus");
-      if (lblCurvedSt && cache.curvedMeta) {
+      if (cache.curvedMeta) {
         const cm = cache.curvedMeta;
         const radV = Number(cm.radiusM ?? cm.curvatureRadiusM);
         const rTxt = Number.isFinite(radV) && radV < 999 ? `R = ${radV.toFixed(2)} m` : t("樣條曲線", "Spline");
-        lblCurvedSt.textContent = `${rTxt} · ${t("弧長", "Arc")} ${cm.arcLengthM} m × ${t("擠出", "Ext")} ${cm.extrudeDepthM} m`;
+        const lblCurvedSt = document.getElementById("lblFlatnessCurvedStatus");
+        if (lblCurvedSt) lblCurvedSt.textContent = `${rTxt} · ${t("弧長", "Arc")} ${cm.arcLengthM} m × ${t("擠出", "Ext")} ${cm.extrudeDepthM} m`;
+        const lblRadBadge = document.getElementById("lblFlatnessCurvedRadiusBadge");
+        if (lblRadBadge) lblRadBadge.textContent = Number.isFinite(radV) && radV < 999 ? `R = ${radV.toFixed(2)} m` : t("樣條擠出", "Spline Extrude");
+        const inpArcR = document.getElementById("inpFlatnessArcRadiusM");
+        if (inpArcR && !QA_STATE.flatnessManualArcRadiusM && Number.isFinite(radV)) inpArcR.placeholder = `${radV.toFixed(2)}`;
       }
-      const lblRadBadge = document.getElementById("lblFlatnessCurvedRadiusBadge");
-      if (lblRadBadge && cache.curvedMeta) {
-        const cm = cache.curvedMeta;
-        const radV = Number(cm.radiusM ?? cm.curvatureRadiusM);
-        lblRadBadge.textContent = Number.isFinite(radV) && radV < 999 ? `R = ${radV.toFixed(2)} m` : t("樣條擠出", "Spline Extrude");
-      }
+      document.getElementById("btnAutoFitFlatnessCurved")?.classList.toggle("primary", !QA_STATE.curvedHasExplicitSpline && !QA_STATE.curvedPickStage);
       renderSavedFlatnessObjectsMenu();
       recomputeFlatnessMetricsAndVisuals();
       if (typeof syncStudioMobileToolHud === "function") syncStudioMobileToolHud();
@@ -2806,6 +2793,17 @@
       const progWrap = document.getElementById("flatnessSamplingProgressWrap");
       if (progWrap) progWrap.style.display = "none";
     }
+  }
+
+  function getExistingUserFlatnessPolygonPts() {
+    if (QA_STATE.polygonIsRibbonDerived) return null;
+    if (window.STATE && Array.isArray(window.STATE.flatnessPolygonPoints) && window.STATE.flatnessPolygonPoints.length >= 3) {
+      return window.STATE.flatnessPolygonPoints;
+    }
+    if (QA_STATE.flatnessCache && Array.isArray(QA_STATE.flatnessCache.polyPts) && QA_STATE.flatnessCache.polyPts.length >= 3) {
+      return QA_STATE.flatnessCache.polyPts;
+    }
+    return null;
   }
 
   async function applyCurvedSplineExtrusionAnalysis(opts = {}) {
@@ -2819,11 +2817,16 @@
     QA_STATE.flatnessPlaneMode = "curved_extruded";
     QA_STATE.curvedPickStage = "";
     QA_STATE.curvedHasExplicitSpline = true;
+    const existingPolyPts = getExistingUserFlatnessPolygonPts();
     const ev = window.__GS_CURVED_QA.buildCurvedExtrudedSurfaceEvaluator({
       splinePts: QA_STATE.curvedSplinePoints,
+      hasExplicitSpline: true,
       curveType: QA_STATE.flatnessCurveType || "spline",
       extrudeDirMode: QA_STATE.flatnessExtrudeDirMode || "auto",
       extrudeDepthM: QA_STATE.flatnessExtrudeDepthM || 1.8,
+      hasCustomExtrudeDepth: Boolean(QA_STATE.flatnessHasCustomExtrudeDepth),
+      manualRadiusM: QA_STATE.flatnessManualArcRadiusM,
+      polyPts: existingPolyPts,
       extrudeTargetPt: QA_STATE.curvedExtrudeTargetPt || null,
       useE1Depth: QA_STATE.flatnessExtrudeDirMode === "custom_e1" && Boolean(QA_STATE.curvedExtrudeTargetPt),
     });
@@ -2835,11 +2838,33 @@
       if (inpExt) inpExt.value = ev.extrudeDepthM.toFixed(2);
       if (rngExt) rngExt.value = String(Math.min(15, Math.max(0.2, ev.extrudeDepthM)));
     }
-    await lockFlatnessPolygonAndAnalyze(ev.ribbonBoundaryPts3D, {
-      updateActiveObject: Boolean(opts.updateActiveObject || QA_STATE.activeFlatnessObjectId),
-    });
+    if (existingPolyPts && existingPolyPts.length >= 3) {
+      await lockFlatnessPolygonAndAnalyze(existingPolyPts, {
+        updateActiveObject: Boolean(opts.updateActiveObject || QA_STATE.activeFlatnessObjectId),
+        fromRibbonFallback: false,
+      });
+    } else {
+      await lockFlatnessPolygonAndAnalyze(ev.ribbonBoundaryPts3D, {
+        updateActiveObject: Boolean(opts.updateActiveObject || QA_STATE.activeFlatnessObjectId),
+        fromRibbonFallback: true,
+      });
+    }
   }
   window.applyCurvedSplineExtrusionAnalysis = applyCurvedSplineExtrusionAnalysis;
+
+  function reapplyCurvedFlatnessPreservingPolygon() {
+    const existingPolyPts = getExistingUserFlatnessPolygonPts();
+    if (existingPolyPts && existingPolyPts.length >= 3) {
+      lockFlatnessPolygonAndAnalyze(existingPolyPts, {
+        updateActiveObject: Boolean(QA_STATE.activeFlatnessObjectId || true),
+        fromRibbonFallback: false,
+      });
+    } else if (Array.isArray(QA_STATE.curvedSplinePoints) && QA_STATE.curvedSplinePoints.length >= 2) {
+      applyCurvedSplineExtrusionAnalysis({ updateActiveObject: Boolean(QA_STATE.activeFlatnessObjectId) });
+    } else {
+      refreshFlatnessDraftVisuals();
+    }
+  }
 
   function bindSurfaceQaEvents() {
     document.getElementById("btnNewFlatnessObject")?.addEventListener("click", () => {
@@ -2864,11 +2889,25 @@
             ? QA_STATE.flatnessCache.polyPts
             : null;
         if (pts && pts.length >= 3) {
-          lockFlatnessPolygonAndAnalyze(pts, { updateActiveObject: true });
+          lockFlatnessPolygonAndAnalyze(pts, { updateActiveObject: true, fromRibbonFallback: QA_STATE.polygonIsRibbonDerived });
         } else {
           refreshFlatnessDraftVisuals();
         }
       });
+    });
+
+    document.getElementById("btnAutoFitFlatnessCurved")?.addEventListener("click", () => {
+      QA_STATE.flatnessPlaneMode = "curved_extruded";
+      QA_STATE.curvedPickStage = "";
+      QA_STATE.curvedHasExplicitSpline = false;
+      QA_STATE.flatnessHasCustomExtrudeDepth = false;
+      QA_STATE.flatnessManualArcRadiusM = null;
+      const inpArcR = document.getElementById("inpFlatnessArcRadiusM");
+      if (inpArcR) inpArcR.value = "";
+      document.getElementById("btnAutoFitFlatnessCurved")?.classList.add("primary");
+      document.getElementById("btnDrawFlatnessSpline")?.classList.remove("primary");
+      document.getElementById("btnPickFlatnessExtrudePt")?.classList.remove("primary");
+      reapplyCurvedFlatnessPreservingPolygon();
     });
 
     document.getElementById("btnDrawFlatnessSpline")?.addEventListener("click", () => {
@@ -2877,21 +2916,18 @@
       QA_STATE.curvedSplinePoints = [];
       QA_STATE.curvedExtrudeTargetPt = null;
       QA_STATE.curvedHasExplicitSpline = true;
-      QA_STATE.flatnessCache = null;
       syncCurvedSplineHandlesToStudioState(null);
       if (window.STATE) {
         window.STATE.measurePoints = [];
-        window.STATE.polygonLocked = false;
-        window.STATE.flatnessPolygonLocked = false;
-        window.STATE.flatnessPolygonPoints = [];
       }
+      document.getElementById("btnAutoFitFlatnessCurved")?.classList.remove("primary");
       document.getElementById("btnDrawFlatnessSpline")?.classList.add("primary");
       document.getElementById("btnPickFlatnessExtrudePt")?.classList.remove("primary");
       const lblSt = document.getElementById("lblFlatnessCurvedStatus");
-      if (lblSt) lblSt.textContent = t("請在 3D 表面依序點擊 3+ 個弧線控制點 (S1..Sn)，完成後點「套用分析」", "Click 3+ spline points (S1..Sn) on 3D surface, then click 'Apply'");
+      if (lblSt) lblSt.textContent = t("請在 3D 表面依序點擊 3+ 個黃色弧線控制點 (S1..Sn)，完成後點「套用曲面」（不影響多邊形邊界）", "Click 3+ yellow spline points (S1..Sn) on 3D surface, then click 'Apply' (preserves polygon boundary)");
       refreshFlatnessDraftVisuals();
       if (typeof showToast === "function") {
-        showToast(t("繪製弧線模式：請沿弧形牆頂或曲面邊緣點擊 3+ 個控制點", "Spline mode: click 3+ points along the curved edge"));
+        showToast(t("繪製弧線模式：請沿弧形牆頂或曲面點擊 3+ 個黃色控制點（檢測多邊形保持不變）", "Spline mode: click 3+ yellow points along the curved surface (inspection polygon preserved)"));
       }
     });
 
@@ -2915,10 +2951,10 @@
     document.getElementById("btnFinishFlatnessSpline")?.addEventListener("click", () => {
       document.getElementById("btnDrawFlatnessSpline")?.classList.remove("primary");
       document.getElementById("btnPickFlatnessExtrudePt")?.classList.remove("primary");
-      if (Array.isArray(QA_STATE.curvedSplinePoints) && QA_STATE.curvedSplinePoints.length >= 2) {
+      if (QA_STATE.curvedHasExplicitSpline && Array.isArray(QA_STATE.curvedSplinePoints) && QA_STATE.curvedSplinePoints.length >= 2) {
         applyCurvedSplineExtrusionAnalysis({ updateActiveObject: Boolean(QA_STATE.activeFlatnessObjectId) });
-      } else if (window.STATE && Array.isArray(window.STATE.flatnessPolygonPoints) && window.STATE.flatnessPolygonPoints.length >= 3) {
-        lockFlatnessPolygonAndAnalyze(window.STATE.flatnessPolygonPoints, { updateActiveObject: true });
+      } else {
+        reapplyCurvedFlatnessPreservingPolygon();
       }
     });
 
@@ -2929,11 +2965,7 @@
         });
         e.target.closest(".gs-qa-mode-pill")?.classList.add("active");
         QA_STATE.flatnessCurveType = e.target.value;
-        if (QA_STATE.curvedHasExplicitSpline && Array.isArray(QA_STATE.curvedSplinePoints) && QA_STATE.curvedSplinePoints.length >= 2) {
-          applyCurvedSplineExtrusionAnalysis({ updateActiveObject: true });
-        } else if (window.STATE && Array.isArray(window.STATE.flatnessPolygonPoints) && window.STATE.flatnessPolygonPoints.length >= 3) {
-          lockFlatnessPolygonAndAnalyze(window.STATE.flatnessPolygonPoints, { updateActiveObject: true });
-        }
+        reapplyCurvedFlatnessPreservingPolygon();
       });
     });
 
@@ -2944,21 +2976,13 @@
         });
         e.target.closest(".gs-qa-mode-pill")?.classList.add("active");
         QA_STATE.flatnessCurvedOffsetMode = e.target.value;
-        if (QA_STATE.curvedHasExplicitSpline && Array.isArray(QA_STATE.curvedSplinePoints) && QA_STATE.curvedSplinePoints.length >= 2) {
-          applyCurvedSplineExtrusionAnalysis({ updateActiveObject: true });
-        } else if (window.STATE && Array.isArray(window.STATE.flatnessPolygonPoints) && window.STATE.flatnessPolygonPoints.length >= 3) {
-          lockFlatnessPolygonAndAnalyze(window.STATE.flatnessPolygonPoints, { updateActiveObject: true });
-        }
+        reapplyCurvedFlatnessPreservingPolygon();
       });
     });
 
     document.getElementById("selFlatnessExtrudeDir")?.addEventListener("change", (e) => {
       QA_STATE.flatnessExtrudeDirMode = e.target.value || "auto";
-      if (QA_STATE.curvedHasExplicitSpline && Array.isArray(QA_STATE.curvedSplinePoints) && QA_STATE.curvedSplinePoints.length >= 2) {
-        applyCurvedSplineExtrusionAnalysis({ updateActiveObject: true });
-      } else if (window.STATE && Array.isArray(window.STATE.flatnessPolygonPoints) && window.STATE.flatnessPolygonPoints.length >= 3) {
-        lockFlatnessPolygonAndAnalyze(window.STATE.flatnessPolygonPoints, { updateActiveObject: true });
-      }
+      reapplyCurvedFlatnessPreservingPolygon();
     });
 
     const rngExt = document.getElementById("rngFlatnessExtrudeDepthM");
@@ -2968,18 +2992,14 @@
     const triggerExtrudeDepthChange = (valM) => {
       const cleanM = Math.max(0.2, Math.min(30, safeFloat(valM, 1.8)));
       QA_STATE.flatnessExtrudeDepthM = cleanM;
+      QA_STATE.flatnessHasCustomExtrudeDepth = true;
       QA_STATE.curvedExtrudeTargetPt = null;
       if (QA_STATE.flatnessExtrudeDirMode === "custom_e1") QA_STATE.flatnessExtrudeDirMode = "auto";
       if (lblExt) lblExt.textContent = "m";
       refreshFlatnessDraftVisuals();
       if (extTimer) clearTimeout(extTimer);
       extTimer = setTimeout(() => {
-        if (Array.isArray(QA_STATE.curvedSplinePoints) && QA_STATE.curvedSplinePoints.length >= 2) {
-          QA_STATE.curvedHasExplicitSpline = true;
-          applyCurvedSplineExtrusionAnalysis({ updateActiveObject: true });
-        } else if (window.STATE && Array.isArray(window.STATE.flatnessPolygonPoints) && window.STATE.flatnessPolygonPoints.length >= 3) {
-          lockFlatnessPolygonAndAnalyze(window.STATE.flatnessPolygonPoints, { updateActiveObject: true });
-        }
+        reapplyCurvedFlatnessPreservingPolygon();
       }, 120);
     };
     rngExt?.addEventListener("input", (e) => {
@@ -2992,6 +3012,27 @@
       if (inpExt) inpExt.value = v.toFixed(2);
       if (rngExt) rngExt.value = String(Math.min(15, v));
       triggerExtrudeDepthChange(v);
+    });
+
+    document.getElementById("inpFlatnessArcRadiusM")?.addEventListener("change", (e) => {
+      const rawStr = String(e.target.value || "").trim();
+      const parsed = parseFloat(rawStr);
+      if (!rawStr || !Number.isFinite(parsed) || parsed < 0.12) {
+        QA_STATE.flatnessManualArcRadiusM = null;
+        e.target.value = "";
+      } else {
+        QA_STATE.flatnessManualArcRadiusM = Math.max(0.15, Math.min(5000.0, parsed));
+        e.target.value = QA_STATE.flatnessManualArcRadiusM.toFixed(2);
+        if (QA_STATE.flatnessCurveType !== "arc") {
+          QA_STATE.flatnessCurveType = "arc";
+          document.querySelectorAll('#surfaceQaContainer input[name="flatnessCurveType"]').forEach((r) => {
+            const match = r.value === "arc";
+            r.checked = match;
+            r.closest(".gs-qa-mode-pill")?.classList.toggle("active", match);
+          });
+        }
+      }
+      reapplyCurvedFlatnessPreservingPolygon();
     });
 
     document.querySelectorAll('input[name="flatnessVolMode"]').forEach((radio) => {
@@ -3045,7 +3086,7 @@
             ? QA_STATE.flatnessCache.polyPts
             : null;
         if (pts && pts.length >= 3) {
-          lockFlatnessPolygonAndAnalyze(pts, { updateActiveObject: true });
+          lockFlatnessPolygonAndAnalyze(pts, { updateActiveObject: true, fromRibbonFallback: QA_STATE.polygonIsRibbonDerived });
         }
       }, 90);
     };
@@ -3074,6 +3115,12 @@
 
     document.getElementById("chkFlatnessShowPass3D")?.addEventListener("change", () => {
       recomputeFlatnessMetricsAndVisuals();
+    });
+
+    document.getElementById("chkFlatnessShowRegionLabels")?.addEventListener("change", (e) => {
+      QA_STATE.flatnessShowRegionLabels = Boolean(e.target.checked);
+      if (QA_STATE.flatnessCache) recomputeFlatnessMetricsAndVisuals();
+      else refreshFlatnessDraftVisuals();
     });
 
     document.getElementById("chkFlatnessReportIncludeMaterial")?.addEventListener("change", (e) => {

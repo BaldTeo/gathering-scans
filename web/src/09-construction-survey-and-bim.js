@@ -2045,10 +2045,13 @@
    * Algebraic Kasa circle fit followed by Huber-weighted Gauss-Newton orthogonal refinement in 2D profile coordinates (u, v).
    * Fits (u - a)^2 + (v - b)^2 = R^2.
    */
-  function fit2DCircleAlgebraicAndRefine(pts2D) {
+  function fit2DCircleAlgebraicAndRefine(pts2D, opts = {}) {
     const n = Array.isArray(pts2D) ? pts2D.length : 0;
-    if (n < 3) {
-      return { isValidArc: false, centerU: 0, centerV: 0, radiusM: 9999.0, rmsResidualM: 0, sagittaM: 0 };
+    const forceArc = Boolean(opts.forceArc);
+    const manualR = Number(opts.manualRadiusM);
+    const hasManualR = Number.isFinite(manualR) && manualR >= 0.12 && manualR <= 5000.0;
+    if (n < 3 && !hasManualR) {
+      return { isValidArc: forceArc, centerU: 0, centerV: 0, radiusM: forceArc ? 25.0 : 9999.0, rmsResidualM: 0, sagittaM: 0 };
     }
 
     let meanU = 0, meanV = 0, wSum = 0;
@@ -2083,21 +2086,77 @@
     }
 
     const det = suu * svv - suv * suv;
-    const span = Math.hypot(maxU - minU, maxV - minV);
-    if (Math.abs(det) < 1e-11 || span < 0.08) {
-      return { isValidArc: false, centerU: meanU, centerV: meanV, radiusM: 9999.0, rmsResidualM: 0, sagittaM: 0 };
+    const span = Number.isFinite(maxU - minU) ? Math.hypot(maxU - minU, maxV - minV) : 0;
+    let cx = meanU;
+    let cy = meanV;
+    let R = hasManualR ? manualR : 50.0;
+
+    if (Math.abs(det) >= 1e-11 && span >= 0.05) {
+      const rhs1 = 0.5 * (su3 + suvv);
+      const rhs2 = 0.5 * (sv3 + svuu);
+      const uc = (rhs1 * svv - rhs2 * suv) / det;
+      const vc = (suu * rhs2 - suv * rhs1) / det;
+      cx = meanU + uc;
+      cy = meanV + vc;
+      if (!hasManualR) {
+        R = Math.sqrt(uc * uc + vc * vc + (suu + svv) / wSum);
+      } else {
+        const dirLen = Math.hypot(uc, vc);
+        const hChord = 0.5 * span;
+        const offsetDist = Math.sqrt(Math.max(0.01, R * R - hChord * hChord));
+        if (dirLen > 1e-5) {
+          cx = meanU + (uc / dirLen) * offsetDist;
+          cy = meanV + (vc / dirLen) * offsetDist;
+        } else {
+          cy = meanV - offsetDist;
+        }
+      }
+    } else {
+      if (!forceArc && !hasManualR) {
+        return { isValidArc: false, centerU: meanU, centerV: meanV, radiusM: 9999.0, rmsResidualM: 0, sagittaM: 0 };
+      }
+      R = hasManualR ? manualR : Math.max(2.0, span * 4.0 || 25.0);
+      cy = meanV - R;
     }
 
-    const rhs1 = 0.5 * (su3 + suvv);
-    const rhs2 = 0.5 * (sv3 + svuu);
-    let uc = (rhs1 * svv - rhs2 * suv) / det;
-    let vc = (suu * rhs2 - suv * rhs1) / det;
-    let cx = meanU + uc;
-    let cy = meanV + vc;
-    let R = Math.sqrt(uc * uc + vc * vc + (suu + svv) / wSum);
+    if (forceArc && !hasManualR && (!Number.isFinite(R) || R > 1000.0)) {
+      const oldSignV = cy <= meanV ? -1 : 1;
+      R = Math.min(1000.0, Math.max(0.5, Number.isFinite(R) ? R : 100.0));
+      cy = meanV + oldSignV * R;
+    }
 
     // 6 iterations of Huber-weighted Gauss-Newton orthogonal distance refinement
     for (let iter = 0; iter < 6; iter++) {
+      if (hasManualR) {
+        let j00 = 0, j01 = 0, j11 = 0, g0 = 0, g1 = 0;
+        for (let i = 0; i < n; i++) {
+          const p = pts2D[i];
+          const baseW = Number.isFinite(p.w) && p.w > 0 ? p.w : 1.0;
+          const du = p.u - cx;
+          const dv = p.v - cy;
+          const dist = Math.hypot(du, dv);
+          if (dist < 1e-6) continue;
+          const res = dist - R;
+          const absRes = Math.abs(res);
+          const huberW = absRes <= 0.025 ? baseW : baseW * (0.025 / absRes);
+          const ju = -du / dist;
+          const jv = -dv / dist;
+          j00 += huberW * ju * ju;
+          j01 += huberW * ju * jv;
+          j11 += huberW * jv * jv;
+          g0 -= huberW * ju * res;
+          g1 -= huberW * jv * res;
+        }
+        j00 += 1e-5; j11 += 1e-5;
+        const d2 = j00 * j11 - j01 * j01;
+        if (Math.abs(d2) < 1e-12) break;
+        const dCx = (g0 * j11 - j01 * g1) / d2;
+        const dCy = (j00 * g1 - j01 * g0) / d2;
+        cx += dCx * 0.85;
+        cy += dCy * 0.85;
+        if (Math.hypot(dCx, dCy) < 1e-5) break;
+        continue;
+      }
       let j00 = 0, j01 = 0, j02 = 0, j11 = 0, j12 = 0, j22 = 0;
       let g0 = 0, g1 = 0, g2 = 0;
       for (let i = 0; i < n; i++) {
@@ -2136,7 +2195,7 @@
       const dR = (j00 * (j11 * g2 - g1 * m12) - m01 * (m01 * g2 - g1 * m02) + g0 * (m01 * m12 - j11 * m02)) / d;
       cx += dCx * 0.85;
       cy += dCy * 0.85;
-      R = Math.max(0.1, R + dR * 0.85);
+      R = Math.max(0.12, Math.min(forceArc ? 1000.0 : 5000.0, R + dR * 0.85));
       if (Math.hypot(dCx, dCy, dR) < 1e-5) break;
     }
 
@@ -2146,10 +2205,12 @@
       const err = dist - R;
       sqSum += err * err;
     }
-    const rmsResidualM = Math.sqrt(sqSum / n);
+    const rmsResidualM = n > 0 ? Math.sqrt(sqSum / n) : 0;
     const halfChord = 0.5 * span;
     const sagittaM = R > halfChord ? R - Math.sqrt(Math.max(0, R * R - halfChord * halfChord)) : R;
-    const isValidArc = Number.isFinite(R) && R >= 0.12 && R <= 250.0 && sagittaM >= 0.005;
+    const isValidArc = forceArc || hasManualR
+      ? Number.isFinite(R) && R >= 0.12 && R <= 5000.0
+      : Number.isFinite(R) && R >= 0.12 && R <= 250.0 && sagittaM >= 0.005;
 
     return {
       isValidArc,
@@ -2250,6 +2311,8 @@
     const extrudeDirMode = config.extrudeDirMode || "auto";
     const offsetMode = config.offsetMode === "lock_spline" ? "lock_spline" : "auto_center";
     const normalOffsetM = Number(config.normalOffsetM) || 0.0;
+    const manualRadiusM = Number(config.manualRadiusM);
+    const hasManualRadius = Number.isFinite(manualRadiusM) && manualRadiusM >= 0.12 && manualRadiusM <= 5000.0;
     let extrudeDepthM = Math.max(0.15, Math.min(30.0, Number(config.extrudeDepthM) || 1.8));
     const extrudeTargetPt = config.extrudeTargetPt
       ? { x: Number(config.extrudeTargetPt.x) || 0, y: Number(config.extrudeTargetPt.y) || 0, z: Number(config.extrudeTargetPt.z) || 0 }
@@ -2307,8 +2370,6 @@
         if (config.useE1Depth) extrudeDepthM = Math.max(0.2, Math.min(30.0, pLen));
       }
     } else {
-      // Auto mode: if spline is primarily a horizontal arc (like top of a curved wall), extrude vertically downward (-Y);
-      // if spline rises significantly in Y (like a sloped skate ramp side profile), extrude horizontally (Lateral)
       if (extrudeTargetPt && config.useE1Depth) {
         const toE1 = { x: extrudeTargetPt.x - midX, y: extrudeTargetPt.y - midY, z: extrudeTargetPt.z - midZ };
         const dotT = cVecDot(toE1, chordUnit);
@@ -2365,15 +2426,54 @@
     }));
 
     // 3. Fit circle to profile points in (originP, e1Axis, e2Axis) frame to report radiusM and support "arc" mode
-    const fitInput2D =
-      Array.isArray(config.denseProfilePts3D) && config.denseProfilePts3D.length >= 6
-        ? config.denseProfilePts3D.map((p) => ({
-            u: (p.x - originP.x) * e1Axis.x + (p.y - originP.y) * e1Axis.y + (p.z - originP.z) * e1Axis.z,
-            v: (p.x - originP.x) * e2Axis.x + (p.y - originP.y) * e2Axis.y + (p.z - originP.z) * e2Axis.z,
-            w: Number.isFinite(p.w) && p.w > 0 ? p.w : 1.0,
-          }))
-        : ctrlPts2D;
-    const circleFit = fit2DCircleAlgebraicAndRefine(fitInput2D);
+    const useDenseForFit = !config.hasExplicitSpline && Array.isArray(config.denseProfilePts3D) && config.denseProfilePts3D.length >= 6;
+    const fitInput2D = useDenseForFit
+      ? config.denseProfilePts3D.map((p) => ({
+          u: (p.x - originP.x) * e1Axis.x + (p.y - originP.y) * e1Axis.y + (p.z - originP.z) * e1Axis.z,
+          v: (p.x - originP.x) * e2Axis.x + (p.y - originP.y) * e2Axis.y + (p.z - originP.z) * e2Axis.z,
+          w: Number.isFinite(p.w) && p.w > 0 ? p.w : 1.0,
+        }))
+      : ctrlPts2D;
+    const circleFit = fit2DCircleAlgebraicAndRefine(fitInput2D, {
+      forceArc: curveType === "arc",
+      manualRadiusM: hasManualRadius ? manualRadiusM : null,
+    });
+
+    // Compute domain coverage across inspection polygon (config.polyPts) so curved surface spans entire polygon
+    const domainPts3D = [];
+    if (Array.isArray(config.polyPts)) {
+      for (let i = 0; i < config.polyPts.length; i++) {
+        const p = config.polyPts[i];
+        if (p && Number.isFinite(p.x)) domainPts3D.push(p);
+      }
+    }
+    if (!config.hasExplicitSpline && Array.isArray(config.denseProfilePts3D)) {
+      const stepD = Math.max(1, Math.floor(config.denseProfilePts3D.length / 80));
+      for (let i = 0; i < config.denseProfilePts3D.length; i += stepD) {
+        const p = config.denseProfilePts3D[i];
+        if (p && Number.isFinite(p.x)) domainPts3D.push(p);
+      }
+    }
+
+    let vStartM = 0.0;
+    let vEndM = extrudeDepthM;
+    if (domainPts3D.length >= 3) {
+      let minDomW = 0.0;
+      let maxDomW = extrudeDepthM;
+      for (let i = 0; i < domainPts3D.length; i++) {
+        const p = domainPts3D[i];
+        const pw = (p.x - originP.x) * wAxis.x + (p.y - originP.y) * wAxis.y + (p.z - originP.z) * wAxis.z;
+        if (pw < minDomW) minDomW = pw;
+        if (pw > maxDomW) maxDomW = pw;
+      }
+      vStartM = Math.min(0.0, minDomW);
+      if (!config.hasCustomExtrudeDepth) {
+        vEndM = Math.max(extrudeDepthM, maxDomW);
+        extrudeDepthM = Math.max(0.2, vEndM);
+      } else {
+        vEndM = Math.max(extrudeDepthM, maxDomW);
+      }
+    }
 
     const N_RAW = 240;
     let rawCurve3D = [];
@@ -2386,8 +2486,27 @@
         while (angles[i] - angles[i - 1] > Math.PI) angles[i] -= 2 * Math.PI;
         while (angles[i] - angles[i - 1] < -Math.PI) angles[i] += 2 * Math.PI;
       }
-      const thetaStart = angles[0];
-      const thetaEnd = angles[angles.length - 1];
+      let thetaStart = angles[0];
+      let thetaEnd = angles[angles.length - 1];
+      if (domainPts3D.length >= 3) {
+        const dirSign = thetaEnd >= thetaStart ? 1 : -1;
+        let minRel = 0;
+        let maxRel = Math.abs(thetaEnd - thetaStart);
+        const midAngle = 0.5 * (thetaStart + thetaEnd);
+        for (let i = 0; i < domainPts3D.length; i++) {
+          const p = domainPts3D[i];
+          const pu = (p.x - originP.x) * e1Axis.x + (p.y - originP.y) * e1Axis.y + (p.z - originP.z) * e1Axis.z;
+          const pv = (p.x - originP.x) * e2Axis.x + (p.y - originP.y) * e2Axis.y + (p.z - originP.z) * e2Axis.z;
+          let th = Math.atan2(pv - b, pu - a);
+          while (th - midAngle > Math.PI) th -= 2 * Math.PI;
+          while (th - midAngle < -Math.PI) th += 2 * Math.PI;
+          const rel = (th - thetaStart) * dirSign;
+          if (rel < minRel && rel > -Math.PI * 0.85) minRel = rel;
+          if (rel > maxRel && rel < Math.PI * 1.65) maxRel = rel;
+        }
+        thetaStart = thetaStart + dirSign * minRel;
+        thetaEnd = thetaStart + dirSign * (maxRel - minRel);
+      }
       for (let k = 0; k < N_RAW; k++) {
         const th = thetaStart + (k / (N_RAW - 1)) * (thetaEnd - thetaStart);
         const cu = a + R * Math.cos(th);
@@ -2399,7 +2518,41 @@
         });
       }
     } else {
-      rawCurve3D = evaluateCatmullRomChain3D(projPts3D, N_RAW);
+      let splineSeedPts = projPts3D.slice();
+      if (config.hasExplicitSpline && domainPts3D.length >= 3 && splineSeedPts.length >= 2) {
+        const pFirst = splineSeedPts[0];
+        const pSecond = splineSeedPts[1];
+        const pLast = splineSeedPts[splineSeedPts.length - 1];
+        const pPrev = splineSeedPts[splineSeedPts.length - 2];
+        const tStart = cVecNorm({ x: pFirst.x - pSecond.x, y: pFirst.y - pSecond.y, z: pFirst.z - pSecond.z });
+        const tEnd = cVecNorm({ x: pLast.x - pPrev.x, y: pLast.y - pPrev.y, z: pLast.z - pPrev.z });
+        let maxStartExt = 0;
+        let maxEndExt = 0;
+        for (let i = 0; i < domainPts3D.length; i++) {
+          const dp = domainPts3D[i];
+          const dw = (dp.x - originP.x) * wAxis.x + (dp.y - originP.y) * wAxis.y + (dp.z - originP.z) * wAxis.z;
+          const px = dp.x - dw * wAxis.x, py = dp.y - dw * wAxis.y, pz = dp.z - dw * wAxis.z;
+          const dStart = (px - pFirst.x) * tStart.x + (py - pFirst.y) * tStart.y + (pz - pFirst.z) * tStart.z;
+          const dEnd = (px - pLast.x) * tEnd.x + (py - pLast.y) * tEnd.y + (pz - pLast.z) * tEnd.z;
+          if (dStart > maxStartExt) maxStartExt = Math.min(25.0, dStart);
+          if (dEnd > maxEndExt) maxEndExt = Math.min(25.0, dEnd);
+        }
+        if (maxStartExt > 0.05) {
+          splineSeedPts.unshift({
+            x: pFirst.x + maxStartExt * tStart.x,
+            y: pFirst.y + maxStartExt * tStart.y,
+            z: pFirst.z + maxStartExt * tStart.z,
+          });
+        }
+        if (maxEndExt > 0.05) {
+          splineSeedPts.push({
+            x: pLast.x + maxEndExt * tEnd.x,
+            y: pLast.y + maxEndExt * tEnd.y,
+            z: pLast.z + maxEndExt * tEnd.z,
+          });
+        }
+      }
+      rawCurve3D = evaluateCatmullRomChain3D(splineSeedPts, N_RAW);
     }
 
     // 4. Build uniform arc-length lookup table (LUT)
@@ -2453,9 +2606,9 @@
     // Orient surface normals consistently toward camera (or +Y for horizontal / outward for cylinder)
     const midLut = lut[Math.floor(N_LUT * 0.5)];
     const center3D = {
-      x: midLut.x + 0.5 * extrudeDepthM * wAxis.x,
-      y: midLut.y + 0.5 * extrudeDepthM * wAxis.y,
-      z: midLut.z + 0.5 * extrudeDepthM * wAxis.z,
+      x: midLut.x + 0.5 * (vStartM + vEndM) * wAxis.x,
+      y: midLut.y + 0.5 * (vStartM + vEndM) * wAxis.y,
+      z: midLut.z + 0.5 * (vStartM + vEndM) * wAxis.z,
     };
     let flipNormal = false;
     const camPos = config.cameraPos || (window.studioThree && window.studioThree.camera ? window.studioThree.camera.position : null);
@@ -2502,14 +2655,12 @@
 
     const evalAt = (s, v) => {
       const clampedS = Math.max(0, Math.min(arcLengthM, s));
+      const extraS = s - clampedS;
       const fIdx = (clampedS / arcLengthM) * (N_LUT - 1);
       const i0 = Math.min(N_LUT - 2, Math.max(0, Math.floor(fIdx)));
       const frac = fIdx - i0;
       const a = lut[i0];
       const b = lut[i0 + 1];
-      const cx = a.x + (b.x - a.x) * frac + v * wAxis.x;
-      const cy = a.y + (b.y - a.y) * frac + v * wAxis.y;
-      const cz = a.z + (b.z - a.z) * frac + v * wAxis.z;
       const tx = a.tanX + (b.tanX - a.tanX) * frac;
       const ty = a.tanY + (b.tanY - a.tanY) * frac;
       const tz = a.tanZ + (b.tanZ - a.tanZ) * frac;
@@ -2518,6 +2669,9 @@
       const nz = a.normZ + (b.normZ - a.normZ) * frac;
       const tNorm = cVecNorm({ x: tx, y: ty, z: tz });
       const nNorm = cVecNorm({ x: nx, y: ny, z: nz });
+      const cx = a.x + (b.x - a.x) * frac + extraS * tNorm.x + v * wAxis.x;
+      const cy = a.y + (b.y - a.y) * frac + extraS * tNorm.y + v * wAxis.y;
+      const cz = a.z + (b.z - a.z) * frac + extraS * tNorm.z + v * wAxis.z;
       return {
         x: cx, y: cy, z: cz,
         tanX: tNorm.x, tanY: tNorm.y, tanZ: tNorm.z,
@@ -2561,7 +2715,10 @@
       const st = lut[bestK];
       const relX = px - st.x, relY = py - st.y, relZ = pz - st.z;
       const ds = relX * st.tanX + relY * st.tanY + relZ * st.tanZ;
-      const s = Math.max(0, Math.min(arcLengthM, st.s + ds));
+      const rawS = st.s + ds;
+      const s = (bestK === 0 && rawS < 0) || (bestK === N_LUT - 1 && rawS > arcLengthM)
+        ? rawS
+        : Math.max(0, Math.min(arcLengthM, rawS));
       const ev = evalAt(s, v);
       const signedN = (lx - ev.x) * ev.normX + (ly - ev.y) * ev.normY + (lz - ev.z) * ev.normZ;
       return {
@@ -2590,17 +2747,17 @@
       z: midStation.z + extrudeDepthM * wAxis.z,
     };
 
-    // Ribbon perimeter polygon in 3D (for top-down plan overview & polygon bounds)
+    // Ribbon perimeter polygon in 3D (fallback boundary when no user polygon is drawn)
     const ribbonBoundaryPts3D = [];
     const nEdgePts = 7;
     for (let i = 0; i < nEdgePts; i++) {
       const s = (i / (nEdgePts - 1)) * arcLengthM;
-      const pTop = evalAt(s, 0);
+      const pTop = evalAt(s, vStartM);
       ribbonBoundaryPts3D.push({ x: pTop.x, y: pTop.y, z: pTop.z });
     }
     for (let i = nEdgePts - 1; i >= 0; i--) {
       const s = (i / (nEdgePts - 1)) * arcLengthM;
-      const pBot = evalAt(s, extrudeDepthM);
+      const pBot = evalAt(s, vEndM);
       ribbonBoundaryPts3D.push({ x: pBot.x, y: pBot.y, z: pBot.z });
     }
 
@@ -2646,8 +2803,11 @@
       lut,
       arcLengthM: Number(arcLengthM.toFixed(3)),
       extrudeDepthM: Number(extrudeDepthM.toFixed(3)),
+      vStartM: Number(vStartM.toFixed(3)),
+      vEndM: Number(vEndM.toFixed(3)),
       radiusM: validRadiusM,
       curvatureRadiusM: validRadiusM,
+      manualRadiusM: hasManualRadius ? Number(manualRadiusM.toFixed(2)) : null,
       sagittaM: circleFit.sagittaM,
       isValidArc: circleFit.isValidArc,
       curveType,
@@ -2723,7 +2883,7 @@
             p2d.push({ u: pu, v: pv, w: 1.0 });
           }
           if (curveType === "arc") {
-            const cf = fit2DCircleAlgebraicAndRefine(p2d);
+            const cf = fit2DCircleAlgebraicAndRefine(p2d, { forceArc: true, manualRadiusM: config.manualRadiusM });
             return { rms: cf.rmsResidualM, candW };
           }
           const nBins = 10;
@@ -2789,11 +2949,11 @@
     const e1Axis = cVecNorm(cVecCross(e2Guess, wAxis));
     const e2Axis = cVecNorm(cVecCross(wAxis, e1Axis));
 
-    // Find w and u bounds across sampled points (falling back to boundaryPts only when pts is sparse)
+    // Find u bounds from sampled pts, and w bounds from pts (plus overlapping boundaryPts)
     let minW = Infinity, maxW = -Infinity, minU = Infinity, maxU = -Infinity;
-    const allBoundsPts = pts.length >= 6 ? pts : boundaryPts.concat(pts);
-    for (let i = 0; i < allBoundsPts.length; i++) {
-      const p = allBoundsPts[i];
+    for (let i = 0; i < pts.length; i++) {
+      const p = pts[i];
+      if (!p || !Number.isFinite(p.x)) continue;
       const dx = p.x - c0.x, dy = p.y - c0.y, dz = p.z - c0.z;
       const pw = dx * wAxis.x + dy * wAxis.y + dz * wAxis.z;
       const pu = dx * e1Axis.x + dy * e1Axis.y + dz * e1Axis.z;
@@ -2801,6 +2961,17 @@
       if (pw > maxW) maxW = pw;
       if (pu < minU) minU = pu;
       if (pu > maxU) maxU = pu;
+    }
+    const ptsMinW = minW, ptsMaxW = maxW;
+    for (let i = 0; i < boundaryPts.length; i++) {
+      const p = boundaryPts[i];
+      if (!p || !Number.isFinite(p.x)) continue;
+      const dx = p.x - c0.x, dy = p.y - c0.y, dz = p.z - c0.z;
+      const pw = dx * wAxis.x + dy * wAxis.y + dz * wAxis.z;
+      if (!Number.isFinite(ptsMinW) || (pw >= ptsMinW - 0.5 && pw <= ptsMaxW + 0.5)) {
+        if (pw < minW) minW = pw;
+        if (pw > maxW) maxW = pw;
+      }
     }
     if (!Number.isFinite(minW) || maxW - minW < 0.1) {
       minW = -1.0;
@@ -2816,7 +2987,11 @@
       y: c0.y + minW * wAxis.y,
       z: c0.z + minW * wAxis.z,
     };
-    const extrudeDepthM = Math.max(0.2, maxW - minW);
+    const autoExtrudeDepthM = Math.max(0.2, maxW - minW);
+    const extrudeDepthM =
+      config.hasCustomExtrudeDepth && Number.isFinite(Number(config.extrudeDepthM)) && Number(config.extrudeDepthM) >= 0.15
+        ? Number(config.extrudeDepthM)
+        : autoExtrudeDepthM;
 
     // Project all sampled surface points into (u, v) in the topOrigin profile plane
     const dense2D = [];
@@ -2830,8 +3005,11 @@
       });
     }
 
-    const circleFit = fit2DCircleAlgebraicAndRefine(dense2D);
-    const useCircleStations = circleFit.isValidArc && (curveType === "arc" || circleFit.rmsResidualM <= 0.004);
+    const circleFit = fit2DCircleAlgebraicAndRefine(dense2D, {
+      forceArc: curveType === "arc",
+      manualRadiusM: config.manualRadiusM,
+    });
+    const useCircleStations = curveType === "arc" && circleFit.isValidArc;
     const numCtrl = useCircleStations ? 5 : 9;
     const splinePts = [];
 
@@ -2906,6 +3084,9 @@
       curveType,
       extrudeDirMode,
       extrudeDepthM,
+      hasCustomExtrudeDepth: Boolean(config.hasCustomExtrudeDepth),
+      manualRadiusM: config.manualRadiusM,
+      polyPts: boundaryPts,
       explicitWAxis: wAxis,
       denseProfilePts3D: pts,
       offsetMode: config.offsetMode || "auto_center",
@@ -2922,7 +3103,7 @@
 
     let evaluator = null;
     if (config.hasExplicitSpline && Array.isArray(config.splinePts) && config.splinePts.length >= 2) {
-      evaluator = buildCurvedExtrudedSurfaceEvaluator(config);
+      evaluator = buildCurvedExtrudedSurfaceEvaluator({ ...config, polyPts });
     } else {
       evaluator = fitCurvedExtrudedSurfaceFromPolygonSamples(rawCells, polyPts, config);
     }
@@ -3026,9 +3207,12 @@
         extrudeDirMode: evaluator.extrudeDirMode,
         offsetMode: evaluator.offsetMode,
         extrudeDepthM: evaluator.extrudeDepthM,
+        vStartM: evaluator.vStartM,
+        vEndM: evaluator.vEndM,
         arcLengthM: evaluator.arcLengthM,
         radiusM: evaluator.radiusM,
         curvatureRadiusM: evaluator.radiusM,
+        manualRadiusM: evaluator.manualRadiusM,
         sagittaM: evaluator.sagittaM,
         isValidArc: evaluator.isValidArc,
         splinePts: evaluator.splinePts3D.map((p) => ({ x: Number(p.x.toFixed(3)), y: Number(p.y.toFixed(3)), z: Number(p.z.toFixed(3)) })),
@@ -3052,8 +3236,8 @@
   }
 
   /**
-   * Builds the 3D curved wireframe reference surface, translucent ribbon, blue/cyan spline control pins (S1..Sn),
-   * and emerald extrusion handle (E1) for a saved/active curved flatness object.
+   * Builds the 3D curved wireframe reference surface, translucent ribbon, yellow spline control pins (S1..Sn)
+   * matching polygon vertex pin formatting, and emerald extrusion handle (E1) for a saved/active curved flatness object.
    */
   function buildCurvedReferenceSurfaceThreeGroup(cache, opts = {}) {
     const THREE = window.THREE;
@@ -3065,6 +3249,8 @@
     const lut = Array.isArray(meta.lut) && meta.lut.length >= 2 ? meta.lut : [];
     const wAxis = meta.wAxis || { x: 0, y: -1, z: 0 };
     const extDepth = Math.max(0.2, Number(meta.extrudeDepthM) || 1.8);
+    const vStart = Number.isFinite(meta.vStartM) ? Number(meta.vStartM) : 0.0;
+    const vEnd = Number.isFinite(meta.vEndM) && meta.vEndM > vStart + 0.05 ? Number(meta.vEndM) : extDepth;
 
     if (lut.length >= 2) {
       const segU = Math.min(32, lut.length - 1);
@@ -3072,7 +3258,7 @@
       const positions = [];
       const indices = [];
       for (let r = 0; r <= segV; r++) {
-        const vDist = (r / segV) * extDepth;
+        const vDist = vStart + (r / segV) * (vEnd - vStart);
         for (let c = 0; c <= segU; c++) {
           const lIdx = Math.min(lut.length - 1, Math.round((c / segU) * (lut.length - 1)));
           const st = lut[lIdx];
@@ -3101,6 +3287,7 @@
         depthTest: false,
       });
       const fillMesh = new THREE.Mesh(surfGeo, fillMat);
+      fillMesh.name = "GS_CurvedRibbonFill";
       fillMesh.renderOrder = 993;
       grp.add(fillMesh);
 
@@ -3113,41 +3300,47 @@
         depthTest: false,
       });
       const wireMesh = new THREE.Mesh(surfGeo, wireMat);
+      wireMesh.name = "GS_CurvedRibbonWire";
       wireMesh.renderOrder = 994;
       grp.add(wireMesh);
 
-      // Highlight top profile spline C(s) in bright cyan
+      // Highlight top profile reference curve C(s) in yellow
       const curvePts = lut.map((st) => new THREE.Vector3(st.x, st.y, st.z));
       const curveGeo = new THREE.BufferGeometry().setFromPoints(curvePts);
       const curveLine = new THREE.Line(
         curveGeo,
-        new THREE.LineBasicMaterial({ color: 0x38bdf8, depthTest: false, transparent: !isActive, opacity: isActive ? 1.0 : 0.75 })
+        new THREE.LineBasicMaterial({ color: 0xfacc15, depthTest: false, transparent: !isActive, opacity: isActive ? 1.0 : 0.78 })
       );
       curveLine.renderOrder = 998;
       grp.add(curveLine);
     }
 
-    // Render interactive blue/cyan spline control pins (S1..Sn) and emerald extrusion handle (E1) when active
-    if (isActive && Array.isArray(meta.splinePts)) {
+    // Render interactive yellow spline control pins (S1..Sn) in polygon vertex pin format and emerald extrusion handle (E1)
+    if (Array.isArray(meta.splinePts)) {
       meta.splinePts.forEach((pt) => {
-        const sp = new THREE.Mesh(
-          new THREE.SphereGeometry(0.14, 14, 14),
-          new THREE.MeshBasicMaterial({ color: 0x2563eb, depthTest: false })
-        );
-        sp.position.set(pt.x, pt.y, pt.z);
-        sp.renderOrder = 999;
-        grp.add(sp);
+        const ptVec = new THREE.Vector3(pt.x, pt.y, pt.z);
+        if (isActive && typeof window.add3DPinMarker === "function") {
+          window.add3DPinMarker(ptVec, 0xfacc15, grp);
+        } else {
+          const sp = new THREE.Mesh(
+            new THREE.SphereGeometry(isActive ? 0.12 : 0.09, 14, 14),
+            new THREE.MeshBasicMaterial({ color: isActive ? 0xfacc15 : 0xeab308, depthTest: false })
+          );
+          sp.position.copy(ptVec);
+          sp.renderOrder = 999;
+          grp.add(sp);
+        }
       });
-      if (meta.extrudeHandlePt) {
-        const ep = meta.extrudeHandlePt;
-        const eMesh = new THREE.Mesh(
-          new THREE.OctahedronGeometry(0.17, 0),
-          new THREE.MeshBasicMaterial({ color: 0x10b981, depthTest: false })
-        );
-        eMesh.position.set(ep.x, ep.y, ep.z);
-        eMesh.renderOrder = 999;
-        grp.add(eMesh);
-      }
+    }
+    if (isActive && meta.extrudeHandlePt) {
+      const ep = meta.extrudeHandlePt;
+      const eMesh = new THREE.Mesh(
+        new THREE.OctahedronGeometry(0.17, 0),
+        new THREE.MeshBasicMaterial({ color: 0x10b981, depthTest: false })
+      );
+      eMesh.position.set(ep.x, ep.y, ep.z);
+      eMesh.renderOrder = 999;
+      grp.add(eMesh);
     }
 
     return grp;
@@ -3177,24 +3370,32 @@
       activeSplinePts.push(hoverPt);
     }
 
-    // Render blue control point spheres S1..Sn
-    pts.forEach((p) => {
-      const pinMesh = new THREE.Mesh(
-        new THREE.SphereGeometry(0.16, 16, 16),
-        new THREE.MeshBasicMaterial({ color: 0x2563eb, depthTest: false })
-      );
-      pinMesh.position.set(p.x, p.y, p.z);
-      pinMesh.renderOrder = 999;
-      grp.add(pinMesh);
-    });
-
-    if (activeSplinePts.length >= 2) {
+    if (activeSplinePts.length < 2) {
+      pts.forEach((p) => {
+        const ptVec = new THREE.Vector3(p.x, p.y, p.z);
+        if (typeof window.add3DPinMarker === "function") {
+          window.add3DPinMarker(ptVec, 0xfacc15, grp);
+        } else {
+          const pinMesh = new THREE.Mesh(
+            new THREE.SphereGeometry(0.12, 14, 14),
+            new THREE.MeshBasicMaterial({ color: 0xfacc15, depthTest: false })
+          );
+          pinMesh.position.copy(ptVec);
+          pinMesh.renderOrder = 999;
+          grp.add(pinMesh);
+        }
+      });
+    } else {
       const e1Target = pickStage === "extrude" && hoverPt ? hoverPt : draftConfig.extrudeTargetPt || null;
       const evaluator = buildCurvedExtrudedSurfaceEvaluator({
         splinePts: activeSplinePts,
+        hasExplicitSpline: true,
         curveType: draftConfig.curveType || "spline",
         extrudeDirMode: e1Target && pickStage === "extrude" ? "custom_e1" : draftConfig.extrudeDirMode || "auto",
         extrudeDepthM: draftConfig.extrudeDepthM || 1.8,
+        hasCustomExtrudeDepth: Boolean(draftConfig.hasCustomExtrudeDepth),
+        manualRadiusM: draftConfig.manualRadiusM,
+        polyPts: draftConfig.polyPts,
         extrudeTargetPt: e1Target,
         useE1Depth: Boolean(e1Target && (pickStage === "extrude" || draftConfig.extrudeDirMode === "custom_e1")),
       });
@@ -3204,15 +3405,16 @@
           lut: evaluator.lut,
           wAxis: evaluator.wAxis,
           extrudeDepthM: evaluator.extrudeDepthM,
+          vStartM: evaluator.vStartM,
+          vEndM: evaluator.vEndM,
           splinePts: activeSplinePts,
           extrudeHandlePt: evaluator.extrudeHandle3D,
         },
       };
       const surfGrp = buildCurvedReferenceSurfaceThreeGroup(fakeCache, { isActive: true });
       if (surfGrp) {
-        // Boost green preview opacity during interactive spline drawing (matching Screenshot 3)
         surfGrp.traverse((ch) => {
-          if (ch.isMesh && ch.material && !ch.material.wireframe && ch.material.transparent) {
+          if (ch.name === "GS_CurvedRibbonFill" && ch.material) {
             ch.material.opacity = 0.34;
           }
         });
@@ -3265,6 +3467,9 @@
     const offsetMode = qaState.flatnessCurvedOffsetMode || "auto_center";
     const extDepthM = Number(qaState.flatnessExtrudeDepthM || cache?.curvedMeta?.extrudeDepthM || 1.8);
     const meta = cache?.curvedMeta || null;
+    const manualR = Number(qaState.flatnessManualArcRadiusM ?? meta?.manualRadiusM);
+    const manualRVal = Number.isFinite(manualR) && manualR >= 0.12 ? manualR.toFixed(2) : "";
+    const autoRPlaceholder = meta && Number.isFinite(meta.radiusM) ? `${meta.radiusM}` : t("自動", "Auto");
     const splineCount = Array.isArray(qaState.curvedSplinePoints)
       ? qaState.curvedSplinePoints.length
       : Array.isArray(meta?.splinePts)
@@ -3277,15 +3482,15 @@
       ? t("圓弧擬合", "Circular Arc")
       : t("樣條擠出", "Spline Extrude");
     const statusText = pickStage === "spline"
-      ? t(`請於 3D 表面點擊弧線控制點 S${splineCount + 1} (至少 3 點，完成點「套用曲面」)`, `Click 3D spline control point S${splineCount + 1} (3+ pts, then click Apply)`)
+      ? t(`請於 3D 表面點擊弧線控制點 S${splineCount + 1} (至少 3 點，完成點「套用曲面」；不影響檢測多邊形邊界)`, `Click 3D spline control point S${splineCount + 1} (3+ pts, then click Apply; keeps polygon boundary intact)`)
       : pickStage === "extrude"
       ? t("請於 3D 表面點擊擠出終點 E1 以決定擠出方向與深度", "Click extrusion target E1 on 3D surface to set direction & depth")
       : meta
       ? t(
-          `已擬合 (${radText}, 弧長 ${meta.arcLengthM}m × 擠出 ${meta.extrudeDepthM}m) — 可於 3D 拖曳藍點 S1..S${splineCount} 或綠點 E1`,
-          `Fitted (${radText}, Arc ${meta.arcLengthM}m × Ext ${meta.extrudeDepthM}m) — drag blue S1..S${splineCount} or green E1 in 3D`
+          `已擬合 (${radText}, 弧長 ${meta.arcLengthM}m × 擠出 ${meta.extrudeDepthM}m) — 可於 3D 拖曳黃點 S1..S${splineCount} 或綠點 E1`,
+          `Fitted (${radText}, Arc ${meta.arcLengthM}m × Ext ${meta.extrudeDepthM}m) — drag yellow S1..S${splineCount} or green E1 in 3D`
         )
-      : t("可於現有多邊形自動擬合弧形曲面，或點「繪製弧線」在 3D 點擊 S1..Sn 擠出曲面", "Auto-fits curved surface to polygon, or click 'Draw Spline' to place S1..Sn in 3D");
+      : t("多邊形定義檢測邊界；可自動擬合弧面，或點「繪製弧線」在 3D 點擊黃點 S1..Sn 自訂曲面", "Polygon defines boundary; auto-fits curved surface, or click 'Draw Spline' to place yellow S1..Sn in 3D");
 
     return `
       <div id="flatnessCurvedConfigWrap" style="display:${planeMode === "curved_extruded" ? "block" : "none"};margin-top:6px;padding-top:6px;border-top:1px solid var(--ui-border);">
@@ -3297,8 +3502,11 @@
             ${radText}
           </span>
         </div>
-        <div style="display:grid;grid-template-columns:repeat(3, 1fr);gap:4px;margin-bottom:5px;">
-          <button type="button" class="btn-xs ${pickStage === "spline" ? "primary" : ""}" id="btnDrawFlatnessSpline" title="${t("在 3D 模型點擊 3+ 個控制點 S1..Sn 繪製基準弧線", "Click 3+ control points S1..Sn on 3D surface to draw profile spline")}">
+        <div style="display:grid;grid-template-columns:repeat(4, 1fr);gap:4px;margin-bottom:5px;">
+          <button type="button" class="btn-xs ${!qaState.curvedHasExplicitSpline && !pickStage ? "primary" : ""}" id="btnAutoFitFlatnessCurved" title="${t("依據檢測多邊形內 3D 點雲自動擬合最佳樣條或圓弧曲面", "Auto-fit curved surface from 3D points inside inspection polygon")}">
+            ${t("自動擬合", "Auto-Fit")}
+          </button>
+          <button type="button" class="btn-xs ${pickStage === "spline" ? "primary" : ""}" id="btnDrawFlatnessSpline" title="${t("在 3D 模型點擊 3+ 個黃色控制點 S1..Sn 自訂基準弧線 (保留檢測多邊形)", "Click 3+ yellow control points S1..Sn on 3D surface (preserves inspection polygon)")}">
             ${svgs.PICK} ${t("繪製弧線", "Draw Spline")}
           </button>
           <button type="button" class="btn-xs ${pickStage === "extrude" ? "primary" : ""}" id="btnPickFlatnessExtrudePt" title="${t("在 3D 模型點擊擠出終點 E1 設定擠出方向與寬度", "Click target point E1 in 3D to set extrusion vector & width")}">
@@ -3330,7 +3538,7 @@
             </label>
           </div>
         </div>
-        <div style="display:grid;grid-template-columns:1.1fr 0.9fr;gap:5px;align-items:center;margin-bottom:4px;">
+        <div style="display:grid;grid-template-columns:1.05fr 0.95fr;gap:5px;align-items:center;margin-bottom:4px;">
           <select id="selFlatnessExtrudeDir" class="gs-select" style="width:100%;height:25px;font-size:10px;" title="${t("選擇弧線擠出延伸方向", "Select spline extrusion direction")}">
             <option value="auto" ${extrudeDir === "auto" ? "selected" : ""}>${t("擠出: 自動正交 (牆面-Y/坡面橫推)", "Extrude: Auto Orthogonal")}</option>
             <option value="down_y" ${extrudeDir === "down_y" ? "selected" : ""}>${t("擠出: 垂直向下 (-Y 牆頂往下)", "Extrude: Down (-Y)")}</option>
@@ -3340,8 +3548,15 @@
           </select>
           <div style="display:flex;align-items:center;gap:4px;">
             <input type="range" id="rngFlatnessExtrudeDepthM" min="0.2" max="15.0" step="0.1" value="${Math.min(15, Math.max(0.2, extDepthM))}" style="flex:1;accent-color:#10b981;cursor:pointer;" title="${t("擠出深度/寬度 (m)", "Extrusion depth/width (m)")}" />
-            <input type="number" id="inpFlatnessExtrudeDepthM" class="gs-input" value="${extDepthM.toFixed(2)}" min="0.1" max="30.0" step="0.1" style="width:52px;height:25px;font-size:10.5px;text-align:right;" />
+            <input type="number" id="inpFlatnessExtrudeDepthM" class="gs-input" value="${extDepthM.toFixed(2)}" min="0.1" max="30.0" step="0.1" style="width:48px;height:25px;font-size:10px;text-align:right;" />
             <span id="lblFlatnessExtrudeDepthReadout" style="font-size:9.5px;color:var(--ui-text-muted);font-family:monospace;">m</span>
+          </div>
+        </div>
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:6px;margin-bottom:4px;">
+          <span style="font-size:9.5px;color:var(--ui-text-secondary);">${t("圓弧半徑 R (留空=自動擬合):", "Arc Radius R (blank=Auto):")}</span>
+          <div style="display:flex;align-items:center;gap:4px;">
+            <input type="number" id="inpFlatnessArcRadiusM" class="gs-input" value="${manualRVal}" placeholder="${autoRPlaceholder}" min="0.2" max="1000.0" step="0.1" style="width:68px;height:23px;font-size:10px;text-align:right;" title="${t("自訂圓弧曲率半徑 R (m)，留空則自動最小二乘擬合", "Custom circular arc radius R (m); leave blank for auto fit")}" />
+            <span style="font-size:9.5px;color:var(--ui-text-muted);font-family:monospace;">m</span>
           </div>
         </div>
         <div id="lblFlatnessCurvedStatus" style="font-size:9.5px;color:var(--ui-text-secondary);line-height:1.35;">

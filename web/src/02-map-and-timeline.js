@@ -1090,7 +1090,11 @@
     });
     const sortedScans = (grp.scans || [])
       .slice()
-      .sort((a, b) => String(b.capture_date || "").localeCompare(String(a.capture_date || "")));
+      .sort((a, b) => {
+        const cmp = String(b.capture_date || "").localeCompare(String(a.capture_date || ""));
+        if (cmp !== 0) return cmp;
+        return Number(b.tileset_version || b.uploaded_at || 0) - Number(a.tileset_version || a.uploaded_at || 0);
+      });
 
     if (sortedScans.length > 0) {
       const currInGroup = sortedScans.find((s) => s.scan_id === STATE.activeScanId);
@@ -2471,11 +2475,19 @@
         })
     )
       .slice()
-      .sort((a, b) => String(b.capture_date || "").localeCompare(String(a.capture_date || "")));
+      .sort((a, b) => {
+        const cmp = String(b.capture_date || "").localeCompare(String(a.capture_date || ""));
+        if (cmp !== 0) return cmp;
+        return Number(b.tileset_version || b.uploaded_at || 0) - Number(a.tileset_version || a.uploaded_at || 0);
+      });
     if (!siteScans.length) {
       siteScans = basePool
         .slice()
-        .sort((a, b) => String(b.capture_date || "").localeCompare(String(a.capture_date || "")));
+        .sort((a, b) => {
+          const cmp = String(b.capture_date || "").localeCompare(String(a.capture_date || ""));
+          if (cmp !== 0) return cmp;
+          return Number(b.tileset_version || b.uploaded_at || 0) - Number(a.tileset_version || a.uploaded_at || 0);
+        });
     }
 
     const chosenScan =
@@ -2489,7 +2501,7 @@
 
     populateProjectScanDropdowns(grpName, chosenScan ? chosenScan.scan_id : null);
 
-    // Warm up browser cache for top timeline scans' ultra-quick preview_tileset.json + root preview_low GLB
+    // Warm up browser cache for top timeline scans' ultra-quick preview_tileset.json + root/child preview_low GLBs
     if ((STATE.previewLodMode || "rough") === "rough") {
       siteScans.slice(0, 3).forEach((s, idx) => {
         const pUrl = s && s.preview_stream_url;
@@ -2498,10 +2510,17 @@
           fetch(pUrl, { mode: "cors" })
             .then((r) => (r.ok ? r.json() : null))
             .then((ts) => {
-              const rUri = ts && ts.root && ts.root.content && ts.root.content.uri;
-              if (rUri && typeof preprocessTileStreamUrl === "function") {
-                fetch(preprocessTileStreamUrl(rUri, pUrl), { mode: "cors" }).catch(() => {});
-              }
+              if (!ts || !ts.root || typeof preprocessTileStreamUrl !== "function") return;
+              const uris = [];
+              const collectUris = (node) => {
+                if (!node || uris.length >= 8) return;
+                if (node.content && node.content.uri) uris.push(node.content.uri);
+                if (Array.isArray(node.children)) node.children.forEach(collectUris);
+              };
+              collectUris(ts.root);
+              uris.forEach((u) => {
+                fetch(preprocessTileStreamUrl(u, pUrl), { mode: "cors" }).catch(() => {});
+              });
             })
             .catch(() => {});
         }, idx * 120);

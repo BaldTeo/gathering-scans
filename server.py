@@ -1135,6 +1135,8 @@ class GatheringScansHandler(CloudAndTunnelHandlerMixin, ServerWriteRoutesMixin, 
                         total_leaf_count = 1
                     elif os.path.getsize(ts_path) > 2 * 1024 * 1024:
                         tiles_dir_m = os.path.join(bdir_m, "tiles")
+                        if not os.path.isdir(tiles_dir_m):
+                            tiles_dir_m = os.path.join(bdir_m, "content")
                         all_tile_glbs = (
                             [os.path.join(tiles_dir_m, fn) for fn in sorted(os.listdir(tiles_dir_m)) if fn.lower().endswith(".glb")]
                             if os.path.isdir(tiles_dir_m)
@@ -1307,6 +1309,9 @@ class GatheringScansHandler(CloudAndTunnelHandlerMixin, ServerWriteRoutesMixin, 
             self._SCAN_MESH_METRICS_CACHE[cache_key] = cached_metrics
 
         s.update(cached_metrics)
+        if float(s.get("size_mb") or 0) <= 0.01 and float(cached_metrics.get("scan_size_mb") or 0) > 0:
+            s["size_mb"] = float(cached_metrics["scan_size_mb"])
+            s["size_bytes"] = int(float(cached_metrics["scan_size_mb"]) * 1024 * 1024)
         if s.get("is_gaussian_splat"):
             s["texture_size_label"] = "3DGS Splat"
             if s.get("splat_count"):

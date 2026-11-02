@@ -168,8 +168,11 @@ class ServerWriteRoutesMixin:
             missing_vps_pkgs = []
             if isinstance(payload.get("manifest"), dict):
                 m_in = payload["manifest"]
+                if "scans" not in m_in and "packages" not in m_in:
+                    self.send_json(self._build_cloud_manifest_status())
+                    return
+                m_prev = _load_cloud_manifest()
                 if os.name != "nt":
-                    m_prev = _load_cloud_manifest()
                     prev_hv_by_id = {
                         str(s.get("scan_id") or "").lower(): s.get("home_view")
                         for s in (m_prev.get("scans") or [])
@@ -189,9 +192,24 @@ class ServerWriteRoutesMixin:
                     m_in["share_links"] = sorted(
                         by_t.values(), key=lambda x: str(x.get("created_at") or ""), reverse=True
                     )
-                _save_cloud_manifest(m_in)
-                _VPS_RAM_FALLBACK_CACHE.clear()
+                prev_pkgs = (m_prev.get("packages") or {}) if isinstance(m_prev, dict) else {}
                 pkgs_in = m_in.get("packages") or {}
+                changed_sids = {
+                    sid_k
+                    for sid_k, p_info in pkgs_in.items()
+                    if not isinstance(prev_pkgs.get(sid_k), dict)
+                    or int((p_info or {}).get("mtime") or 0) != int((prev_pkgs.get(sid_k) or {}).get("mtime") or 0)
+                    or int((p_info or {}).get("size_bytes") or 0) != int((prev_pkgs.get(sid_k) or {}).get("size_bytes") or 0)
+                }
+                _save_cloud_manifest(m_in)
+                for ck in list(_VPS_RAM_FALLBACK_CACHE.keys()):
+                    if ck.startswith(("/api/scans", "/api/projects", "/api/library")):
+                        if not ck.endswith("/thumbnail"):
+                            _VPS_RAM_FALLBACK_CACHE.pop(ck, None)
+                    elif ck.startswith("/stream/"):
+                        parts = ck.split("/")
+                        if len(parts) >= 3 and (parts[2] not in pkgs_in or parts[2] in changed_sids):
+                            _VPS_RAM_FALLBACK_CACHE.pop(ck, None)
                 trashed_keep = {str(x) for x in (m_in.get("trashed_scan_ids") or []) if x}
                 pkg_dirs = [os.path.join(DATA_DIR, "stream_packages")]
                 if os.path.isdir("/host_docker/gathering_scans/data"):
