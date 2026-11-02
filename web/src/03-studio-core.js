@@ -281,9 +281,21 @@
     const lastViewDir = new THREE.Vector3();
     const collectRaycastTargets = (v) => {
       const list = [];
+      const addSide = (s) => {
+        if (!s) return;
+        const piv = s.modelPivot || s.pivot;
+        if (s.tilesRenderer?.group && piv?.visible !== false) list.push(s.tilesRenderer.group);
+        else if (s.loadedMesh && s.loadedMesh.visible && piv?.visible !== false) list.push(s.loadedMesh);
+        else if (s.fallbackGroup && s.fallbackGroup.visible) list.push(s.fallbackGroup);
+      };
       if (v?.tilesRenderer?.group && v?.modelPivot?.visible !== false) list.push(v.tilesRenderer.group);
-      if (v?.left?.tilesRenderer?.group && v?.left?.modelPivot?.visible !== false) list.push(v.left.tilesRenderer.group);
-      if (v?.right?.tilesRenderer?.group && v?.right?.modelPivot?.visible !== false) list.push(v.right.tilesRenderer.group);
+      else if (v?.modelPivot && v.modelPivot.visible) {
+        v.modelPivot.traverse((c) => {
+          if (c.isTilesGroup) list.push(c);
+          else if (c.isMesh && c.visible && !c.userData?.isGaussianSplatMesh) list.push(c);
+        });
+      }
+      [v?.left, v?.right, v?.third, v?.fourth].forEach(addSide);
       [v?.multiAlignGroup, v?.fallbackGroup].forEach((r) => {
         if (!r || !r.visible) return;
         r.traverse((c) => {
@@ -298,6 +310,15 @@
         }
       }
       return list;
+    };
+    const filterValidHit = (hits, sbEval) => {
+      for (let i = 0; i < hits.length; i++) {
+        const h = hits[i];
+        if (!h || !Number.isFinite(h.distance)) continue;
+        if (sbEval && h.point && !isPointInSectionBox(h.point.x, h.point.y, h.point.z, sbEval)) continue;
+        return h;
+      }
+      return null;
     };
     const syncExtraCams = (v) => {
       if (v && v.left && v.right && v.left.camera) {
@@ -341,10 +362,15 @@
         if (!Number.isFinite(surfDist)) {
           const targets = collectRaycastTargets(v);
           if (!targets.length) return;
+          const sbEval =
+            opts.isStudio && typeof isSectionBoxClippingActive === "function" && isSectionBoxClippingActive()
+              ? parseSectionBoxForEval(STATE.sectionBoxState)
+              : null;
+          ray.firstHitOnly = !sbEval;
           ray.far = Math.min(600, Math.max(80, curTargetDist * 3.0));
           ray.set(cam.position, viewDir);
-          const hits = ray.intersectObjects(targets, true);
-          surfDist = hits.length ? hits[0].distance : NaN;
+          const hit0 = filterValidHit(ray.intersectObjects(targets, true), sbEval);
+          surfDist = hit0 ? hit0.distance : NaN;
 
           if (!Number.isFinite(surfDist)) {
             const rect = domEl.getBoundingClientRect();
@@ -353,9 +379,9 @@
               ndc.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
               if (Number.isFinite(ndc.x) && Math.abs(ndc.x) <= 1.05 && Math.abs(ndc.y) <= 1.05) {
                 ray.setFromCamera(ndc, cam);
-                const cursorHits = ray.intersectObjects(targets, true);
-                if (cursorHits.length) {
-                  const proj = new THREE.Vector3().subVectors(cursorHits[0].point, cam.position).dot(viewDir);
+                const cHit = filterValidHit(ray.intersectObjects(targets, true), sbEval);
+                if (cHit) {
+                  const proj = new THREE.Vector3().subVectors(cHit.point, cam.position).dot(viewDir);
                   if (proj > 0.15) surfDist = proj;
                 }
               }
@@ -503,28 +529,14 @@
     controls.autoRotate = Boolean(STATE.isEmbedded ? STATE.embedAutoRotateEnabled : STATE.studioAutoRotateEnabled);
     controls.autoRotateSpeed = Number(STATE.autoRotateSpeed) || 0.45;
     installSurfaceAwareOrbitZoom(renderer.domElement, () => studioThree, { isStudio: true });
-    controls.mouseButtons = {
-      LEFT: THREE.MOUSE.ROTATE,
-      MIDDLE: THREE.MOUSE.ROTATE,
-      RIGHT: THREE.MOUSE.PAN,
-    };
-    controls.touches = {
-      ONE: THREE.TOUCH.ROTATE,
-      TWO: THREE.TOUCH.DOLLY_PAN,
-    };
-    controls.addEventListener("end", () => {
-      SHARE_TELEMETRY.recordCameraInteraction("studio");
-    });
-    renderer.domElement.addEventListener("mousedown", (e) => {
-      if (e.button === 1) e.preventDefault();
-    });
-    renderer.domElement.addEventListener("auxclick", (e) => {
-      if (e.button === 1) e.preventDefault();
-    });
+    controls.mouseButtons = { LEFT: THREE.MOUSE.ROTATE, MIDDLE: THREE.MOUSE.ROTATE, RIGHT: THREE.MOUSE.PAN };
+    controls.touches = { ONE: THREE.TOUCH.ROTATE, TWO: THREE.TOUCH.DOLLY_PAN };
+    controls.addEventListener("end", () => SHARE_TELEMETRY.recordCameraInteraction("studio"));
+    renderer.domElement.addEventListener("mousedown", (e) => { if (e.button === 1) e.preventDefault(); });
+    renderer.domElement.addEventListener("auxclick", (e) => { if (e.button === 1) e.preventDefault(); });
 
     scene.add(new THREE.AmbientLight(0xffffff, 0.9));
-    const hemi = new THREE.HemisphereLight(0xffffff, 0x475569, 0.45);
-    scene.add(hemi);
+    scene.add(new THREE.HemisphereLight(0xffffff, 0x475569, 0.45));
     const dir1 = new THREE.DirectionalLight(0xffffff, 0.6);
     dir1.position.set(120, 220, 120);
     scene.add(dir1);
@@ -533,68 +545,22 @@
     grid.position.y = -0.2;
     scene.add(grid);
 
-    const modelPivot = new THREE.Group();
-    scene.add(modelPivot);
-
-    // Interactive Reference Terrain Mesh (guarantees immediate raycast picking & visual stockpile terrain)
-    const fallbackGroup = new THREE.Group();
-    scene.add(fallbackGroup);
-
-    const overlayGroup = new THREE.Group();
-    scene.add(overlayGroup);
-
-    // Dedicated group for Cut/Fill Volume & Polygon placement so placing points never wipes measurements (Fix #1)
-    const volumeGroup = new THREE.Group();
-    scene.add(volumeGroup);
-
-    const polyPreviewGroup = new THREE.Group();
-    scene.add(polyPreviewGroup);
-
-    const contourGroup = new THREE.Group();
-    scene.add(contourGroup);
-
-    const categoryGroup = new THREE.Group();
-    scene.add(categoryGroup);
-
-    const commentPinsGroup = new THREE.Group();
-    scene.add(commentPinsGroup);
-
-    const multiAlignGroup = new THREE.Group();
+    const modelPivot = new THREE.Group(), fallbackGroup = new THREE.Group(), overlayGroup = new THREE.Group();
+    const volumeGroup = new THREE.Group(), polyPreviewGroup = new THREE.Group(), contourGroup = new THREE.Group();
+    const categoryGroup = new THREE.Group(), commentPinsGroup = new THREE.Group();
+    const multiAlignGroup = new THREE.Group(), gizmoGroup = new THREE.Group();
     multiAlignGroup.visible = false;
-    scene.add(multiAlignGroup);
-
-    const gizmoGroup = new THREE.Group();
     gizmoGroup.visible = false;
-    scene.add(gizmoGroup);
+    scene.add(modelPivot, fallbackGroup, overlayGroup, volumeGroup, polyPreviewGroup, contourGroup, categoryGroup, commentPinsGroup, multiAlignGroup, gizmoGroup);
 
-    const raycaster = new THREE.Raycaster();
-    const mouse = new THREE.Vector2();
+    const raycaster = new THREE.Raycaster(), mouse = new THREE.Vector2();
     studioThree = {
-      container,
-      scene,
-      camera,
-      renderer,
-      controls,
-      grid,
-      modelPivot,
-      fallbackGroup,
-      overlayGroup,
-      volumeGroup,
-      polyPreviewGroup,
-      contourGroup,
-      categoryGroup,
-      commentPinsGroup,
-      multiAlignGroup,
-      gizmoGroup,
-      raycaster,
-      mouse,
-      tilesRenderer: null,
-      loadedMesh: null,
-      boundingSphere: null,
-      tilesCenter: [0, 0, 0],
-      tileUpMatrix: new THREE.Matrix4(),
-      _cancelLassoDrag: null,
-      _lassoHighlightTimer: null,
+      container, scene, camera, renderer, controls, grid, modelPivot, fallbackGroup,
+      overlayGroup, volumeGroup, polyPreviewGroup, contourGroup, categoryGroup, commentPinsGroup,
+      multiAlignGroup, gizmoGroup, raycaster, mouse,
+      tilesRenderer: null, loadedMesh: null, boundingSphere: null,
+      tilesCenter: [0, 0, 0], tileUpMatrix: new THREE.Matrix4(),
+      _cancelLassoDrag: null, _lassoHighlightTimer: null,
     };
     window.studioThree = studioThree;
 
@@ -2454,16 +2420,23 @@
     studioThree.mouse.x = ((clientX - rect.left) / rect.width) * 2 - 1;
     studioThree.mouse.y = -((clientY - rect.top) / rect.height) * 2 + 1;
     studioThree.raycaster.setFromCamera(studioThree.mouse, studioThree.camera);
+    const activeSbEval = isSectionBoxClippingActive() ? parseSectionBoxForEval(STATE.sectionBoxState) : null;
+    studioThree.raycaster.firstHitOnly = !activeSbEval;
 
     const targets = [];
     if (studioThree.modelPivot && studioThree.modelPivot.visible) {
-      studioThree.modelPivot.traverse((c) => {
-        if (c.isMesh && isMeshVisibleUnderRoot(c, studioThree.modelPivot)) targets.push(c);
-      });
+      if (studioThree.tilesRenderer?.group && studioThree.tilesRenderer.group.visible) {
+        targets.push(studioThree.tilesRenderer.group);
+      } else {
+        studioThree.modelPivot.traverse((c) => {
+          if (c.isMesh && isMeshVisibleUnderRoot(c, studioThree.modelPivot)) targets.push(c);
+        });
+      }
     }
     if (studioThree.multiAlignGroup && studioThree.multiAlignGroup.visible) {
       studioThree.multiAlignGroup.traverse((c) => {
-        if (c.isMesh && isMeshVisibleUnderRoot(c, studioThree.multiAlignGroup) && !c.userData?.isAlignBoxHelper) targets.push(c);
+        if (c.isTilesGroup && c.visible) targets.push(c);
+        else if (c.isMesh && isMeshVisibleUnderRoot(c, studioThree.multiAlignGroup) && !c.userData?.isAlignBoxHelper) targets.push(c);
       });
     }
     if (studioThree.fallbackGroup && studioThree.fallbackGroup.visible) {
@@ -2471,12 +2444,9 @@
         if (c.isMesh && isMeshVisibleUnderRoot(c, studioThree.fallbackGroup)) targets.push(c);
       });
     }
-    if (typeof window.collectExtraStudioPickTargets === "function") {
-      window.collectExtraStudioPickTargets(targets);
-    }
+    if (typeof window.collectExtraStudioPickTargets === "function") window.collectExtraStudioPickTargets(targets);
 
     const rawHits = studioThree.raycaster.intersectObjects(targets, true);
-    const activeSbEval = isSectionBoxClippingActive() ? parseSectionBoxForEval(STATE.sectionBoxState) : null;
     const hits = activeSbEval
       ? rawHits.filter((h) => h && h.point && isPointInSectionBox(h.point.x, h.point.y, h.point.z, activeSbEval))
       : rawHits;
@@ -2485,7 +2455,6 @@
       allowVertexSnap && typeof findNearestSnappableToolVertex === "function"
         ? findNearestSnappableToolVertex(clientX, clientY, window.innerWidth <= 768 ? 28 : 24, STATE.movingVertex)
         : null;
-
     updateStudioSnapIndicator(snappedVertex?.point || null, Boolean(snappedVertex?.point));
 
     if (hits.length > 0) {
@@ -2498,9 +2467,7 @@
       let snappedToToolVertex = false;
       if (allowVertexSnap && snappedVertex && snappedVertex.point) {
         p.copy(snappedVertex.point);
-        if (snappedVertex.source === "utilities" || snappedVertex.source === "categorize") {
-          rawPoint.copy(snappedVertex.point);
-        }
+        if (snappedVertex.source === "utilities" || snappedVertex.source === "categorize") rawPoint.copy(snappedVertex.point);
         snappedToToolVertex = true;
       }
       const normal = new THREE.Vector3(0, 1, 0);
@@ -2512,7 +2479,6 @@
       }
       return { point: p, rawPoint, normal, distance: h0.distance, object: h0.object, snappedToToolVertex, snappedVertex: snappedVertex || null };
     }
-
     if (allowVertexSnap && snappedVertex && snappedVertex.point) {
       const sp = snappedVertex.point.clone();
       return {

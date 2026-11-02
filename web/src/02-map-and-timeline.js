@@ -1503,6 +1503,7 @@
       tilesRenderer: null,
       boundingSphere: null,
     };
+    window.previewThree = previewThree;
 
     buildReferenceTerrainMesh(previewThree);
 

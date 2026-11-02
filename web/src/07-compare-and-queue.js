@@ -942,12 +942,13 @@
         () => {
           try {
             renderer.setPixelRatio(1);
-            if (STATE.activeView === "compare") {
+            if (STATE.activeView === "compare" && compareCtx) {
               ["left", "right", "third", "fourth"].forEach((sKey) => {
-                const sid = compareThree?.[sKey]?._loadedScanId;
-                if (sid && typeof loadScanIntoCompareSide === "function") {
-                  compareThree[sKey]._loadedScanId = null;
-                  loadScanIntoCompareSide(sKey, sid);
+                const sideObj = compareCtx[sKey];
+                const sid = sideObj?._loadedScanId;
+                if (sideObj && sid && typeof loadScanIntoCompareSide === "function") {
+                  sideObj._loadedScanId = null;
+                  loadScanIntoCompareSide(sideObj, sid);
                 }
               });
             }
@@ -1014,6 +1015,7 @@
         mesh,
         fallbackGroup,
         pivot,
+        modelPivot: pivot,
         alignGroup,
         isLatest,
         tilesRenderer: null,
@@ -1038,14 +1040,7 @@
     controls.minDistance = 0.08;
     controls.screenSpacePanning = true;
     if (typeof installSurfaceAwareOrbitZoom === "function") {
-      installSurfaceAwareOrbitZoom(stage, () => ({
-        camera: left.camera,
-        controls,
-        left: { camera: left.camera, modelPivot: left.pivot },
-        right: { camera: right.camera, modelPivot: right.pivot },
-        third: third ? { camera: third.camera, modelPivot: third.pivot } : null,
-        fourth: fourth ? { camera: fourth.camera, modelPivot: fourth.pivot } : null,
-      }));
+      installSurfaceAwareOrbitZoom(stage, () => compareCtx);
     }
     controls.mouseButtons = {
       LEFT: THREE.MOUSE.ROTATE,
