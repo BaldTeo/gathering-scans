@@ -71,6 +71,9 @@
         ? localStorage.getItem("gs_util_keep_on_close_v2") === "1"
         : false,
     verticalOffsetM: 0.0,
+    elevationMode: "hybrid", // "hybrid" | "scan_only" | "gov_only" | "flat"
+    terrainGrid: null,
+    elevationSummary: null,
     loadedScanId: null,
     lastCenter: null,
     groundReferenceH: NaN,
@@ -96,7 +99,7 @@
     xrayMeshes: [], // Subsurface depth-fail (THREE.GreaterDepth) X-Ray meshes sharing mergedGeo
     lineMeshes: [], // Per-layer vertical depth leader LineSegments
     pipeMeshMap: new Map(), // featId_seg -> { mesh, layer, feature, v1, v2, dist, dir }
-    groundGridCache: { scanId: null, originH: NaN, groundRefH: NaN, catCount: 0, sampler: null },
+    groundGridCache: { scanId: null, originH: NaN, groundRefH: NaN, catCount: 0, elevMode: "hybrid", sampler: null },
   };
 
   /**
@@ -589,9 +592,11 @@
     UTILS_STATE.loadedScanId = null;
     UTILS_STATE.lastCenter = null;
     UTILS_STATE.features = [];
+    UTILS_STATE.terrainGrid = null;
+    UTILS_STATE.elevationSummary = null;
     UTILS_STATE.selectedFeature = null;
     UTILS_STATE.hoveredFeature = null;
-    UTILS_STATE.groundGridCache = { scanId: null, meshCount: 0, catCount: 0, sampler: null };
+    UTILS_STATE.groundGridCache = { scanId: null, originH: NaN, groundRefH: NaN, catCount: 0, elevMode: UTILS_STATE.elevationMode, sampler: null };
     Object.keys(UTILITY_LAYERS).forEach((k) => {
       UTILITY_LAYERS[k].count = 0;
     });
@@ -971,6 +976,15 @@
             <input type="range" id="rngUtilZOffset" class="gs-brightness-slider" min="-5.0" max="5.0" step="0.1" value="${Number(UTILS_STATE.verticalOffsetM || 0).toFixed(1)}" style="flex:1;" />
             <span style="font-size:11px;font-weight:600;min-width:38px;text-align:right;cursor:pointer;color:var(--ui-accent-primary,#38bdf8);" id="lblUtilZOffset" title="${t("點擊重置為 0.0m", "Click to reset to 0.0m")}">${(Number(UTILS_STATE.verticalOffsetM || 0) >= 0 ? "+" : "") + Number(UTILS_STATE.verticalOffsetM || 0).toFixed(1)}m</span>
           </div>
+          <div style="display:flex;align-items:center;gap:8px;margin-top:6px;">
+            <span style="font-size:10px;color:var(--ui-text-muted);min-width:48px;" title="${t("選擇 3D 管線貼合的地面高程基準模型", "Select 3D utility terrain elevation reference model")}">${t("高程基準", "DEM Mode")}</span>
+            <select id="selUtilElevationMode" class="gs-input gs-util-input" style="flex:1;height:24px;font-size:11px;padding:1px 6px;">
+              <option value="hybrid" ${UTILS_STATE.elevationMode === "hybrid" ? "selected" : ""}>${t("混合 (掃描裸地 DTM + 政府高程 API)", "Hybrid (Scan Bare-Earth DTM + Gov DEM)")}</option>
+              <option value="scan_only" ${UTILS_STATE.elevationMode === "scan_only" ? "selected" : ""}>${t("僅用掃描模型裸地高程 (Scan DTM)", "Scan Bare-Earth DTM Only")}</option>
+              <option value="gov_only" ${UTILS_STATE.elevationMode === "gov_only" ? "selected" : ""}>${t("僅用政府數值地形 API (Gov DEM)", "Gov Elevation API Only")}</option>
+              <option value="flat" ${UTILS_STATE.elevationMode === "flat" ? "selected" : ""}>${t("單一基準平面 (Flat Datum)", "Uniform Reference Plane")}</option>
+            </select>
+          </div>
           <div style="margin-top:8px;padding-top:6px;border-top:1px dashed rgba(148,163,184,0.22);">
             <label class="gs-util-checkbox-label" style="font-size:11px;cursor:pointer;display:flex;align-items:center;gap:6px;">
               <input type="checkbox" id="chkUtilKeepOnClose" ${UTILS_STATE.keepLayersOnClose ? "checked" : ""} />
@@ -1173,9 +1187,11 @@
       stopLoadingProgressTicker();
       const clipped = filterMasterFeaturesToRadius(masterEntry.features, masterEntry.center, r);
       UTILS_STATE.features = mergeUserAsBuiltFeatures(scanId, clipped);
+      UTILS_STATE.terrainGrid = masterEntry.terrainGrid || UTILS_STATE.terrainGrid;
       renderUtilities3D({
         center: masterEntry.center,
         ground_reference_h: masterEntry.groundReferenceH,
+        terrain_grid: masterEntry.terrainGrid || UTILS_STATE.terrainGrid,
       });
       updateUtilitiesPanelMetricsInPlace();
       return;
@@ -1292,6 +1308,17 @@
       };
     }
 
+    // Elevation DEM reference mode selector
+    const selElevMode = document.getElementById("selUtilElevationMode");
+    if (selElevMode) {
+      selElevMode.onchange = () => {
+        UTILS_STATE.elevationMode = String(selElevMode.value || "hybrid");
+        UTILS_STATE.groundGridCache.sampler = null;
+        renderUtilities3D();
+        updateUtilitiesPanelMetricsInPlace();
+      };
+    }
+
     // Keep 3D layers on close checkbox (off by default)
     const chkKeep = document.getElementById("chkUtilKeepOnClose");
     if (chkKeep) {
@@ -1368,13 +1395,19 @@
       UTILS_STATE.loadedScanId = scanId;
       UTILS_STATE.lastCenter = memMaster.center;
       UTILS_STATE.groundReferenceH = memMaster.groundReferenceH;
+      UTILS_STATE.terrainGrid = memMaster.terrainGrid || null;
+      UTILS_STATE.elevationSummary = memMaster.elevationSummary || null;
       UTILS_STATE.isCached = true;
       UTILS_STATE.cacheTimestamp = memMaster.timestamp || "";
       UTILS_STATE.taipei8UtilityStatus = memMaster.taipei8UtilityStatus || null;
       const clipped = filterMasterFeaturesToRadius(memMaster.features, memMaster.center, displayRadiusM);
       UTILS_STATE.features = mergeUserAsBuiltFeatures(scanId, clipped);
       if (isUtilitiesSidePanelOpen() || UTILS_STATE.keepLayersOnClose) {
-        renderUtilities3D({ center: memMaster.center, ground_reference_h: memMaster.groundReferenceH });
+        renderUtilities3D({
+          center: memMaster.center,
+          ground_reference_h: memMaster.groundReferenceH,
+          terrain_grid: memMaster.terrainGrid || null,
+        });
         if (!UTILS_STATE.selectedFeature || !UTILS_STATE.features.includes(UTILS_STATE.selectedFeature)) {
           UTILS_STATE.selectedFeature =
             UTILS_STATE.features.find((f) => getFeatProp(f, "type", "") === "pipe" || getFeatProp(f, "type", "") === "box_culvert") ||
@@ -1442,6 +1475,8 @@
             UTILS_STATE.masterCacheByScan[scanId] = {
               center: res.center || null,
               groundReferenceH: groundRefH,
+              terrainGrid: res.terrain_grid || null,
+              elevationSummary: res.elevation_summary || null,
               radiusM: fetchedRadiusM,
               serverMasterRadiusM: masterCachedR,
               masterTotalFeatures: masterTotalCnt,
@@ -1455,6 +1490,8 @@
         UTILS_STATE.loadedScanId = scanId;
         UTILS_STATE.lastCenter = res.center || null;
         UTILS_STATE.groundReferenceH = groundRefH;
+        UTILS_STATE.terrainGrid = res.terrain_grid || null;
+        UTILS_STATE.elevationSummary = res.elevation_summary || null;
         UTILS_STATE.isCached = Boolean(res.cached);
         UTILS_STATE.cacheTimestamp = String(res.query_timestamp || "");
         UTILS_STATE.taipei8UtilityStatus = res.taipei_8utility_status || null;
@@ -1518,15 +1555,26 @@
     startLoadingProgressTicker(t("正在解析管線圖資檔案...", "Parsing utility file..."));
 
     try {
+      const scanId = String((typeof STATE !== "undefined" && STATE.activeScanId) || "");
+      const originTwd = resolveUtilitiesOriginTwd97();
       const payload = {
         file_content: content,
         filename: filename,
+        scan_id: scanId,
       };
+      if (originTwd && Number.isFinite(originTwd.e) && originTwd.e >= 150000) {
+        payload.center_e = Number(originTwd.e.toFixed(3));
+        payload.center_n = Number(originTwd.n.toFixed(3));
+        if (Number.isFinite(originTwd.h)) payload.center_h = Number(originTwd.h.toFixed(3));
+      }
       const res = typeof apiPost === "function" ? await apiPost("/api/survey/utilities-parse", payload) : null;
       stopLoadingProgressTicker();
       if (res && res.status === "ok" && Array.isArray(res.features)) {
         UTILS_STATE.features = res.features;
-        UTILS_STATE.loadedScanId = String((typeof STATE !== "undefined" && STATE.activeScanId) || "");
+        UTILS_STATE.loadedScanId = scanId;
+        if (res.terrain_grid) UTILS_STATE.terrainGrid = res.terrain_grid;
+        if (res.elevation_summary) UTILS_STATE.elevationSummary = res.elevation_summary;
+        if (Number.isFinite(Number(res.ground_reference_h))) UTILS_STATE.groundReferenceH = Number(res.ground_reference_h);
         UTILS_STATE.isCached = false;
 
         Object.keys(UTILITY_LAYERS).forEach((k) => (UTILITY_LAYERS[k].count = 0));
@@ -1679,6 +1727,11 @@
    */
   function createCanopyRejectingGroundSampler(payload, originTwd) {
     const currentScanId = String((typeof STATE !== "undefined" && STATE.activeScanId) || "");
+    const elevMode = String(UTILS_STATE.elevationMode || "hybrid");
+    const tGrid = payload?.terrain_grid || UTILS_STATE.terrainGrid || null;
+    if (payload?.terrain_grid) {
+      UTILS_STATE.terrainGrid = payload.terrain_grid;
+    }
     const rawCatData = typeof STATE !== "undefined" ? STATE.lastCategorizeResult || STATE.categorizeData : null;
     const catData =
       rawCatData && (!rawCatData.scan_id || !currentScanId || String(rawCatData.scan_id) === currentScanId)
@@ -1703,6 +1756,8 @@
     if (
       UTILS_STATE.groundGridCache.sampler &&
       UTILS_STATE.groundGridCache.scanId === currentScanId &&
+      UTILS_STATE.groundGridCache.elevMode === elevMode &&
+      Boolean(UTILS_STATE.groundGridCache.hasTerrainGrid) === Boolean(tGrid) &&
       Math.abs((Number(UTILS_STATE.groundGridCache.originH) || 0) - originH) < 1e-4 &&
       ((!Number.isFinite(UTILS_STATE.groundGridCache.groundRefH) && !Number.isFinite(centerGroundH)) ||
         Math.abs((Number(UTILS_STATE.groundGridCache.groundRefH) || 0) - centerGroundH) < 1e-4) &&
@@ -1711,7 +1766,40 @@
       return UTILS_STATE.groundGridCache.sampler;
     }
 
-    const roadAnchorPts = []; // [{ x, z, y }] verified upper-street road anchors
+    function sampleTerrainGridH(ePt, nPt) {
+      if (!tGrid || !Array.isArray(tGrid.z_grid)) return null;
+      const nx = Number(tGrid.nx) || 0;
+      const ny = Number(tGrid.ny) || 0;
+      const eMin = Number(tGrid.e_min);
+      const eMax = Number(tGrid.e_max);
+      const nMin = Number(tGrid.n_min);
+      const nMax = Number(tGrid.n_max);
+      if (nx < 2 || ny < 2 || !(eMax > eMin) || !(nMax > nMin)) return null;
+      if (ePt < eMin || ePt > eMax || nPt < nMin || nPt > nMax) return null;
+
+      const u = Math.max(0.0, Math.min(1.0 - 1e-6, (ePt - eMin) / (eMax - eMin))) * (nx - 1);
+      const v = Math.max(0.0, Math.min(1.0 - 1e-6, (nPt - nMin) / (nMax - nMin))) * (ny - 1);
+      const i0 = Math.floor(u);
+      const j0 = Math.floor(v);
+      const i1 = Math.min(i0 + 1, nx - 1);
+      const j1 = Math.min(j0 + 1, ny - 1);
+      const tx = u - i0;
+      const ty = v - j0;
+
+      const zg = tGrid.z_grid;
+      const z00 = Number(zg[j0 * nx + i0]);
+      const z10 = Number(zg[j0 * nx + i1]);
+      const z01 = Number(zg[j1 * nx + i0]);
+      const z11 = Number(zg[j1 * nx + i1]);
+      const z0 = z00 * (1.0 - tx) + z10 * tx;
+      const z1 = z01 * (1.0 - tx) + z11 * tx;
+      const hVal = z0 * (1.0 - ty) + z1 * ty;
+      const hg = tGrid.hull_grid;
+      const inHull = Array.isArray(hg) ? Boolean(hg[j0 * nx + i0]) : true;
+      return Number.isFinite(hVal) ? { h: hVal, inHull } : null;
+    }
+
+    const roadAnchorPts = []; // [{ x, z, y }] verified road anchors
     const roadSamplesY = [];
     const waterSamplesY = [];
 
@@ -1748,6 +1836,7 @@
 
     // Ingest categorized roads and water bodies (from STATE.lastCategorizeResult)
     let primaryRoadY = NaN;
+    const hasMultiPondDetention = Array.isArray(catData?.water_bodies) && catData.water_bodies.length >= 2;
     if (catData) {
       if (Array.isArray(catData.roads) && catData.roads.length > 0) {
         let maxRoadArea = 0;
@@ -1764,13 +1853,15 @@
           }
         });
         if (primaryRoadYs.length > 0) {
-          primaryRoadY = primaryRoadYs.reduce((acc, v) => acc + v, 0) / primaryRoadYs.length;
+          primaryRoadYs.sort((a, b) => a - b);
+          primaryRoadY = primaryRoadYs[Math.floor(primaryRoadYs.length * 0.5)];
         }
 
         catData.roads.forEach((r) => {
           const rArea = Number(r?.planar_area_m2) || 100;
           const ry = readRoadLocalY(r);
           const isSunkenFootpath =
+            hasMultiPondDetention &&
             Number.isFinite(primaryRoadY) &&
             rArea < 0.2 * maxRoadArea &&
             Number.isFinite(ry) &&
@@ -1790,7 +1881,7 @@
               const pt = r.boundary_twd97[i];
               if (Array.isArray(pt) && pt.length >= 3) {
                 const py = Number(pt[2]) - originH;
-                if (!Number.isFinite(primaryRoadY) || primaryRoadY - py <= 0.85) {
+                if (!hasMultiPondDetention || !Number.isFinite(primaryRoadY) || primaryRoadY - py <= 0.85) {
                   addRoadAnchorSample(Number(pt[0]) - originTwd.e, originTwd.n - Number(pt[1]), py);
                 }
               }
@@ -1822,16 +1913,18 @@
     let roadRefY = Number.isFinite(baseCenterRefY) ? baseCenterRefY : 0.0;
     if (roadSamplesY.length > 0) {
       const sortedRoad = roadSamplesY.slice().sort((a, b) => a - b);
-      const p60RoadY = sortedRoad[Math.min(sortedRoad.length - 1, Math.floor(sortedRoad.length * 0.6))];
-      roadRefY = Number.isFinite(baseCenterRefY) ? Math.max(baseCenterRefY, p60RoadY) : p60RoadY;
+      const medRoadY = sortedRoad[Math.floor(sortedRoad.length * 0.5)];
+      roadRefY = Number.isFinite(baseCenterRefY) ? 0.5 * baseCenterRefY + 0.5 * medRoadY : medRoadY;
     } else if (Number.isFinite(primaryRoadY)) {
-      roadRefY = Number.isFinite(baseCenterRefY) ? Math.max(baseCenterRefY, primaryRoadY) : primaryRoadY;
+      roadRefY = Number.isFinite(baseCenterRefY) ? 0.5 * baseCenterRefY + 0.5 * primaryRoadY : primaryRoadY;
     }
 
     const waterRefY =
       waterSamplesY.length > 0
         ? waterSamplesY.reduce((a, b) => a + b, 0) / waterSamplesY.length
         : roadRefY - 1.2;
+
+    const minParkFloorY = hasMultiPondDetention ? roadRefY - 0.95 : -Infinity;
 
     const sampler = function sampleLocalGroundY(lx, lz, fallbackGroundH, opts) {
       const isOpenChannel = Boolean(opts && opts.isOpenChannel);
@@ -1846,32 +1939,46 @@
         return Math.max(roadRefY - 0.85, waterRefY);
       }
 
-      // Street utilities: anchor deterministically to street grade (never dragged down by sunken park bowls)
-      const safeFbY = Number.isFinite(fbLocalY) ? Math.max(roadRefY - 0.65, fbLocalY) : roadRefY;
+      if (elevMode === "flat") {
+        return roadRefY;
+      }
+
+      const ePt = originTwd.e + lx;
+      const nPt = originTwd.n - lz;
+      const tg = elevMode !== "gov_only" ? sampleTerrainGridH(ePt, nPt) : null;
+
+      if (Number.isFinite(fbLocalY)) {
+        let outY = fbLocalY;
+        if (tg && tg.inHull && opts && opts.subdividedVertex) {
+          outY = 0.35 * fbLocalY + 0.65 * (tg.h - originH);
+        }
+        return Math.max(minParkFloorY, outY);
+      }
+
+      if (tg && tg.inHull) {
+        return Math.max(minParkFloorY, tg.h - originH);
+      }
+
       if (roadAnchorPts.length > 0) {
         let wSum = 0.0;
         let wySum = 0.0;
-        let minD2 = Infinity;
         for (let i = 0; i < roadAnchorPts.length; i++) {
           const p = roadAnchorPts[i];
           const d2 = (p.x - lx) * (p.x - lx) + (p.z - lz) * (p.z - lz);
-          if (d2 < minD2) minD2 = d2;
-          if (d2 <= 3600.0) {
-            const w = 1.0 / (d2 + 16.0);
+          if (d2 <= 6400.0) {
+            const w = 1.0 / Math.pow(d2 + 25.0, 1.2);
             wSum += w;
             wySum += w * p.y;
           }
         }
         if (wSum > 0) {
-          const anchorY = wySum / wSum;
-          if (anchorY > safeFbY) {
-            const distM = Math.sqrt(minD2);
-            const alpha = Math.max(0.0, Math.min(0.5, 1.0 - Math.max(0.0, distM - 10.0) / 50.0));
-            return alpha * anchorY + (1.0 - alpha) * safeFbY;
-          }
+          return Math.max(minParkFloorY, wySum / wSum);
         }
       }
-      return safeFbY;
+      if (tg) {
+        return Math.max(minParkFloorY, tg.h - originH);
+      }
+      return roadRefY;
     };
 
     UTILS_STATE.groundGridCache = {
@@ -1879,6 +1986,8 @@
       originH: originH,
       groundRefH: centerGroundH,
       catCount: catCount,
+      elevMode: elevMode,
+      hasTerrainGrid: Boolean(tGrid),
       sampler: sampler,
     };
     return sampler;
@@ -1944,6 +2053,7 @@
    * - Eliminates large-mesh lag by merging each layer into 1 Mesh + 1 LineSegments (~20 draw calls total).
    * - Eliminates zoomed-out flickering by using opaque polygonOffset materials + adaptive camera near-plane.
    * - Eliminates 45-degree rotated box culverts across diagonal alignments via `computeZeroRollBasis`.
+   * - Evaluates per-vertex bare-earth DTM + Government DEM elevations and locks pipe endpoints to manhole rims.
    */
   function renderUtilities3D(payload = null) {
     clearUtilitiesVisuals3D();
@@ -1953,6 +2063,7 @@
     }
 
     const zOffsetM = Number(UTILS_STATE.verticalOffsetM) || 0.0;
+    const elevMode = String(UTILS_STATE.elevationMode || "hybrid");
     const originTwd = resolveUtilitiesOriginTwd97();
     UTILS_STATE.lastRenderedOriginH = Number(originTwd?.h) || 0;
     const sampleLocalGroundY = createCanopyRejectingGroundSampler(payload, originTwd);
@@ -1965,12 +2076,32 @@
     // Per-layer batch buckets & 3D segment deduplication set
     const layerBuckets = {};
     const seen3DSegments = new Set();
+    const mhRimByLayer = {}; // layerId -> [{ x, z, rimY }]
     Object.keys(UTILITY_LAYERS).forEach((k) => {
       layerBuckets[k] = {
         stamps: [], // [{ isBox, midX, midY, midZ, sx, sy, sz, basis, feat }]
         linePositions: [], // [x1, y1, z1, x2, y2, z2, ...] for vertical depth leaders
         firstFeat: null,
       };
+      mhRimByLayer[k] = [];
+    });
+
+    // Pre-pass: Compute manhole rimY positions per layer so connected pipes lock cleanly to manhole rims
+    UTILS_STATE.features.forEach((feat) => {
+      const fType = getFeatProp(feat, "type", feat.geometry?.type === "Point" ? "manhole" : "pipe");
+      if (fType !== "manhole" && fType !== "catch_basin") return;
+      const layerId = getFeatProp(feat, "layer", "storm");
+      const coord = feat.coord || feat.geometry?.coordinates;
+      if (!Array.isArray(coord) || coord.length < 2) return;
+      const vBase = twd97ToLocal(coord[0], coord[1], 0);
+      const modeRimH =
+        elevMode === "scan_only"
+          ? Number(getFeatProp(feat, "scan_ground_h", getFeatProp(feat, "rim_h", NaN)))
+          : elevMode === "gov_only"
+          ? Number(getFeatProp(feat, "gov_ground_h", getFeatProp(feat, "rim_h", NaN)))
+          : Number(getFeatProp(feat, "rim_h", NaN));
+      const rimY = sampleLocalGroundY(vBase.x, vBase.z, modeRimH) + zOffsetM;
+      (mhRimByLayer[layerId] || (mhRimByLayer[layerId] = [])).push({ x: vBase.x, z: vBase.z, rimY });
     });
 
     UTILS_STATE.features.forEach((feat) => {
@@ -2048,22 +2179,90 @@
           }
         }
 
+        const vModeGroundHs =
+          elevMode === "scan_only"
+            ? feat.vertex_scan_ground_hs || feat.vertex_ground_hs
+            : elevMode === "gov_only"
+            ? feat.vertex_gov_ground_hs || feat.vertex_ground_hs
+            : feat.vertex_ground_hs;
+
+        // Build per-vertex working list, subdividing long segments (> 20m) near the scan so pipes follow terrain slopes
+        const workPts = [];
+        for (let idx = 0; idx < rawCoords.length; idx++) {
+          const c = rawCoords[idx];
+          if (!Array.isArray(c) || c.length < 2) continue;
+          const eCur = Number(c[0]);
+          const nCur = Number(c[1]);
+          const zCur = c.length >= 3 && Number.isFinite(Number(c[2])) ? Number(c[2]) : NaN;
+          const gCur =
+            Array.isArray(vModeGroundHs) && Number.isFinite(Number(vModeGroundHs[idx]))
+              ? Number(vModeGroundHs[idx])
+              : NaN;
+          if (workPts.length > 0 && rawCoords.length < 18) {
+            const prev = workPts[workPts.length - 1];
+            const segD = Math.hypot(eCur - prev.e, nCur - prev.n);
+            const midDistOrigin = Math.hypot(0.5 * (eCur + prev.e) - originTwd.e, 0.5 * (nCur + prev.n) - originTwd.n);
+            if (segD > 20.0 && midDistOrigin <= 240.0) {
+              const nSub = Math.min(5, Math.max(2, Math.ceil(segD / 15.0)));
+              for (let s = 1; s < nSub; s++) {
+                const tSub = s / nSub;
+                workPts.push({
+                  e: prev.e + tSub * (eCur - prev.e),
+                  n: prev.n + tSub * (nCur - prev.n),
+                  z: Number.isFinite(prev.z) && Number.isFinite(zCur) ? prev.z + tSub * (zCur - prev.z) : NaN,
+                  gH: Number.isFinite(prev.gH) && Number.isFinite(gCur) ? prev.gH + tSub * (gCur - prev.gH) : NaN,
+                  subdivided: true,
+                });
+              }
+            }
+          }
+          workPts.push({ e: eCur, n: nCur, z: zCur, gH: gCur, subdivided: false });
+        }
+
+        if (workPts.length < 2) return;
+
         const localVertices = [];
         const vertexGroundYs = [];
         const vertexInvertDepths = [];
+        const lyrMhs = mhRimByLayer[layerId] || [];
 
-        for (let idx = 0; idx < rawCoords.length; idx++) {
-          const c = rawCoords[idx];
-          const frac = rawCoords.length > 1 ? idx / (rawCoords.length - 1) : 0.0;
-          const interpGroundH =
-            Number.isFinite(startGroundH) && Number.isFinite(endGroundH)
-              ? startGroundH + frac * (endGroundH - startGroundH)
-              : startGroundH;
-
-          const v = twd97ToLocal(c[0], c[1], 0);
-          const groundY = sampleLocalGroundY(v.x, v.z, interpGroundH, { isOpenChannel }) + zOffsetM;
-
+        for (let idx = 0; idx < workPts.length; idx++) {
+          const wp = workPts[idx];
+          const frac = workPts.length > 1 ? idx / (workPts.length - 1) : 0.0;
           const rawInterpDepth = startDepthM + frac * (endDepthM - startDepthM);
+
+          let vFbGroundH = wp.gH;
+          if (!Number.isFinite(vFbGroundH)) {
+            if (Number.isFinite(wp.z) && Math.abs(wp.z) > 0.05 && elevMode !== "flat") {
+              vFbGroundH = wp.z + rawInterpDepth;
+            } else {
+              vFbGroundH =
+                Number.isFinite(startGroundH) && Number.isFinite(endGroundH)
+                  ? startGroundH + frac * (endGroundH - startGroundH)
+                  : startGroundH;
+            }
+          }
+
+          const v = twd97ToLocal(wp.e, wp.n, 0);
+          let groundY =
+            sampleLocalGroundY(v.x, v.z, vFbGroundH, {
+              isOpenChannel,
+              subdividedVertex: wp.subdivided,
+            }) + zOffsetM;
+
+          // Lock pipe start/end ground elevation to spatially coincident manhole rimY (<= 0.85m)
+          if ((idx === 0 || idx === workPts.length - 1) && lyrMhs.length > 0) {
+            let bestD2 = 0.72;
+            for (let m = 0; m < lyrMhs.length; m++) {
+              const mh = lyrMhs[m];
+              const d2 = (v.x - mh.x) * (v.x - mh.x) + (v.z - mh.z) * (v.z - mh.z);
+              if (d2 <= bestD2) {
+                bestD2 = d2;
+                groundY = mh.rimY;
+              }
+            }
+          }
+
           const invertDepthM = isOpenChannel
             ? Math.min(0.55, Math.max(0.25, rawInterpDepth))
             : Math.max(heightM + 0.25, rawInterpDepth);
@@ -2152,7 +2351,12 @@
       else if (fType === "manhole" || fType === "catch_basin") {
         const coord = feat.coord || feat.geometry?.coordinates || [0, 0, 0];
         const vBase = twd97ToLocal(coord[0], coord[1], 0);
-        const rawRimH = Number(getFeatProp(feat, "rim_h", NaN));
+        const rawRimH =
+          elevMode === "scan_only"
+            ? Number(getFeatProp(feat, "scan_ground_h", getFeatProp(feat, "rim_h", NaN)))
+            : elevMode === "gov_only"
+            ? Number(getFeatProp(feat, "gov_ground_h", getFeatProp(feat, "rim_h", NaN)))
+            : Number(getFeatProp(feat, "rim_h", NaN));
         const rawInvH = Number(getFeatProp(feat, "invert_h", NaN));
         const groundY = sampleLocalGroundY(vBase.x, vBase.z, rawRimH) + zOffsetM;
 
@@ -2220,7 +2424,13 @@
       else if (fType === "hydrant" || fType === "pole") {
         const coord = feat.coord || feat.geometry?.coordinates || [0, 0, 0];
         const vBase = twd97ToLocal(coord[0], coord[1], 0);
-        const groundY = sampleLocalGroundY(vBase.x, vBase.z, getFeatProp(feat, "rim_h", NaN)) + zOffsetM;
+        const modeRimH =
+          elevMode === "scan_only"
+            ? Number(getFeatProp(feat, "scan_ground_h", getFeatProp(feat, "rim_h", NaN)))
+            : elevMode === "gov_only"
+            ? Number(getFeatProp(feat, "gov_ground_h", getFeatProp(feat, "rim_h", NaN)))
+            : Number(getFeatProp(feat, "rim_h", NaN));
+        const groundY = sampleLocalGroundY(vBase.x, vBase.z, modeRimH) + zOffsetM;
         const heightM = fType === "pole" ? 6.5 : 0.95;
         const diaM = fType === "pole" ? 0.26 : 0.24;
         const vertBasis = { rx: 1, ry: 0, rz: 0, ux: 0, uy: 0, uz: 1, fx: 0, fy: 1, fz: 0 };

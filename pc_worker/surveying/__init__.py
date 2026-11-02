@@ -17,6 +17,7 @@ from pc_worker.surveying.contours_and_cad import ContoursAndCadMixin
 from pc_worker.surveying.categorization_io import CategorizationIoMixin
 from pc_worker.surveying.categorization_heuristics import CategorizationHeuristicsMixin
 from pc_worker.surveying.construction_qa import ConstructionQAMixin
+from pc_worker.surveying.utilities_elevation import UtilitiesElevationMixin
 from pc_worker.surveying.public_utilities_gis import PublicUtilitiesGISMixin, UTILITY_LAYERS
 
 __all__ = [
@@ -32,6 +33,7 @@ __all__ = [
     "CategorizationIoMixin",
     "CategorizationHeuristicsMixin",
     "ConstructionQAMixin",
+    "UtilitiesElevationMixin",
     "PublicUtilitiesGISMixin",
     "UTILITY_LAYERS",
 ]

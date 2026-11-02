@@ -169,6 +169,7 @@ UTILITY_LAYERS: Dict[str, Dict[str, Any]] = {
 
 
 from concurrent.futures import ThreadPoolExecutor
+from pc_worker.surveying.utilities_elevation import UtilitiesElevationMixin
 
 # In-memory cache keyed by absolute file path -> (mtime, parsed_dict) to avoid repeated disk reads
 _UTILITIES_MEM_CACHE: Dict[str, Tuple[float, Dict[str, Any]]] = {}
@@ -198,6 +199,12 @@ _SLIM_STRIP_KEYS = (
     "arcgis_layer_url",
     "facility_no",
     "structure_type",
+    "vertex_ground_hs",
+    "vertex_scan_ground_hs",
+    "vertex_gov_ground_hs",
+    "scan_ground_h",
+    "gov_ground_h",
+    "ground_h",
 )
 
 _KEY_TO_SHORT = {
@@ -844,7 +851,7 @@ def _query_taipei_3d_elevation(e_twd: float, n_twd: float) -> Optional[float]:
     return None
 
 
-class PublicUtilitiesGISMixin:
+class PublicUtilitiesGISMixin(UtilitiesElevationMixin):
     """
     Modular Mixin for Public Utilities GIS Querying, Taiwan Open API Integration,
     MOI NGIS GML 3.1.1 parsing, and 3D subsurface pipeline attribution with exact depth below ground.
@@ -908,127 +915,11 @@ class PublicUtilitiesGISMixin:
     ) -> Tuple[Callable[[float, float], float], Optional[Dict[str, Any]], float]:
         """
         Builds a spatially-interpolated bare-earth road/ground surface elevation sampler sample_ground_z(e, n)
-        anchored to the scan's 3D road surfaces, tree trunk bases, and wall bases in TWVD2001.
-        Prevents building roofs or bounding-box centers from distorting underground utility burial depths.
+        combining the scan's Bare-Earth DTM grid, categorized 3D roads/trees, and official Government DEM APIs.
         """
-        cat_data = self._load_scan_categorization_data(scan_id, scan, ce, cn)
-        samples: List[Tuple[float, float, float, float]] = []  # (e, n, h, weight)
-        road_hs: List[float] = []
-
-        primary_road_h: Optional[float] = None
-        if isinstance(cat_data, dict):
-            raw_roads = [r for r in (cat_data.get("roads") or []) if isinstance(r, dict)]
-            max_road_area = max((safe_float(r.get("planar_area_m2"), 0.0) or 0.0 for r in raw_roads), default=0.0)
-            primary_hs: List[float] = []
-            for r in raw_roads:
-                r_area = safe_float(r.get("planar_area_m2"), 100.0) or 100.0
-                if r_area < 0.20 * max_road_area:
-                    continue
-                b_zs = sorted(
-                    [
-                        float(pt[2])
-                        for pt in (r.get("boundary_twd97") or [])
-                        if isinstance(pt, list) and len(pt) >= 3 and safe_float(pt[2]) is not None
-                    ]
-                )
-                if len(b_zs) >= 4:
-                    primary_hs.append(b_zs[min(len(b_zs) - 1, int(len(b_zs) * 0.65))])
-                else:
-                    rc = r.get("center_twd97")
-                    if isinstance(rc, list) and len(rc) >= 3:
-                        rh_v = safe_float(rc[2])
-                        if rh_v is not None:
-                            primary_hs.append(rh_v)
-            primary_road_h = (sum(primary_hs) / len(primary_hs)) if primary_hs else None
-
-            for r in raw_roads:
-                r_area = safe_float(r.get("planar_area_m2"), 100.0) or 100.0
-                rc = r.get("center_twd97")
-                rh_center = safe_float(rc[2]) if (isinstance(rc, list) and len(rc) >= 3) else None
-                # Exclude minor sunken park footpaths (< 20% of primary street area sitting > 0.85m below street grade)
-                if (
-                    primary_road_h is not None
-                    and r_area < 0.20 * max_road_area
-                    and rh_center is not None
-                    and (primary_road_h - rh_center) > 0.85
-                ):
-                    continue
-                area_w = max(1.0, min(4.0, (r_area / max(200.0, max_road_area)) * 4.0))
-                if isinstance(rc, list) and len(rc) >= 3:
-                    re_v, rn_v, rh_v = safe_float(rc[0]), safe_float(rc[1]), safe_float(rc[2])
-                    if re_v is not None and rn_v is not None and rh_v is not None:
-                        eff_rh = max(rh_v, primary_road_h - 0.35) if primary_road_h is not None else rh_v
-                        samples.append((re_v, rn_v, eff_rh, 5.0 * area_w))
-                        road_hs.append(eff_rh)
-                b_pts = r.get("boundary_twd97") or []
-                stride = max(1, len(b_pts) // 36)
-                for pt in b_pts[::stride]:
-                    if isinstance(pt, list) and len(pt) >= 3:
-                        pe, pn, ph = safe_float(pt[0]), safe_float(pt[1]), safe_float(pt[2])
-                        if pe is not None and pn is not None and ph is not None:
-                            if primary_road_h is not None and (primary_road_h - ph) > 0.85:
-                                continue
-                            samples.append((pe, pn, ph, 2.5 * area_w))
-                            road_hs.append(ph)
-
-            road_ref_h = (sum(road_hs) / len(road_hs)) if road_hs else primary_road_h
-
-            for t in (cat_data.get("trees") or []):
-                tc = t.get("trunk_twd97") or t.get("base_twd97") or t.get("center_twd97")
-                if isinstance(tc, list) and len(tc) >= 3:
-                    te, tn, th = safe_float(tc[0]), safe_float(tc[1]), safe_float(tc[2])
-                    if te is not None and tn is not None and th is not None:
-                        # Only include tree bases near street grade (prevents sunken park basin trees from dragging street pipes down)
-                        if road_ref_h is None or abs(th - road_ref_h) <= 0.65:
-                            samples.append((te, tn, th, 0.8))
-
-            # Only include wall base points if no roads were detected or if the wall base is within 0.85m of road grade
-            for w in (cat_data.get("walls") or []):
-                b_poly = w.get("base_polyline_twd97") or []
-                for pt in b_poly[::max(1, len(b_poly) // 8)]:
-                    if isinstance(pt, list) and len(pt) >= 3:
-                        we, wn, wh = safe_float(pt[0]), safe_float(pt[1]), safe_float(pt[2])
-                        if we is not None and wn is not None and wh is not None:
-                            if road_ref_h is None or abs(wh - road_ref_h) <= 0.85:
-                                samples.append((we, wn, wh, 0.5))
-
-            if not road_hs:
-                for wb in (cat_data.get("water_bodies") or []):
-                    wc = wb.get("center_twd97")
-                    wl = safe_float(wb.get("water_level_twvd2001_m"))
-                    if isinstance(wc, list) and len(wc) >= 2 and wl is not None:
-                        we, wn = safe_float(wc[0]), safe_float(wc[1])
-                        if we is not None and wn is not None:
-                            samples.append((we, wn, wl + 1.0, 0.8))
-
-        # Anchor Taipei City ground elevation with official 3dgis.reac.taipei get3dz.ashx bare-earth API
-        # (rejecting sunken park-bowl samples that sit > 0.75m below verified street grade)
-        taipei_gov_z = _query_taipei_3d_elevation(ce, cn)
-        if taipei_gov_z is not None and (primary_road_h is None or taipei_gov_z >= primary_road_h - 0.75):
-            samples.append((ce, cn, taipei_gov_z, 8.0 if not samples else 2.5))
-            for dx_gov, dy_gov in ((120.0, 0.0), (-120.0, 0.0), (0.0, 120.0), (0.0, -120.0)):
-                gz_card = _query_taipei_3d_elevation(ce + dx_gov, cn + dy_gov)
-                if gz_card is not None and (primary_road_h is None or gz_card >= primary_road_h - 0.75):
-                    samples.append((ce + dx_gov, cn + dy_gov, gz_card, 2.0))
-
-        if samples:
-            w_tot = sum(s[3] for s in samples)
-            base_ground_z = round(sum(s[2] * s[3] for s in samples) / max(w_tot, 1e-6), 3)
-        else:
-            base_ground_z = round(ch, 3)
-
-        def sample_ground_z(e_pt: float, n_pt: float) -> float:
-            if not samples:
-                return base_ground_z
-            w_sum = 0.0
-            zh_sum = 0.0
-            for se, sn, sh, sw in samples:
-                d2 = (e_pt - se) ** 2 + (n_pt - sn) ** 2
-                w = sw / (d2 + 25.0)
-                w_sum += w
-                zh_sum += w * sh
-            return round(zh_sum / w_sum, 3) if w_sum > 1e-9 else base_ground_z
-
+        sample_ground_z, cat_data, base_ground_z, _dtm_obj = self._build_multi_source_ground_sampler(
+            scan_id, scan, ce, cn, ch
+        )
         return sample_ground_z, cat_data, base_ground_z
 
     @staticmethod
@@ -1432,37 +1323,30 @@ class PublicUtilitiesGISMixin:
 
                 raw_features = best_cached_data["features"]
                 req_set = set(requested_layers)
-                ref_ground_h = safe_float(best_cached_data.get("ground_reference_h"), ch) or ch
                 c_rad_best = float(best_cached_data.get("radius_m") or 1000.0)
                 c_ctr_best = best_cached_data.get("center") or {}
                 dist_best = math.hypot((safe_float(c_ctr_best.get("e"), ce) or ce) - ce, (safe_float(c_ctr_best.get("n"), cn) or cn) - cn)
                 is_all_layers = len(req_set) == len(UTILITY_LAYERS)
 
                 # Fast O(1) in-memory response cache for repeat radius queries on the same master document (< 0.1ms)
-                f_cache_key = (id(raw_features), round(ce, 1), round(cn, 1), round(radius_m, 1), tuple(sorted(req_set)))
+                f_cache_key = (id(raw_features), str(scan_id or ""), round(ce, 1), round(cn, 1), round(radius_m, 1), tuple(sorted(req_set)))
                 mem_filtered = best_cached_data.get("_radius_resp_cache", {}).get(f_cache_key)
                 if mem_filtered is not None:
                     res_copy = dict(mem_filtered)
                     res_copy["scan_id"] = scan_id
                     return res_copy
 
+                if not scan and hasattr(self, "_resolve_scan_record") and scan_id:
+                    try:
+                        scan = self._resolve_scan_record(scan_id) or {}
+                    except Exception:
+                        scan = {}
+                sample_ground_z, _cat_d, ref_ground_h, dtm_obj = self._build_multi_source_ground_sampler(
+                    scan_id, scan, ce, cn, safe_float(best_cached_data.get("ground_reference_h"), ch) or ch
+                )
+
                 if is_all_layers and abs(c_rad_best - radius_m) <= 2.0 and dist_best <= 15.0:
-                    filtered_features = raw_features
-                    layer_counts = dict(best_cached_data.get("layer_counts") or {})
-                    total_pipe_length_m = float(best_cached_data.get("total_pipe_length_m") or 0.0)
-                    total_structures = int(best_cached_data.get("total_structures") or 0)
-                    if not layer_counts or len(layer_counts) < len(UTILITY_LAYERS):
-                        layer_counts = {k: 0 for k in UTILITY_LAYERS.keys()}
-                        total_pipe_length_m = 0.0
-                        total_structures = 0
-                        for f_item in filtered_features:
-                            lyr = f_item.get("layer")
-                            if lyr in layer_counts:
-                                layer_counts[lyr] += 1
-                            if f_item.get("type") in ("pipe", "box_culvert"):
-                                total_pipe_length_m += float(f_item.get("length_m") or 0.0)
-                            elif f_item.get("type") in ("manhole", "catch_basin", "hydrant", "pole"):
-                                total_structures += 1
+                    filtered_features = list(raw_features)
                 else:
                     filtered_features = self._filter_cached_utilities_to_radius(
                         raw_features=raw_features,
@@ -1475,26 +1359,31 @@ class PublicUtilitiesGISMixin:
                         ymax=ymax,
                         radius_m=radius_m,
                         is_exact_radius=(abs(c_rad_best - radius_m) <= 2.0 and dist_best <= 15.0),
-                        sample_ground_z=lambda _e, _n: ref_ground_h,
+                        sample_ground_z=sample_ground_z,
                         skip_dedup=bool(best_cached_data.get("_is_clean_deduped")),
                     )
-                    layer_counts = {k: 0 for k in UTILITY_LAYERS.keys()}
-                    total_pipe_length_m = 0.0
-                    total_structures = 0
-                    for f_item in filtered_features:
-                        lyr = f_item.get("layer")
-                        if lyr in layer_counts:
-                            layer_counts[lyr] += 1
-                        if f_item.get("type") in ("pipe", "box_culvert"):
-                            total_pipe_length_m += float(f_item.get("length_m") or 0.0)
-                        elif f_item.get("type") in ("manhole", "catch_basin", "hydrant", "pole"):
-                            total_structures += 1
+
+                filtered_features, elev_summary = self._redrape_utilities_features_to_terrain(
+                    filtered_features, sample_ground_z, dtm_obj, ce, cn
+                )
+                layer_counts = {k: 0 for k in UTILITY_LAYERS.keys()}
+                total_pipe_length_m = 0.0
+                total_structures = 0
+                for f_item in filtered_features:
+                    lyr = f_item.get("layer")
+                    if lyr in layer_counts:
+                        layer_counts[lyr] += 1
+                    if f_item.get("type") in ("pipe", "box_culvert"):
+                        total_pipe_length_m += float(f_item.get("length_m") or 0.0)
+                    elif f_item.get("type") in ("manhole", "catch_basin", "hydrant", "pole"):
+                        total_structures += 1
 
                 filtered_res = dict(best_cached_data)
                 filtered_res.pop("_radius_resp_cache", None)
                 filtered_res.pop("_is_clean_deduped", None)
                 filtered_res["scan_id"] = scan_id
                 filtered_res["center"] = {"e": round(ce, 3), "n": round(cn, 3), "h": round(ref_ground_h, 3)}
+                filtered_res["ground_reference_h"] = round(ref_ground_h, 3)
                 filtered_res["radius_m"] = radius_m
                 filtered_res["master_cached_radius_m"] = float(best_cached_data.get("radius_m") or max(radius_m, 1000.0))
                 filtered_res["master_radius_m"] = filtered_res["master_cached_radius_m"]
@@ -1505,6 +1394,9 @@ class PublicUtilitiesGISMixin:
                 filtered_res["total_features"] = len(filtered_features)
                 filtered_res["total_pipe_length_m"] = round(total_pipe_length_m, 2)
                 filtered_res["total_structures"] = total_structures
+                filtered_res["elevation_summary"] = elev_summary
+                if dtm_obj and dtm_obj.get("terrain_grid"):
+                    filtered_res["terrain_grid"] = dtm_obj["terrain_grid"]
                 norm_tpe_status = self._normalize_taipei_8utility_status(
                     filtered_res.get("taipei_8utility_status"), filtered_features, ce, cn, ref_ground_h
                 )
@@ -1530,7 +1422,9 @@ class PublicUtilitiesGISMixin:
                 scan = self._resolve_scan_record(scan_id) or {}
             except Exception:
                 scan = {}
-        sample_ground_z, cat_data, base_ground_z = self._build_ground_elevation_sampler(scan_id, scan, ce, cn, ch)
+        sample_ground_z, cat_data, base_ground_z, dtm_obj = self._build_multi_source_ground_sampler(
+            scan_id, scan, ce, cn, ch
+        )
 
         all_features: List[Dict[str, Any]] = []
         taipei_8utility_status: Optional[Dict[str, Any]] = None
@@ -1622,6 +1516,9 @@ class PublicUtilitiesGISMixin:
             is_exact_radius=True,
             sample_ground_z=sample_ground_z,
         )
+        master_features, master_elev_summary = self._redrape_utilities_features_to_terrain(
+            master_features, sample_ground_z, dtm_obj, ce, cn
+        )
 
         # Persist 1000m (1km) master cache on server automatically whenever features are found
         master_payload: Optional[Dict[str, Any]] = None
@@ -1654,12 +1551,15 @@ class PublicUtilitiesGISMixin:
                 "total_pipe_length_m": round(full_pipe_len, 2),
                 "total_structures": full_structs,
                 "features": master_features,
+                "elevation_summary": master_elev_summary,
                 "taipei_8utility_status": self._normalize_taipei_8utility_status(
                     taipei_8utility_status, master_features, ce, cn, base_ground_z
                 ),
                 "query_timestamp": datetime.now(timezone.utc).isoformat(),
                 "cached": False,
             }
+            if dtm_obj and dtm_obj.get("terrain_grid"):
+                master_payload["terrain_grid"] = dtm_obj["terrain_grid"]
             if master_cache_file and not is_custom_override_center:
                 _save_utilities_json_cached(master_cache_file, master_payload)
             else:
@@ -1684,6 +1584,9 @@ class PublicUtilitiesGISMixin:
             is_exact_radius=abs(fetch_radius_m - radius_m) < 0.5,
             sample_ground_z=sample_ground_z,
             skip_dedup=True,
+        )
+        response_features, resp_elev_summary = self._redrape_utilities_features_to_terrain(
+            response_features, sample_ground_z, dtm_obj, ce, cn
         )
 
         layer_counts = {k: 0 for k in UTILITY_LAYERS.keys()}
@@ -1715,15 +1618,18 @@ class PublicUtilitiesGISMixin:
             "total_pipe_length_m": round(total_pipe_length_m, 2),
             "total_structures": total_structures,
             "features": response_features,
+            "elevation_summary": resp_elev_summary,
             "taipei_8utility_status": self._normalize_taipei_8utility_status(
                 taipei_8utility_status, response_features, ce, cn, base_ground_z
             ),
             "query_timestamp": datetime.now(timezone.utc).isoformat(),
             "cached": False,
         }
+        if dtm_obj and dtm_obj.get("terrain_grid"):
+            result["terrain_grid"] = dtm_obj["terrain_grid"]
 
         if master_payload is not None and isinstance(master_payload.get("features"), list):
-            f_cache_key = (id(master_payload["features"]), round(ce, 1), round(cn, 1), round(radius_m, 1), tuple(sorted(req_set)))
+            f_cache_key = (id(master_payload["features"]), str(scan_id or ""), round(ce, 1), round(cn, 1), round(radius_m, 1), tuple(sorted(req_set)))
             cached_res_copy = dict(result)
             cached_res_copy["cached"] = True
             master_payload.setdefault("_radius_resp_cache", {})[f_cache_key] = cached_res_copy
@@ -4015,15 +3921,67 @@ class PublicUtilitiesGISMixin:
 
         content_stripped = file_content.strip()
         if content_stripped.startswith("{") or filename.endswith(".json") or filename.endswith(".geojson"):
-            return self._parse_utilities_geojson(content_stripped)
+            res = self._parse_utilities_geojson(content_stripped)
         elif "<kml" in content_stripped or filename.endswith(".kml"):
-            return self._parse_utilities_kml(content_stripped)
+            res = self._parse_utilities_kml(content_stripped)
         elif "<gml:" in content_stripped or "<ngis:" in content_stripped or filename.endswith(".gml") or filename.endswith(".xml"):
-            return self._parse_utilities_moi_gml(content_stripped)
+            res = self._parse_utilities_moi_gml(content_stripped)
         elif "," in content_stripped or "\t" in content_stripped or filename.endswith(".csv"):
-            return self._parse_utilities_csv(content_stripped)
+            res = self._parse_utilities_csv(content_stripped)
         else:
-            return self._parse_utilities_moi_gml(content_stripped)
+            res = self._parse_utilities_moi_gml(content_stripped)
+
+        feats = res.get("features") if isinstance(res, dict) else None
+        if isinstance(res, dict) and res.get("status") == "ok" and isinstance(feats, list) and feats:
+            scan_id = str(payload.get("scan_id") or "").strip()
+            scan = {}
+            if scan_id and hasattr(self, "_resolve_scan_record"):
+                try:
+                    scan = self._resolve_scan_record(scan_id) or {}
+                except Exception:
+                    scan = {}
+            ce = safe_float(payload.get("center_e")) or safe_float(scan.get("anchor_e"))
+            cn = safe_float(payload.get("center_n")) or safe_float(scan.get("anchor_n"))
+            ch = safe_float(payload.get("center_h")) or safe_float(scan.get("anchor_h")) or 15.0
+            if ce is None or cn is None:
+                f0 = feats[0]
+                c0 = (f0.get("coords") or [None])[0] if f0.get("coords") else f0.get("coord")
+                if isinstance(c0, list) and len(c0) >= 2:
+                    ce, cn = safe_float(c0[0]), safe_float(c0[1])
+            if ce is not None and cn is not None and 140000.0 <= ce <= 360000.0 and 2400000.0 <= cn <= 2850000.0:
+                sample_ground_z, _cat_d, ref_ground_h, dtm_obj = self._build_multi_source_ground_sampler(
+                    scan_id, scan, ce, cn, ch
+                )
+                feats_2d: List[Dict[str, Any]] = []
+                feats_3d: List[Dict[str, Any]] = []
+                for f_item in feats:
+                    cs = f_item.get("coords")
+                    cd = f_item.get("coord")
+                    if isinstance(cs, list) and len(cs) >= 2:
+                        has_z = any(isinstance(p, list) and len(p) >= 3 and abs(float(p[2])) > 0.05 for p in cs)
+                    elif isinstance(cd, list) and len(cd) >= 3:
+                        has_z = abs(float(cd[2])) > 0.05
+                    else:
+                        has_z = False
+                    if has_z:
+                        f_c = dict(f_item)
+                        if isinstance(cs, list) and len(cs) >= 2:
+                            f_c["vertex_ground_hs"] = [round(sample_ground_z(float(p[0]), float(p[1]), "hybrid"), 3) for p in cs]
+                            f_c["vertex_scan_ground_hs"] = [round(sample_ground_z(float(p[0]), float(p[1]), "scan_only"), 3) for p in cs]
+                            f_c["vertex_gov_ground_hs"] = [round(sample_ground_z(float(p[0]), float(p[1]), "gov_only"), 3) for p in cs]
+                        feats_3d.append(f_c)
+                    else:
+                        feats_2d.append(f_item)
+                if feats_2d:
+                    draped_2d, elev_sum = self._redrape_utilities_features_to_terrain(
+                        feats_2d, sample_ground_z, dtm_obj, ce, cn
+                    )
+                    res["features"] = feats_3d + draped_2d
+                    res["elevation_summary"] = elev_sum
+                res["ground_reference_h"] = round(ref_ground_h, 3)
+                if dtm_obj and dtm_obj.get("terrain_grid"):
+                    res["terrain_grid"] = dtm_obj["terrain_grid"]
+        return res
 
     def _parse_utilities_moi_gml(self, xml_content: str) -> Dict[str, Any]:
         """Parses MOI NGIS GML 3.1.1 underground pipeline exchange schema."""

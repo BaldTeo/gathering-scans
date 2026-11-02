@@ -4391,9 +4391,62 @@ vm.runInContext(fs.readFileSync('./web/src/12-public-utilities-gis.js', 'utf8'),
         self.assertIn("window.openPublicUtilitiesInspector = openUtilitiesInspector;", js12)
         self.assertIn("Boolean(UTILS_STATE.active) && hasVisibleUtilities3D() && dist > 60.0", js12)
 
+    def test_50_utilities_per_vertex_terrain_and_gov_dem_draping(self):
+        """
+        Verify per-vertex bare-earth DTM + Government DEM elevation draping for 2D/3D utilities:
+        1. Sloped scans (Rose Park, QuChi) produce non-flat per-vertex ground elevations (relief_m > 1.0m)
+           and populate vertex_ground_hs, vertex_scan_ground_hs, vertex_gov_ground_hs, and terrain_grid.
+        2. 2D uploaded GeoJSON files without Z coordinates are automatically draped onto the scan terrain + Gov DEM.
+        3. Frontend 12-public-utilities-gis.js provides #selUtilElevationMode, sampleTerrainGridH, and mhRimByLayer.
+        """
+        import json as _json
+
+        rp_res = self.survey.query_public_utilities_gis(
+            {"scan_id": "rosepark_20260918_merged", "radius_m": 250.0, "force_refresh": False}
+        )
+        self.assertEqual(rp_res.get("status"), "ok")
+        self.assertIn("elevation_summary", rp_res)
+        self.assertGreater(float(rp_res["elevation_summary"].get("relief_m") or 0.0), 1.0)
+        rp_pipes = [f for f in (rp_res.get("features") or []) if f.get("type") in ("pipe", "box_culvert")]
+        self.assertGreater(len(rp_pipes), 0)
+        self.assertTrue(any(isinstance(p.get("vertex_ground_hs"), list) and len(p["vertex_ground_hs"]) >= 2 for p in rp_pipes))
+
+        # Test 2D GeoJSON file upload (missing Z coordinate) -> automatically draped onto bare-earth terrain
+        geojson_2d = _json.dumps(
+            {
+                "type": "FeatureCollection",
+                "features": [
+                    {
+                        "type": "Feature",
+                        "properties": {"id": "PIPE_2D_TEST", "layer": "storm", "diameter_mm": 500, "depth_m": 1.5},
+                        "geometry": {
+                            "type": "LineString",
+                            "coordinates": [[303000.0, 2778650.0], [303045.0, 2778680.0]],
+                        },
+                    }
+                ],
+            }
+        )
+        parsed_2d = self.survey.parse_utilities_file(
+            {
+                "file_content": geojson_2d,
+                "filename": "2d_storm.geojson",
+                "scan_id": "edited_qihu_unified_merged_scan_4_scans__edited_372953",
+            }
+        )
+        self.assertEqual(parsed_2d.get("status"), "ok")
+        f2d = parsed_2d["features"][0]
+        self.assertGreater(float(f2d.get("start_ground_h") or 0.0), 10.0)
+        self.assertGreater(float(f2d.get("start_invert_h") or 0.0), 8.0)
+        self.assertTrue(isinstance(f2d.get("vertex_ground_hs"), list) and len(f2d["vertex_ground_hs"]) >= 2)
+
+        with open(os.path.join(BASE_DIR, "web", "src", "12-public-utilities-gis.js"), "r", encoding="utf-8") as f:
+            js12 = f.read()
+        self.assertIn('id="selUtilElevationMode"', js12)
+        self.assertIn("sampleTerrainGridH", js12)
+        self.assertIn("mhRimByLayer", js12)
+        self.assertIn("vertex_scan_ground_hs", js12)
+
 
 if __name__ == "__main__":
     unittest.main()
-
-
-
