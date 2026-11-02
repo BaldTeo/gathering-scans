@@ -279,22 +279,24 @@
     let lastSurfDist = NaN;
     const lastCamPos = new THREE.Vector3();
     const lastViewDir = new THREE.Vector3();
-    const collectTargetMeshes = (v) => {
+    const collectRaycastTargets = (v) => {
       const list = [];
-      const roots = [v?.modelPivot, v?.multiAlignGroup, v?.fallbackGroup, v?.left?.modelPivot, v?.right?.modelPivot];
-      roots.forEach((r) => {
+      if (v?.tilesRenderer?.group && v?.modelPivot?.visible !== false) list.push(v.tilesRenderer.group);
+      if (v?.left?.tilesRenderer?.group && v?.left?.modelPivot?.visible !== false) list.push(v.left.tilesRenderer.group);
+      if (v?.right?.tilesRenderer?.group && v?.right?.modelPivot?.visible !== false) list.push(v.right.tilesRenderer.group);
+      [v?.multiAlignGroup, v?.fallbackGroup].forEach((r) => {
         if (!r || !r.visible) return;
         r.traverse((c) => {
-          if (
-            c.isMesh &&
-            (typeof isMeshVisibleUnderRoot === "function" ? isMeshVisibleUnderRoot(c, r) : c.visible) &&
-            !c.userData?.isAlignBoxHelper &&
-            !c.userData?.isGaussianSplatMesh
-          ) {
-            list.push(c);
-          }
+          if (c.isTilesGroup) list.push(c);
+          else if (c.isMesh && c.visible && !c.userData?.isAlignBoxHelper && !c.userData?.isGaussianSplatMesh) list.push(c);
         });
       });
+      if (opts.isStudio && window.UTILS_STATE?.threeGroup?.visible && Array.isArray(window.UTILS_STATE.layerMeshes)) {
+        for (let i = 0; i < window.UTILS_STATE.layerMeshes.length; i++) {
+          const m = window.UTILS_STATE.layerMeshes[i];
+          if (m && m.visible) list.push(m);
+        }
+      }
       return list;
     };
     const syncExtraCams = (v) => {
@@ -323,26 +325,25 @@
 
         const viewDir = new THREE.Vector3().subVectors(ctrls.target, cam.position);
         const curTargetDist = viewDir.length();
-        if (curTargetDist > 1e-6) {
-          viewDir.divideScalar(curTargetDist);
-        } else {
-          cam.getWorldDirection(viewDir);
-        }
+        if (curTargetDist > 1e-6) viewDir.divideScalar(curTargetDist);
+        else cam.getWorldDirection(viewDir);
 
         const now = performance.now();
         let surfDist = NaN;
-        if (now - lastRayMs < 95 && Number.isFinite(lastSurfDist) && lastViewDir.dot(viewDir) > 0.998) {
+        const sameRay = lastViewDir.dot(viewDir) > 0.9995;
+        const cacheTtl = sameRay && lastSurfDist > 1.2 ? 800 : 120;
+        if (now - lastRayMs < cacheTtl && Number.isFinite(lastSurfDist) && lastViewDir.dot(viewDir) > 0.998) {
           const camDelta = new THREE.Vector3().subVectors(cam.position, lastCamPos).dot(viewDir);
           const est = lastSurfDist - camDelta;
-          if (est > 0.04) surfDist = est;
+          if (est > 0.05) surfDist = est;
         }
 
         if (!Number.isFinite(surfDist)) {
-          const meshes = collectTargetMeshes(v);
-          if (!meshes.length) return;
+          const targets = collectRaycastTargets(v);
+          if (!targets.length) return;
           ray.far = Math.min(600, Math.max(80, curTargetDist * 3.0));
           ray.set(cam.position, viewDir);
-          const hits = ray.intersectObjects(meshes, false);
+          const hits = ray.intersectObjects(targets, true);
           surfDist = hits.length ? hits[0].distance : NaN;
 
           if (!Number.isFinite(surfDist)) {
@@ -352,19 +353,12 @@
               ndc.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
               if (Number.isFinite(ndc.x) && Math.abs(ndc.x) <= 1.05 && Math.abs(ndc.y) <= 1.05) {
                 ray.setFromCamera(ndc, cam);
-                const cursorHits = ray.intersectObjects(meshes, false);
+                const cursorHits = ray.intersectObjects(targets, true);
                 if (cursorHits.length) {
                   const proj = new THREE.Vector3().subVectors(cursorHits[0].point, cam.position).dot(viewDir);
-                  if (proj > 0.1) surfDist = proj;
+                  if (proj > 0.15) surfDist = proj;
                 }
               }
-            }
-          }
-          if (!Number.isFinite(surfDist)) {
-            const groundY = Number.isFinite(v?.grid?.position?.y) ? v.grid.position.y : -7.0;
-            if (viewDir.y < -0.04 && cam.position.y > groundY + 0.2) {
-              const tGround = (groundY - cam.position.y) / viewDir.y;
-              if (tGround > 0.1 && tGround < 400) surfDist = tGround;
             }
           }
           if (Number.isFinite(surfDist)) {
@@ -374,24 +368,44 @@
             lastViewDir.copy(viewDir);
           }
         }
-        if (!Number.isFinite(surfDist)) return;
 
-        const minSurfDist = Boolean(window.UTILS_STATE && window.UTILS_STATE.active) ? 0.08 : 0.18;
+        const minSurfDist = 0.25;
+        if (!Number.isFinite(surfDist)) {
+          if (curTargetDist < 0.6) {
+            const savedQuat = cam.quaternion.clone();
+            ctrls.target.copy(cam.position).addScaledVector(viewDir, Math.max(1.5, curTargetDist * 1.5));
+            cam.quaternion.copy(savedQuat);
+            syncExtraCams(v);
+          }
+          return;
+        }
         if (surfDist <= minSurfDist) {
+          if (curTargetDist > surfDist || curTargetDist < 0.15) {
+            const savedQuat = cam.quaternion.clone();
+            ctrls.target.copy(cam.position).addScaledVector(viewDir, Math.max(0.18, surfDist));
+            cam.quaternion.copy(savedQuat);
+            syncExtraCams(v);
+          }
           e.stopImmediatePropagation();
           e.preventDefault();
           return;
         }
 
-        const savedQuat = cam.quaternion.clone();
-        const stepAdvance = Math.min(surfDist - minSurfDist, Math.max(0.14, surfDist * 0.085));
-        if (stepAdvance > 0) {
-          cam.position.addScaledVector(viewDir, stepAdvance);
+        let desiredTargetDist = curTargetDist;
+        if (surfDist < 3.0 && curTargetDist > surfDist) {
+          desiredTargetDist = Math.max(minSurfDist, surfDist * 0.95);
+        } else if (curTargetDist < 1.2 && surfDist > curTargetDist + 0.25) {
+          desiredTargetDist = Math.min(
+            surfDist * 0.92,
+            Math.max(curTargetDist * 1.5, curTargetDist + Math.min(2.5, (surfDist - curTargetDist) * 0.5))
+          );
         }
-        const remDist = Math.max(minSurfDist, surfDist - Math.max(0, stepAdvance));
-        ctrls.target.copy(cam.position).addScaledVector(viewDir, Math.max(0.1, remDist * 0.88));
-        cam.quaternion.copy(savedQuat);
-        syncExtraCams(v);
+        if (Math.abs(desiredTargetDist - curTargetDist) > 1e-3) {
+          const savedQuat = cam.quaternion.clone();
+          ctrls.target.copy(cam.position).addScaledVector(viewDir, Math.max(minSurfDist, desiredTargetDist));
+          cam.quaternion.copy(savedQuat);
+          syncExtraCams(v);
+        }
       },
       { passive: false, capture: true }
     );
@@ -1292,12 +1306,13 @@
     const animate = (nowMs) => {
       requestAnimationFrame(animate);
       if (STATE.activeView !== "studio") return;
-      if (STATE.fpMode.active) {
-        updateFirstPersonCamera(nowMs || performance.now());
-      } else {
-        controls.update();
-      }
+      if (STATE.fpMode.active) updateFirstPersonCamera(nowMs || performance.now());
+      else controls.update();
       camera.updateMatrixWorld();
+      if (studioThree.tilesRenderer && !STATE.multiAlign?.active) {
+        studioThree.modelPivot.visible = true;
+        if (studioThree.tilesRenderer.group) studioThree.tilesRenderer.group.visible = true;
+      }
       if (studioThree.tilesRenderer && studioThree.modelPivot.visible) {
         studioThree.tilesRenderer.update();
         syncTilesLoaderProgress(studioThree, "studio");

@@ -4357,8 +4357,31 @@ vm.runInContext(fs.readFileSync('./web/src/12-public-utilities-gis.js', 'utf8'),
             self.assertIn("scans", saved_m)
             self.assertGreater(len(saved_m.get("scans") or []), 0)
 
+    def test_48_surface_aware_zoom_and_3dtiles_lod_invariants(self):
+        """Verify surface-aware zoom raycasting, non-collapsing 3D Tiles LOD traversal, and Utilities mode scan visibility invariants."""
+        with open(os.path.join(BASE_DIR, "web", "src", "03-studio-core.js"), "r", encoding="utf-8") as f:
+            js03 = f.read()
+        self.assertIn("const collectRaycastTargets = (v) =>", js03)
+        self.assertIn("v.tilesRenderer.group", js03)
+        self.assertIn("const minSurfDist = 0.25;", js03)
+        self.assertNotIn("const tGround = (groundY - cam.position.y) / viewDir.y;", js03)
+        self.assertNotIn("cam.position.addScaledVector(viewDir, stepAdvance);", js03)
+        self.assertIn("if (studioThree.tilesRenderer && !STATE.multiAlign?.active) {", js03)
+
+        with open(os.path.join(BASE_DIR, "web", "lib", "3d-tiles-renderer.bundle.js"), "r", encoding="utf-8") as f:
+            tiles_bundle = f.read()
+        self.assertNotIn("e.loadAncestors&&!r.traversal.allChildrenLoaded&&!Ee(r)&&r.internal.hasContent&&Ft(r.internal.loadingState)&&(r.traversal.isLeaf=!0)", tiles_bundle)
+        self.assertIn("e.traversal._queuedFrame===this.frameCount", tiles_bundle)
+        self.assertIn("ge=isPreLeaf&&e.geometricError>2.5?Math.min(e.geometricError,.0036):e.geometricError", tiles_bundle)
+
+        with open(os.path.join(BASE_DIR, "web", "src", "12-public-utilities-gis.js"), "r", encoding="utf-8") as f:
+            js12 = f.read()
+        self.assertIn("window.openPublicUtilitiesInspector = openUtilitiesInspector;", js12)
+        self.assertIn("Boolean(UTILS_STATE.active) && hasVisibleUtilities3D() && dist > 60.0", js12)
+
 
 if __name__ == "__main__":
     unittest.main()
+
 
 

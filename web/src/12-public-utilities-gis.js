@@ -298,10 +298,10 @@
       const cam = studioThree.camera;
       const target = studioThree.controls && studioThree.controls.target ? studioThree.controls.target : new THREE.Vector3(0, 0, 0);
       const dist = cam.position.distanceTo(target);
-      // Cap near plane to <= 0.25m when zoomed out and 0.03m when zoomed in or closed so foreground 3D tiles are never clipped
+      // Keep near plane at 0.03m whenever dist <= 60m and cap at <= 0.15m when zoomed far out so foreground 3D tiles are never clipped
       const desiredNear =
-        Boolean(UTILS_STATE.active) && hasVisibleUtilities3D() && dist > 35.0
-          ? Math.max(0.03, Math.min(0.25, dist * 0.0018))
+        Boolean(UTILS_STATE.active) && hasVisibleUtilities3D() && dist > 60.0
+          ? Math.max(0.03, Math.min(0.15, dist * 0.0012))
           : 0.03;
       if (Math.abs(cam.near - desiredNear) > 0.008) {
         cam.near = desiredNear;
@@ -3095,6 +3095,7 @@
 
   // Global namespace exports
   window.openUtilitiesInspector = openUtilitiesInspector;
+  window.openPublicUtilitiesInspector = openUtilitiesInspector;
   window.closeUtilitiesInspector = closeUtilitiesInspector;
   window.resetUtilitiesOnScanChange = resetUtilitiesOnScanChange;
   window.onUtilitiesPanelClosed = onUtilitiesPanelClosed;
