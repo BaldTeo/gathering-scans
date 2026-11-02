@@ -38,6 +38,41 @@
     }
   }
 
+  function syncSidePanelMinimizedState(forceMinimized = undefined) {
+    const panel = document.getElementById("studioSidePanel");
+    if (typeof forceMinimized === "boolean") {
+      STATE.sidePanelMinimized = forceMinimized;
+    }
+    const isMin = Boolean(STATE.sidePanelMinimized);
+    const isOpen = Boolean(panel && panel.classList.contains("active") && !panel.classList.contains("hidden"));
+    if (panel) {
+      panel.classList.toggle("mobile-minimized", isMin);
+      panel.classList.toggle("gs-panel-minimized", isMin);
+    }
+    const lblCollapse = document.getElementById("lblCollapseSidePanel");
+    if (lblCollapse) {
+      lblCollapse.innerHTML = isMin
+        ? `<svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.2"><polyline points="15 18 9 12 15 6"/></svg>`
+        : `<svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.2"><polyline points="9 18 15 12 9 6"/></svg>`;
+    }
+    const edgeTab = document.getElementById("studioInspectorEdgeTab");
+    if (edgeTab) {
+      const showEdgeTab = isOpen && isMin && window.innerWidth >= 768;
+      edgeTab.style.display = showEdgeTab ? "inline-flex" : "none";
+    }
+    const studioEl = document.getElementById("viewStudio");
+    if (studioEl) {
+      const w =
+        isOpen && !isMin && window.innerWidth >= 768
+          ? window.innerWidth <= 980
+            ? "320px"
+            : "380px"
+          : "0px";
+      studioEl.style.setProperty("--studio-inspector-w", w);
+    }
+  }
+  window.syncSidePanelMinimizedState = syncSidePanelMinimizedState;
+
   function showSidePanel(title, htmlContent) {
     const panel = document.getElementById("studioSidePanel");
     const titleEl = document.getElementById("sidePanelTitle");
@@ -66,10 +101,7 @@
     panel.setAttribute("data-active-tool", nextPanelTool);
     panel.classList.remove("hidden");
     panel.classList.add("active", "open");
-    panel.classList.toggle("mobile-minimized", Boolean(STATE.sidePanelMinimized));
-    panel.classList.toggle("gs-panel-minimized", Boolean(STATE.sidePanelMinimized));
-    const lblCollapse = document.getElementById("lblCollapseSidePanel");
-    if (lblCollapse) lblCollapse.textContent = STATE.sidePanelMinimized ? "▴" : "▾";
+    syncSidePanelMinimizedState(Boolean(STATE.sidePanelMinimized));
     if (typeof syncStudioMobileToolHud === "function") syncStudioMobileToolHud();
     if (typeof syncMobileToastPosition === "function") syncMobileToastPosition();
     update2DBadgePositions();
@@ -79,11 +111,7 @@
     ev.stopPropagation();
     const panel = document.getElementById("studioSidePanel");
     if (!panel) return;
-    STATE.sidePanelMinimized = !STATE.sidePanelMinimized;
-    panel.classList.toggle("mobile-minimized", STATE.sidePanelMinimized);
-    panel.classList.toggle("gs-panel-minimized", STATE.sidePanelMinimized);
-    const lblCollapse = document.getElementById("lblCollapseSidePanel");
-    if (lblCollapse) lblCollapse.textContent = STATE.sidePanelMinimized ? "▴" : "▾";
+    syncSidePanelMinimizedState(!STATE.sidePanelMinimized);
     if (typeof syncStudioMobileToolHud === "function") syncStudioMobileToolHud();
     if (typeof syncMobileToastPosition === "function") syncMobileToastPosition();
     update2DBadgePositions();
@@ -93,10 +121,7 @@
     ev.stopPropagation();
     const panel = document.getElementById("studioSidePanel");
     if (!panel) return;
-    STATE.sidePanelMinimized = false;
-    panel.classList.remove("mobile-minimized", "gs-panel-minimized");
-    const lblCollapse = document.getElementById("lblCollapseSidePanel");
-    if (lblCollapse) lblCollapse.textContent = "▾";
+    syncSidePanelMinimizedState(false);
     if (typeof syncStudioMobileToolHud === "function") syncStudioMobileToolHud();
     if (typeof syncMobileToastPosition === "function") syncMobileToastPosition();
     update2DBadgePositions();
@@ -134,7 +159,7 @@
     } else if (["section", "profile", "crs", "generate_scan", "rtk", "photos", "comments", "drainage", "gcp_qa", "bookmarks", "categorize", "utilities", "flatness", "trench", "stakeout", "compare_volume", "stationing"].includes(STATE.activeTool || panelTool)) {
       setActiveStudioTool(STATE.multiAlign?.active ? "align_merge" : "orbit");
     }
-    STATE.sidePanelMinimized = false;
+    syncSidePanelMinimizedState(false);
     if (typeof syncStudioMobileToolHud === "function") syncStudioMobileToolHud();
     if (typeof syncMobileToastPosition === "function") syncMobileToastPosition();
     update2DBadgePositions();
@@ -510,13 +535,9 @@
       ev.stopPropagation();
       const panel = document.getElementById("studioSidePanel");
       if (panel) {
-        STATE.sidePanelMinimized = !STATE.sidePanelMinimized;
         panel.classList.remove("hidden");
         panel.classList.add("active", "open");
-        panel.classList.toggle("mobile-minimized", STATE.sidePanelMinimized);
-        panel.classList.toggle("gs-panel-minimized", STATE.sidePanelMinimized);
-        const lblCollapse = document.getElementById("lblCollapseSidePanel");
-        if (lblCollapse) lblCollapse.textContent = STATE.sidePanelMinimized ? "▴" : "▾";
+        syncSidePanelMinimizedState(!STATE.sidePanelMinimized);
         syncStudioMobileToolHud();
         if (typeof syncMobileToastPosition === "function") syncMobileToastPosition();
         update2DBadgePositions();
@@ -529,10 +550,7 @@
       clearTempDistanceVisuals();
       const panel = document.getElementById("studioSidePanel");
       if (panel) {
-        STATE.sidePanelMinimized = false;
-        panel.classList.remove("mobile-minimized", "gs-panel-minimized");
-        const lblCollapse = document.getElementById("lblCollapseSidePanel");
-        if (lblCollapse) lblCollapse.textContent = "▾";
+        syncSidePanelMinimizedState(false);
       }
       if (STATE.lastCategorizeResult) renderCategorizePanelContent(STATE.lastCategorizeResult);
       syncStudioMobileToolHud();
@@ -629,14 +647,7 @@
 
     const hasLockedPoly = resolveLockedVolumePts().length >= 3;
     if (window.innerWidth <= 768) {
-      STATE.sidePanelMinimized = !hasLockedPoly;
-      const pEl = document.getElementById("studioSidePanel");
-      if (pEl) {
-        pEl.classList.toggle("mobile-minimized", STATE.sidePanelMinimized);
-        pEl.classList.toggle("gs-panel-minimized", STATE.sidePanelMinimized);
-      }
-      const lblCol = document.getElementById("lblCollapseSidePanel");
-      if (lblCol) lblCol.textContent = STATE.sidePanelMinimized ? tr("▴ 展開", "▴ Expand") : tr("▾ 收合", "▾ Collapse");
+      syncSidePanelMinimizedState(!hasLockedPoly);
     }
 
     const activeScan = STATE.activeScan || STATE.scans.find((s) => s.scan_id === STATE.activeScanId) || {};
@@ -777,11 +788,7 @@
         clearStaleContourGroupVisuals();
         renderUnlockedVolumePrompt();
         if (window.innerWidth <= 768) {
-          STATE.sidePanelMinimized = true;
-          const pEl = document.getElementById("studioSidePanel");
-          pEl?.classList.add("mobile-minimized", "gs-panel-minimized");
-          const lblCol = document.getElementById("lblCollapseSidePanel");
-          if (lblCol) lblCol.textContent = "▴ 展開";
+          syncSidePanelMinimizedState(true);
         }
         syncStudioMobileToolHud();
         showToast("Click 3+ points on the 3D scan and close on V1 to draw a new Cut/Fill polygon");
@@ -857,11 +864,7 @@
       }
 
       if (window.innerWidth <= 768) {
-        STATE.sidePanelMinimized = false;
-        const pEl = document.getElementById("studioSidePanel");
-        pEl?.classList.remove("mobile-minimized", "gs-panel-minimized");
-        const lblCol = document.getElementById("lblCollapseSidePanel");
-        if (lblCol) lblCol.textContent = "▾ 收合";
+        syncSidePanelMinimizedState(false);
       }
 
       const calcSeq = (STATE._volumeCalcSeq = (STATE._volumeCalcSeq || 0) + 1);
@@ -1265,11 +1268,7 @@
         setActiveStudioTool("contours");
         STATE.measurePoints = [];
         if (window.innerWidth <= 768) {
-          STATE.sidePanelMinimized = true;
-          const pEl = document.getElementById("studioSidePanel");
-          pEl?.classList.add("mobile-minimized", "gs-panel-minimized");
-          const lblCol = document.getElementById("lblCollapseSidePanel");
-          if (lblCol) lblCol.textContent = tr("▴ 展開", "▴ Expand");
+          syncSidePanelMinimizedState(true);
         }
         syncStudioMobileToolHud();
         showToast(tr("請在 3D 掃描上點擊 3+ 點繪製自訂遮罩邊界", "Click 3+ points on the 3D scan to draw a custom Mask Boundary"));
@@ -2365,11 +2364,7 @@
             setCategorizeOverlayVisibility(true, { silent: true });
           }
           if (window.innerWidth <= 768 && mode) {
-            STATE.sidePanelMinimized = true;
-            const panel = document.getElementById("studioSidePanel");
-            panel?.classList.add("mobile-minimized", "gs-panel-minimized");
-            const lblCollapse = document.getElementById("lblCollapseSidePanel");
-            if (lblCollapse) lblCollapse.textContent = "▴";
+            syncSidePanelMinimizedState(true);
           }
         }
         STATE.categorizeEditPoints = [];
@@ -2886,11 +2881,7 @@
       STATE.profileEndpoints = [];
       clearProfileVisualsOnly();
       if (window.innerWidth <= 768) {
-        STATE.sidePanelMinimized = true;
-        const pEl = document.getElementById("studioSidePanel");
-        pEl?.classList.add("mobile-minimized", "gs-panel-minimized");
-        const lblCol = document.getElementById("lblCollapseSidePanel");
-        if (lblCol) lblCol.textContent = tr("▴ 展開", "▴ Expand");
+        syncSidePanelMinimizedState(true);
       }
       syncStudioMobileToolHud();
       showToast(tr("請在 3D 掃描模型上點擊起點 A 與終點 B", "Click Start Point A and End Point B on the 3D scan"));

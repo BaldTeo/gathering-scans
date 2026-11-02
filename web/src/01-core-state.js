@@ -2376,8 +2376,9 @@
 
   function getUnassignedScansList() {
     return (STATE.scans || []).filter((s) => {
+      if (isLibraryFolderGroup(s.project_group) || s.group_type === "library") return false;
       const crs = String(s.crs || "").toUpperCase();
-      return s.lat == null || s.lon == null || crs.includes("LOCAL") || isLibraryScan(s);
+      return s.lat == null || s.lon == null || crs.includes("LOCAL");
     });
   }
 
@@ -2443,9 +2444,9 @@
         openSiteTimeline(targetScan.project_group, targetScan.scan_id);
       }
     } else {
-      // Returning to Map Sites mode: if timeline currently displays a library scan/folder, restore Map Site & Scan
+      // Returning to Map Sites mode: if timeline is closed or currently displays a library/unassigned scan, restore Map Site & Scan
       const curScan = (STATE.scans || []).find((s) => s.scan_id === (STATE.selectedTimelineScanId || STATE.activeScanId));
-      if (!curScan || isLibraryScan(curScan)) {
+      if (!STATE.siteTimelineOpen || !curScan || isLibraryScan(curScan)) {
         const mapTarget = resolveInitialMapSiteAndScan(STATE.scans);
         if (mapTarget.scan) {
           STATE.activeScanId = mapTarget.scan.scan_id;
@@ -2503,26 +2504,28 @@
     const info = getCurrentUserRoleInfo();
     const canEdit = Boolean(info.canEditNames && !STATE.isEmbedded);
 
-    const selFolder = STATE.selectedLibraryFolder || "ALL";
+    const selFolder = isUnassignedMode ? "ALL" : (STATE.selectedLibraryFolder || "ALL");
     let pillsHtml = `
       <button type="button" class="gs-lib-folder-pill ${selFolder === "ALL" ? "active" : ""}" data-folder="ALL">
         ${_getLibraryFolderSvgIcon("cube")}
-        <span>${tr("全部", "All")}</span>
+        <span>${isUnassignedMode ? tr("未定位", "Unassigned") : tr("全部", "All")}</span>
         <span class="gs-lib-folder-count">${activePool.length}</span>
       </button>
     `;
-    folders.forEach((f) => {
-      const isAct = selFolder.toLowerCase() === f.folder_name.toLowerCase();
-      const safeName = f.folder_name.replace(/"/g, "&quot;");
-      const dispName = escapeHtml(formatGroupDisplayName(f.folder_name, f.folder_name_zh));
-      pillsHtml += `
-        <button type="button" class="gs-lib-folder-pill ${isAct ? "active" : ""}" data-folder="${safeName}">
-          ${_getLibraryFolderSvgIcon(f.icon)}
-          <span>${dispName}</span>
-          <span class="gs-lib-folder-count">${f.scan_count}</span>
-        </button>
-      `;
-    });
+    if (!isUnassignedMode) {
+      folders.forEach((f) => {
+        const isAct = selFolder.toLowerCase() === f.folder_name.toLowerCase();
+        const safeName = f.folder_name.replace(/"/g, "&quot;");
+        const dispName = escapeHtml(formatGroupDisplayName(f.folder_name, f.folder_name_zh));
+        pillsHtml += `
+          <button type="button" class="gs-lib-folder-pill ${isAct ? "active" : ""}" data-folder="${safeName}">
+            ${_getLibraryFolderSvgIcon(f.icon)}
+            <span>${dispName}</span>
+            <span class="gs-lib-folder-count">${f.scan_count}</span>
+          </button>
+        `;
+      });
+    }
     foldersBar.innerHTML = pillsHtml;
 
     foldersBar.querySelectorAll(".gs-lib-folder-pill").forEach((btn) => {
@@ -2541,8 +2544,8 @@
 
     const btnRenFolder = document.getElementById("btnRenameLibraryFolder");
     const btnDelFolder = document.getElementById("btnDeleteLibraryFolder");
-    if (btnRenFolder) btnRenFolder.style.display = canEdit && selFolder !== "ALL" ? "inline-flex" : "none";
-    if (btnDelFolder) btnDelFolder.style.display = canEdit && selFolder !== "ALL" ? "inline-flex" : "none";
+    if (btnRenFolder) btnRenFolder.style.display = canEdit && !isUnassignedMode && selFolder !== "ALL" ? "inline-flex" : "none";
+    if (btnDelFolder) btnDelFolder.style.display = canEdit && !isUnassignedMode && selFolder !== "ALL" ? "inline-flex" : "none";
 
     const q = String(STATE.librarySearchQuery || "").trim().toLowerCase();
     const filteredScans = activePool.filter((s) => {

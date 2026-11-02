@@ -3168,9 +3168,10 @@
     const lockBtn = document.getElementById("btnFpPointerLock");
     if (lockBtn) {
       lockBtn.classList.toggle("locked", fp.pointerLocked);
-      lockBtn.textContent = fp.pointerLocked
-        ? tr("已鎖定", "Locked")
-        : tr("鎖定", "Lock");
+      const lockLbl = document.getElementById("lblFpPointerLock");
+      const txt = fp.pointerLocked ? tr("已鎖定", "Locked") : tr("鎖定", "Lock");
+      if (lockLbl) lockLbl.textContent = txt;
+      else lockBtn.textContent = txt;
     }
 
     const slider = document.getElementById("fpSpeedSlider");
@@ -3386,6 +3387,7 @@
       if (panelEl) {
         panelEl.classList.remove("active", "open", "mobile-minimized", "gs-panel-minimized");
         panelEl.classList.add("hidden");
+        if (typeof window.syncSidePanelMinimizedState === "function") window.syncSidePanelMinimizedState(false);
       }
       const editDockEl = document.getElementById("studioEditingDock");
       if (editDockEl) editDockEl.style.display = "none";
@@ -4089,6 +4091,7 @@
       if (toolName === "orbit") {
         sidePanelEl.classList.remove("active", "open", "mobile-minimized", "gs-panel-minimized");
         sidePanelEl.classList.add("hidden");
+        if (typeof window.syncSidePanelMinimizedState === "function") window.syncSidePanelMinimizedState(false);
       }
     }
     if (studioThree && studioThree.gizmoGroup) {

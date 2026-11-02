@@ -4475,11 +4475,29 @@ vm.runInContext(fs.readFileSync('./web/src/12-public-utilities-gis.js', 'utf8'),
             js01 = f.read()
         self.assertIn("function getUnassignedScansList()", js01)
         self.assertIn('nextMode === "unassigned"', js01)
+        self.assertIn("if (isLibraryFolderGroup(s.project_group) || s.group_type === \"library\") return false;", js01)
+        self.assertIn("if (!STATE.siteTimelineOpen || !curScan || isLibraryScan(curScan))", js01)
+
+        with open(os.path.join(BASE_DIR, "web", "src", "03-studio-core.js"), "r", encoding="utf-8") as f:
+            js03 = f.read()
+        self.assertIn('getElementById("lblFpPointerLock")', js03)
+
+        with open(os.path.join(BASE_DIR, "web", "src", "05-studio-civil-inspectors.js"), "r", encoding="utf-8") as f:
+            js05 = f.read()
+        self.assertIn("function syncSidePanelMinimizedState(", js05)
+        self.assertIn("window.syncSidePanelMinimizedState = syncSidePanelMinimizedState;", js05)
+        self.assertNotIn("lblCollapse.textContent =", js05)
+        self.assertNotIn("lblCol.textContent =", js05)
 
         with open(os.path.join(BASE_DIR, "web", "src", "06-studio-align-and-optimizer.js"), "r", encoding="utf-8") as f:
             js06 = f.read()
         self.assertIn('getElementById("btnToggleEditDockCollapse")', js06)
         self.assertIn('dock.classList.remove("gs-edit-dock-collapsed")', js06)
+
+        with open(os.path.join(BASE_DIR, "web", "app.js"), "r", encoding="utf-8") as f:
+            app_js = f.read()
+        self.assertIn('getElementById("btnExitExternalPreview")', app_js)
+        self.assertNotIn("lblCol.textContent =", app_js)
 
 
 if __name__ == "__main__":

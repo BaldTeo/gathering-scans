@@ -2684,6 +2684,16 @@
             }
           });
         }
+        const exitBtn = document.getElementById("btnExitExternalPreview");
+        if (exitBtn && !exitBtn.dataset.boundExit) {
+          exitBtn.dataset.boundExit = "1";
+          exitBtn.style.display = "inline-flex";
+          exitBtn.addEventListener("click", () => {
+            const url = new URL(window.location.href);
+            url.searchParams.delete("share");
+            window.location.href = url.pathname + url.search;
+          });
+        }
         applyRolePermissionsToUI();
       }
 
@@ -2919,10 +2929,8 @@
       if (typeof syncFirstPersonHudUI === "function") syncFirstPersonHudUI();
       if (typeof syncStudioMobileToolHud === "function") syncStudioMobileToolHud();
       if (typeof syncMultiAlignToolAvailability === "function") syncMultiAlignToolAvailability();
-      const lblCol = document.getElementById("lblCollapseSidePanel");
-      if (lblCol) {
-        const isMin = Boolean(STATE.sidePanelMinimized);
-        lblCol.textContent = isMin ? "▴" : "▾";
+      if (typeof window.syncSidePanelMinimizedState === "function") {
+        window.syncSidePanelMinimizedState();
       }
       if (STATE.activeView === "studio") {
         if (STATE.activeScan) {

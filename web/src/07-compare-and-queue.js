@@ -1862,9 +1862,9 @@
           if (tEl) {
             const lpPassTag =
               lp.pending_pass === "preview"
-                ? tr(" [⚡ 第 1/2 階段：2K 快速預覽]", " [⚡ Pass 1/2: Fast 2K Preview]")
+                ? tr(" [第 1/2 階段：2K 快速預覽]", " [Pass 1/2: Fast 2K Preview]")
                 : lp.quality_stage === "preview_ready" || lp.pending_pass === "full_hq"
-                ? tr(" [✨ 第 2/2 階段：16K 完整版升級]", " [✨ Pass 2/2: Full 16K HQ Upgrade]")
+                ? tr(" [第 2/2 階段：16K 完整版升級]", " [Pass 2/2: Full 16K HQ Upgrade]")
                 : "";
             tEl.textContent = tr(
               `執行中建模管線：${lp.scan_name}${lpPassTag} · 總進度 ${overallPct}%（目前階段：${actTitle} ${subPct}%）`,
@@ -1932,9 +1932,9 @@
         const isPass1 = s.pending_pass === "preview" && !isPreviewReady;
         const isPass2 = isPreviewReady || (s.pending_pass === "full_hq" && !isComp);
         const passBadgeHtml = isPass1
-          ? `<span class="gs-crs-pill" style="background:rgba(2,132,199,0.16);color:#0284c7;border:1px solid rgba(2,132,199,0.4);font-weight:700;font-size:9.5px;">${tr("⚡ 階段 1/2：2K 快速預覽", "⚡ Pass 1/2: Fast 2K Preview")}</span>`
+          ? `<span class="gs-crs-pill" style="background:rgba(2,132,199,0.16);color:#0284c7;border:1px solid rgba(2,132,199,0.4);font-weight:700;font-size:9.5px;">${tr("階段 1/2：2K 快速預覽", "Pass 1/2: Fast 2K Preview")}</span>`
           : isPass2 && (isProc || isQueued)
-          ? `<span class="gs-crs-pill" style="background:rgba(139,92,246,0.16);color:#8b5cf6;border:1px solid rgba(139,92,246,0.4);font-weight:700;font-size:9.5px;">${tr("✨ 階段 2/2：16K 完整版升級（預覽已上線）", "✨ Pass 2/2: 16K HQ Upgrade (Preview Live)")}</span>`
+          ? `<span class="gs-crs-pill" style="background:rgba(139,92,246,0.16);color:#8b5cf6;border:1px solid rgba(139,92,246,0.4);font-weight:700;font-size:9.5px;">${tr("階段 2/2：16K 完整版升級（預覽已上線）", "Pass 2/2: 16K HQ Upgrade (Preview Live)")}</span>`
           : "";
         const qPos = Number(s.queue_position || 0);
         const isNextJob = isQueued && (qPos === 1 || Number(s.force_next || 0) === 1);
@@ -2024,12 +2024,12 @@
           <td style="display:flex;gap:4px;flex-wrap:wrap;align-items:center;">
             ${
               canPrioritize
-                ? `<button type="button" class="btn-xs primary" data-prioritize="${safeScanId}" title="${tr("排至佇列第 1 順位優先執行", "Prioritize as #1 Next in PIX4Dmatic Queue")}" style="padding:0 6px;font-size:10.5px;font-weight:700;">${tr("⚡ 優先執行", "⚡ Run Next")}</button>`
+                ? `<button type="button" class="btn-xs primary" data-prioritize="${safeScanId}" title="${tr("排至佇列第 1 順位優先執行", "Prioritize as #1 Next in PIX4Dmatic Queue")}" style="padding:0 6px;font-size:10.5px;font-weight:700;">${tr("優先", "Run Next")}</button>`
                 : ""
             }
             ${
               (isQueued || isProc) && has3dStream
-                ? `<button type="button" class="btn-xs" data-inspect3d="${safeScanId}" title="${tr("於等待或升級 16K 期間檢視現有 3D 預覽模型", "Inspect live 3D preview while 16K HQ upgrade is queued/running")}" style="padding:0 6px;font-size:10.5px;">${tr("⚡ 檢視預覽", "⚡ View 3D")}</button>`
+                ? `<button type="button" class="btn-xs" data-inspect3d="${safeScanId}" title="${tr("於等待或升級 16K 期間檢視現有 3D 預覽模型", "Inspect live 3D preview while 16K HQ upgrade is queued/running")}" style="padding:0 6px;font-size:10.5px;">${tr("預覽", "View 3D")}</button>`
                 : ""
             }
             <button type="button" class="btn-xs" data-gst="${safeScanId}" title="${tr("預覽 .GST 腳本", "Preview .GST Script")}">
