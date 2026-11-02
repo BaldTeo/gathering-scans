@@ -1363,14 +1363,12 @@
     }
 
     syncThreeSceneThemes(resolved);
-    if (
-      prevTheme &&
-      prevTheme !== resolved &&
-      STATE.activeView === "studio" &&
-      STATE.activeTool === "drainage" &&
-      typeof renderDrainageAndSlopeVisuals3D === "function"
-    ) {
-      renderDrainageAndSlopeVisuals3D();
+    if (prevTheme && prevTheme !== resolved && STATE.activeView === "studio") {
+      if (STATE.activeTool === "drainage" && typeof renderDrainageAndSlopeVisuals3D === "function") {
+        renderDrainageAndSlopeVisuals3D();
+      } else if (STATE.activeTool === "flatness" && typeof window.recomputeFlatnessMetricsAndVisuals === "function" && window.QA_STATE?.flatnessCache) {
+        window.recomputeFlatnessMetricsAndVisuals();
+      }
     }
 
     if (persistToServer && STATE.currentUser?.email) {

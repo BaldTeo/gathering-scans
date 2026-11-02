@@ -3884,14 +3884,24 @@ class GatheringScansTestSuite(unittest.TestCase):
             "flatnessCurvedOffsetMode",
             "flatnessExtrudeDirMode",
             "flatnessExtrudeDepthM",
+            "flatnessManualArcRadiusM",
+            "flatnessShowRegionLabels",
+            "polygonIsRibbonDerived",
+            "getExistingUserFlatnessPolygonPts",
+            "reapplyCurvedFlatnessPreservingPolygon",
             "curvedSplinePoints",
             "applyCurvedSplineExtrusionAnalysis",
+            "btnAutoFitFlatnessCurved",
             "btnDrawFlatnessSpline",
             "btnPickFlatnessExtrudePt",
             "btnFinishFlatnessSpline",
+            "inpFlatnessArcRadiusM",
+            "chkFlatnessShowRegionLabels",
             "dummyMat.makeBasis(cellTan, cellExt, cellNorm)",
         ):
             self.assertIn(token, js10, f"Missing {token} in 10-construction-qa-and-stakeout.js")
+
+        self.assertIn("window.add3DPinMarker(ptVec, 0xfacc15", js09)
 
         for token in (
             "flatnessSplinePoints",
@@ -3912,10 +3922,19 @@ class GatheringScansTestSuite(unittest.TestCase):
 const fs = require('fs');
 const vm = require('vm');
 const THREE = require('./web/lib/three.min.js');
+const pinCalls = [];
 const sandbox = {
-  window: { addEventListener: () => {}, THREE, STATE: { activeScanId: 'edited_daan_652376', activeTool: 'flatness', measurePoints: [] }, studioThree: { scene: new THREE.Scene(), overlayGroup: new THREE.Group(), modelPivot: new THREE.Group() } },
+  window: {
+    addEventListener: () => {},
+    THREE,
+    add3DPinMarker: (pos, colorHex, grp) => { pinCalls.push({ colorHex }); const m = new THREE.Object3D(); m.position.copy(pos); if (grp) grp.add(m); return m; },
+    STATE: { activeScanId: 'edited_daan_652376', activeTool: 'flatness', measurePoints: [] },
+    studioThree: { scene: new THREE.Scene(), overlayGroup: new THREE.Group(), modelPivot: new THREE.Group() }
+  },
   THREE,
   document: {
+    documentElement: { getAttribute: () => 'light' },
+    body: { classList: { contains: () => true } },
     addEventListener: () => {},
     getElementById: () => null,
     querySelector: () => null,
@@ -3940,6 +3959,7 @@ vm.runInContext(fs.readFileSync('./web/src/10-construction-qa-and-stakeout.js', 
 vm.runInContext(fs.readFileSync('./web/src/12-public-utilities-gis.js', 'utf8'), sandbox);
 
 (async () => {
+  const defaultRegionLabels = sandbox.window.QA_STATE.flatnessShowRegionLabels;
   const cylGeo = new THREE.CylinderGeometry(5.0, 5.0, 4.0, 64, 16, true, -Math.PI/4, Math.PI/2);
   cylGeo.translate(0, 1.5, -5.0);
   const cylMesh = new THREE.Mesh(cylGeo, new THREE.MeshBasicMaterial({ side: THREE.DoubleSide }));
@@ -3990,6 +4010,25 @@ vm.runInContext(fs.readFileSync('./web/src/12-public-utilities-gis.js', 'utf8'),
   const wfBMeta = sandbox.window.QA_STATE.flatnessCache.curvedMeta;
   const wfBRmsMm = sandbox.window.QA_STATE.flatnessCache.rmsMm;
 
+  // Test that picking custom sub-segment S1..S3 inside an existing Inspection Polygon NEVER overwrites polyPts
+  const subSplinePts = [-0.22, 0.0, 0.22].map(a => ({ x: 5.0 * Math.sin(a), y: 1.8, z: -5.0 + 5.0 * Math.cos(a) }));
+  sandbox.window.QA_STATE.curvedSplinePoints = subSplinePts;
+  sandbox.window.QA_STATE.curvedHasExplicitSpline = true;
+  await sandbox.window.applyCurvedSplineExtrusionAnalysis({ updateActiveObject: true });
+  const preservedPolyLen = sandbox.window.STATE.flatnessPolygonPoints.length;
+  const preservedPolyV0X = sandbox.window.STATE.flatnessPolygonPoints[0].x;
+  const subSplinePassPct = sandbox.window.QA_STATE.surfaceQaLastResult.pass_rate_pct;
+  const subSplineVStartM = sandbox.window.QA_STATE.flatnessCache.curvedMeta.vStartM;
+  const subSplineVEndM = sandbox.window.QA_STATE.flatnessCache.curvedMeta.vEndM;
+
+  // Test Circle Arc mode on nearly collinear points (forceArc ensures isValidArc === true) + manualRadiusM override
+  const nearlyFlatFit = sandbox.window.__GS_CURVED_QA.buildCurvedExtrudedSurfaceEvaluator({
+    splinePts: [{ x: -2, y: 1, z: 0 }, { x: 0, y: 1, z: 0.001 }, { x: 2, y: 1, z: 0 }],
+    curveType: 'arc',
+    manualRadiusM: 12.5,
+    polyPts
+  });
+
   // Test Workflow B on a non-circular cubic S-curve transition ramp in 'spline' mode
   const sCurveSamples = [];
   for (let u = -2.0; u <= 2.001; u += 0.1) {
@@ -4007,8 +4046,10 @@ vm.runInContext(fs.readFileSync('./web/src/12-public-utilities-gis.js', 'utf8'),
     sCurveSumSq += pr.signedN * pr.signedN;
   }
   const sCurveRmsMm = Math.sqrt(sCurveSumSq / sCurveSamples.length) * 1000;
+  const yellowPinCount = pinCalls.filter(c => c.colorHex === 0xfacc15).length;
 
   console.log(JSON.stringify({
+    defaultRegionLabels,
     wfARadiusM: wfAMeta.radiusM,
     wfACurvatureRadiusM: wfAMeta.curvatureRadiusM,
     wfARmsMm,
@@ -4019,7 +4060,14 @@ vm.runInContext(fs.readFileSync('./web/src/12-public-utilities-gis.js', 'utf8'),
     wfBRadiusM: wfBMeta.radiusM,
     wfBRmsMm,
     wfBPassPct: wfBRes.pass_rate_pct,
-    sCurveRmsMm
+    preservedPolyLen,
+    preservedPolyDeltaX: Math.abs(preservedPolyV0X - polyPts[0].x),
+    subSplinePassPct,
+    subSplineSpanM: subSplineVEndM - subSplineVStartM,
+    nearlyFlatValidArc: nearlyFlatFit.isValidArc,
+    nearlyFlatRadiusM: nearlyFlatFit.radiusM,
+    sCurveRmsMm,
+    yellowPinCount
   }));
 })();
 """
@@ -4032,6 +4080,7 @@ vm.runInContext(fs.readFileSync('./web/src/12-public-utilities-gis.js', 'utf8'),
             )
             self.assertEqual(proc.returncode, 0, f"Node VM curved QA test failed: {proc.stderr}")
             out = _json.loads(proc.stdout.strip().splitlines()[-1])
+            self.assertFalse(bool(out["defaultRegionLabels"]))
             self.assertAlmostEqual(float(out["wfARadiusM"]), 5.0, delta=0.05)
             self.assertAlmostEqual(float(out["wfACurvatureRadiusM"]), 5.0, delta=0.05)
             self.assertLess(float(out["wfARmsMm"]), 1.0)
@@ -4042,7 +4091,14 @@ vm.runInContext(fs.readFileSync('./web/src/12-public-utilities-gis.js', 'utf8'),
             self.assertAlmostEqual(float(out["wfBRadiusM"]), 5.0, delta=0.05)
             self.assertLess(float(out["wfBRmsMm"]), 1.0)
             self.assertGreaterEqual(float(out["wfBPassPct"]), 99.0)
+            self.assertEqual(int(out["preservedPolyLen"]), 4)
+            self.assertLess(float(out["preservedPolyDeltaX"]), 1e-5)
+            self.assertGreaterEqual(float(out["subSplinePassPct"]), 99.0)
+            self.assertGreater(float(out["subSplineSpanM"]), 2.0)
+            self.assertTrue(bool(out["nearlyFlatValidArc"]))
+            self.assertAlmostEqual(float(out["nearlyFlatRadiusM"]), 12.5, delta=1e-3)
             self.assertLess(float(out["sCurveRmsMm"]), 3.0)
+            self.assertGreater(int(out["yellowPinCount"]), 0)
 
     def test_32_optional_pix4d_gaussian_splats_and_hybrid_layer(self):
         """Verify optional PIX4Dmatic 2.11.0 3D Gaussian Splats (.gst generation, hybrid .gsplat attachment, and Studio/Settings UI)."""

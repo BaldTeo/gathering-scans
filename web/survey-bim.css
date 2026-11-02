@@ -1461,6 +1461,18 @@ body.theme-dark .gs-qa-mode-pill.active {
   color: #ffffff;
 }
 
+html[data-theme="light"] #flatnessCurvedConfigWrap,
+body.theme-light #flatnessCurvedConfigWrap {
+  background: rgba(14, 165, 233, 0.05) !important;
+  border-color: rgba(2, 132, 199, 0.32) !important;
+}
+
+html[data-theme="light"] #lblFlatnessCurvedRadiusBadge,
+body.theme-light #lblFlatnessCurvedRadiusBadge {
+  background: rgba(2, 132, 199, 0.14) !important;
+  color: #0369a1 !important;
+}
+
 .gs-qa-grade-box {
   border-radius: 8px;
   padding: 10px 12px;

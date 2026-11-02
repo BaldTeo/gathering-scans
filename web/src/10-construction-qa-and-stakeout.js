@@ -1286,7 +1286,9 @@
               });
               if (curvedRes && curvedRes.curvedMeta) {
                 QA_STATE.curvedSplinePoints = curvedRes.curvedMeta.splinePts.map((p) => ({ x: p.x, y: p.y, z: p.z }));
-                QA_STATE.curvedExtrudeTargetPt = curvedRes.curvedMeta.extrudeHandlePt ? { ...curvedRes.curvedMeta.extrudeHandlePt } : null;
+                if (QA_STATE.flatnessExtrudeDirMode === "custom_e1" && curvedRes.curvedMeta.extrudeHandlePt) {
+                  QA_STATE.curvedExtrudeTargetPt = { ...curvedRes.curvedMeta.extrudeHandlePt };
+                }
                 QA_STATE.flatnessExtrudeDepthM = Number(curvedRes.curvedMeta.extrudeDepthM) || QA_STATE.flatnessExtrudeDepthM;
                 syncCurvedSplineHandlesToStudioState(curvedRes.curvedMeta);
                 if (typeof onProgress === "function") onProgress(100);
@@ -2235,6 +2237,7 @@
     QA_STATE.surfaceQaLastResult = null;
     QA_STATE.curvedSplinePoints = [];
     QA_STATE.curvedExtrudeTargetPt = null;
+    if (QA_STATE.flatnessExtrudeDirMode === "custom_e1") QA_STATE.flatnessExtrudeDirMode = "auto";
     QA_STATE.curvedHasExplicitSpline = false;
     QA_STATE.curvedPickStage = "";
     QA_STATE.polygonIsRibbonDerived = false;
@@ -3744,37 +3747,23 @@
   // =========================================================================
   // 2. OPEN-TRENCH UTILITY 3D TRACER
   // =========================================================================
-
   function openUtilityTracerInspector() {
     if (typeof showSidePanel !== "function") return;
     if (typeof setActiveStudioTool === "function" && (!window.STATE || window.STATE.activeTool !== "trench")) {
       setActiveStudioTool("trench");
     }
     const scanId = (window.STATE && window.STATE.activeScanId) || "";
-
     const html = `
       <div class="gs-qa-container" id="utilityTracerContainer">
-        ${typeof window.renderSurveyToolExplanationBannerHtml === "function" ? window.renderSurveyToolExplanationBannerHtml(
-          "明挖管溝 3D 竣工實測",
-          "Open-Trench Utility 3D As-Built Tracer",
-          "於管溝回填前在 3D 模型連續拾取管底/管頂節點，自動檢核各段流水坡度與規定覆土深度，並匯出 3D DXF/CSV 竣工圖資。",
-          "Pick trench invert or crown points in 3D before backfill to verify pipe slope gradients and minimum cover depth, exporting 3D DXF and CSV as-built records."
-        ) : ""}
-        <!-- Compact Header & CRS Pill -->
+        ${typeof window.renderSurveyToolExplanationBannerHtml === "function" ? window.renderSurveyToolExplanationBannerHtml("明挖管溝 3D 竣工實測", "Open-Trench Utility 3D As-Built Tracer", "於管溝回填前在 3D 模型連續拾取管底/管頂節點，自動檢核各段流水坡度與規定覆土深度，並匯出 3D DXF/CSV 竣工圖資。", "Pick trench invert or crown points in 3D before backfill to verify pipe slope gradients and minimum cover depth, exporting 3D DXF and CSV as-built records.") : ""}
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
-          <span style="font-size:12px;font-weight:700;color:var(--ui-text-primary);">
-            ${QA_SVGS.PIPE} ${t("明挖管溝 3D 竣工實測", "Open-Trench Utility 3D Tracer")}
-          </span>
+          <span style="font-size:12px;font-weight:700;color:var(--ui-text-primary);">${QA_SVGS.PIPE} ${t("明挖管溝 3D 竣工實測", "Open-Trench Utility 3D Tracer")}</span>
           <span class="gcp-crs-pill">EPSG:3826 + TWVD2001</span>
         </div>
-
-        <!-- Pipe Parameters Card -->
         <div class="gs-qa-card">
           <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;">
             <div>
-              <label style="font-size:10.5px;color:var(--ui-text-muted);display:block;margin-bottom:2px;">
-                ${t("管線類別", "Utility Type")}
-              </label>
+              <label style="font-size:10.5px;color:var(--ui-text-muted);display:block;margin-bottom:2px;">${t("管線類別", "Utility Type")}</label>
               <select id="selUtilPipeType" class="gs-select" style="width:100%;">
                 <option value="DRAIN">${t("雨排 (Cyan)", "Storm Drain")}</option>
                 <option value="SEWER">${t("污水 (Amber)", "Sewer")}</option>
@@ -3785,25 +3774,16 @@
               </select>
             </div>
             <div>
-              <label style="font-size:10.5px;color:var(--ui-text-muted);display:block;margin-bottom:2px;">
-                ${t("管徑 (mm)", "Diameter (mm)")}
-              </label>
+              <label style="font-size:10.5px;color:var(--ui-text-muted);display:block;margin-bottom:2px;">${t("管徑 (mm)", "Diameter (mm)")}</label>
               <select id="selUtilPipeDia" class="gs-select" style="width:100%;">
-                <option value="150">150 mm</option>
-                <option value="200">200 mm</option>
-                <option value="300" selected>300 mm</option>
-                <option value="400">400 mm</option>
-                <option value="600">600 mm</option>
-                <option value="1000">1000 mm</option>
+                <option value="150">150 mm</option><option value="200">200 mm</option><option value="300" selected>300 mm</option>
+                <option value="400">400 mm</option><option value="600">600 mm</option><option value="1000">1000 mm</option>
               </select>
             </div>
           </div>
-
           <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:6px;">
             <div>
-              <label style="font-size:10.5px;color:var(--ui-text-muted);display:block;margin-bottom:2px;">
-                ${t("量測點基準", "Point Mode")}
-              </label>
+              <label style="font-size:10.5px;color:var(--ui-text-muted);display:block;margin-bottom:2px;">${t("量測點基準", "Point Mode")}</label>
               <select id="selUtilPointMode" class="gs-select" style="width:100%;">
                 <option value="invert" selected>${t("管底 (Invert)", "Invert")}</option>
                 <option value="crown">${t("管頂 (Crown)", "Crown")}</option>
@@ -3811,34 +3791,18 @@
               </select>
             </div>
             <div>
-              <label style="font-size:10.5px;color:var(--ui-text-muted);display:block;margin-bottom:2px;">
-                ${t("規定覆土深 (m)", "Min Cover (m)")}
-              </label>
+              <label style="font-size:10.5px;color:var(--ui-text-muted);display:block;margin-bottom:2px;">${t("規定覆土深 (m)", "Min Cover (m)")}</label>
               <input type="number" id="inpUtilMinCover" class="gs-input" value="1.20" step="0.1" />
             </div>
           </div>
         </div>
-
-        <!-- 1-Word Action Button Toolbar -->
         <div style="display:grid;grid-template-columns:repeat(5, 1fr);gap:4px;margin-top:4px;">
-          <button type="button" class="btn-xs primary" id="btnTraceUtility" title="${t("計算管溝高程與坡度", "Trace Pipe")}">
-            ${QA_SVGS.PIPE} ${t("追蹤", "Trace")}
-          </button>
-          <button type="button" class="btn-xs" id="btnPickUtilityPoint" title="${t("在 3D 模型拾取管溝點", "Add Point")}">
-            ${QA_SVGS.PICK} ${t("加點", "Pick")}
-          </button>
-          <button type="button" class="btn-xs" id="btnClearUtilityTrace" title="${t("清除點位與 3D 模型", "Clear")}">
-            ${QA_SVGS.RESET} ${t("清除", "Clear")}
-          </button>
-          <button type="button" class="btn-xs" id="btnExportUtilityCsv" title="${t("導出管溝檢核 CSV", "Export CSV")}">
-            ${QA_SVGS.CSV} CSV
-          </button>
-          <button type="button" class="btn-xs" id="btnExportUtilityDxf" title="${t("導出 3D AutoCAD DXF", "Export DXF")}">
-            ${QA_SVGS.DXF} DXF
-          </button>
+          <button type="button" class="btn-xs primary" id="btnTraceUtility" title="${t("計算管溝高程與坡度", "Trace Pipe")}">${QA_SVGS.PIPE} ${t("追蹤", "Trace")}</button>
+          <button type="button" class="btn-xs" id="btnPickUtilityPoint" title="${t("在 3D 模型拾取管溝點", "Add Point")}">${QA_SVGS.PICK} ${t("加點", "Pick")}</button>
+          <button type="button" class="btn-xs" id="btnClearUtilityTrace" title="${t("清除點位與 3D 模型", "Clear")}">${QA_SVGS.RESET} ${t("清除", "Clear")}</button>
+          <button type="button" class="btn-xs" id="btnExportUtilityCsv" title="${t("導出管溝檢核 CSV", "Export CSV")}">${QA_SVGS.CSV} CSV</button>
+          <button type="button" class="btn-xs" id="btnExportUtilityDxf" title="${t("導出 3D AutoCAD DXF", "Export DXF")}">${QA_SVGS.DXF} DXF</button>
         </div>
-
-        <!-- Dynamic Results / Empty-State Guidance Card -->
         <div id="utilityTracerResultsCard" style="display:block;margin-top:8px;">
           <div class="gs-qa-card" style="border:1px dashed rgba(20,184,166,0.38);background:rgba(20,184,166,0.06);">
             <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px;">
@@ -3850,9 +3814,7 @@
             </div>
           </div>
         </div>
-      </div>
-    `;
-
+      </div>`;
     showSidePanel(t("管溝竣工實測", "Utility Tracer"), html);
     bindUtilityTracerEvents(scanId);
     if (Array.isArray(QA_STATE.utilityTrenchPoints) && QA_STATE.utilityTrenchPoints.length >= 2) {
@@ -3861,17 +3823,11 @@
   }
 
   function bindUtilityTracerEvents(scanId) {
-    document.getElementById("btnTraceUtility")?.addEventListener("click", () => {
-      runUtilityTrace(scanId);
-    });
-
+    document.getElementById("btnTraceUtility")?.addEventListener("click", () => runUtilityTrace(scanId));
     document.getElementById("btnPickUtilityPoint")?.addEventListener("click", () => {
       QA_STATE.isPickingUtilityPoint = true;
-      if (typeof showToast === "function") {
-        showToast(t("請在 3D 視圖中連續點擊管溝管底或人孔", "Click on 3D trench to add invert points"));
-      }
+      if (typeof showToast === "function") showToast(t("請在 3D 視圖中連續點擊管溝管底或人孔", "Click on 3D trench to add invert points"));
     });
-
     document.getElementById("btnClearUtilityTrace")?.addEventListener("click", () => {
       QA_STATE.utilityTrenchPoints = [];
       QA_STATE.utilityLastResult = null;
@@ -3882,61 +3838,43 @@
       const resEl = document.getElementById("utilityTracerResultsCard");
       if (resEl) {
         resEl.style.display = "block";
-        resEl.innerHTML = `
-          <div class="gs-qa-card" style="border:1px dashed rgba(20,184,166,0.38);background:rgba(20,184,166,0.06);">
-            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px;">
-              <span style="font-size:10.5px;font-weight:700;color:#14b8a6;">${t("自建 / 竣工實測獨立圖層", "Isolated User As-Built Layer")}</span>
-              <span style="font-size:9px;font-weight:700;padding:1px 6px;border-radius:999px;background:rgba(20,184,166,0.16);color:#14b8a6;border:1px solid rgba(20,184,166,0.38);">NON-API</span>
-            </div>
-            <div style="font-size:10.5px;color:var(--ui-text-muted);line-height:1.45;">
-              ${t("請點擊「加點」於 3D 管溝連續拾取至少 2 個管底/人孔點位，再點擊「追蹤」計算坡度與覆土深（嚴格與官方 API 圖層隔離）。", "Click 'Pick' to sample at least 2 trench invert/manhole points in 3D, then click 'Trace' to compute slope & cover depth (strictly isolated from Official API layers).")}
-            </div>
+        resEl.innerHTML = `<div class="gs-qa-card" style="border:1px dashed rgba(20,184,166,0.38);background:rgba(20,184,166,0.06);">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px;">
+            <span style="font-size:10.5px;font-weight:700;color:#14b8a6;">${t("自建 / 竣工實測獨立圖層", "Isolated User As-Built Layer")}</span>
+            <span style="font-size:9px;font-weight:700;padding:1px 6px;border-radius:999px;background:rgba(20,184,166,0.16);color:#14b8a6;border:1px solid rgba(20,184,166,0.38);">NON-API</span>
           </div>
-        `;
+          <div style="font-size:10.5px;color:var(--ui-text-muted);line-height:1.45;">
+            ${t("請點擊「加點」於 3D 管溝連續拾取至少 2 個管底/人孔點位，再點擊「追蹤」計算坡度與覆土深（嚴格與官方 API 圖層隔離）。", "Click 'Pick' to sample at least 2 trench invert/manhole points in 3D, then click 'Trace' to compute slope & cover depth (strictly isolated from Official API layers).")}
+          </div>
+        </div>`;
       }
       if (typeof showToast === "function") showToast(t("已清除管溝點位", "Utility Points Cleared"));
     });
-
     document.getElementById("btnExportUtilityCsv")?.addEventListener("click", () => {
       if (!QA_STATE.utilityLastResult) {
         if (typeof showToast === "function") showToast(t("請先執行管溝追蹤", "Run utility trace first"));
         return;
       }
-      downloadBlob(
-        QA_STATE.utilityLastResult.csv_export || "",
-        `utility_trace_${QA_STATE.utilityLastResult.scan_id || "scan"}.csv`,
-        "text/csv;charset=utf-8;"
-      );
+      downloadBlob(QA_STATE.utilityLastResult.csv_export || "", `utility_trace_${QA_STATE.utilityLastResult.scan_id || "scan"}.csv`, "text/csv;charset=utf-8;");
     });
-
     document.getElementById("btnExportUtilityDxf")?.addEventListener("click", () => {
       if (!QA_STATE.utilityLastResult) {
         if (typeof showToast === "function") showToast(t("請先執行管溝追蹤", "Run utility trace first"));
         return;
       }
-      downloadBlob(
-        QA_STATE.utilityLastResult.dxf_export || "",
-        `utility_trace_${QA_STATE.utilityLastResult.scan_id || "scan"}.dxf`,
-        "application/dxf;charset=utf-8;"
-      );
+      downloadBlob(QA_STATE.utilityLastResult.dxf_export || "", `utility_trace_${QA_STATE.utilityLastResult.scan_id || "scan"}.dxf`, "application/dxf;charset=utf-8;");
     });
   }
 
   async function runUtilityTrace(scanId) {
-    const pipeType = document.getElementById("selUtilPipeType")?.value || "DRAIN";
-    const pipeDia = safeFloat(document.getElementById("selUtilPipeDia")?.value, 300.0);
-    const ptMode = document.getElementById("selUtilPointMode")?.value || "invert";
-    const minCov = safeFloat(document.getElementById("inpUtilMinCover")?.value, 1.20);
-
     const payload = {
       scan_id: scanId || (window.STATE && window.STATE.activeScanId) || "",
-      pipe_type: pipeType,
-      pipe_diameter_mm: pipeDia,
-      point_mode: ptMode,
-      min_cover_m: minCov,
+      pipe_type: document.getElementById("selUtilPipeType")?.value || "DRAIN",
+      pipe_diameter_mm: safeFloat(document.getElementById("selUtilPipeDia")?.value, 300.0),
+      point_mode: document.getElementById("selUtilPointMode")?.value || "invert",
+      min_cover_m: safeFloat(document.getElementById("inpUtilMinCover")?.value, 1.20),
       trench_points: QA_STATE.utilityTrenchPoints.length > 0 ? QA_STATE.utilityTrenchPoints : null,
     };
-
     try {
       const res = typeof apiPost === "function" ? await apiPost("/api/survey/utility-trace", payload) : null;
       if (!res || res.status !== "ok") {
@@ -3946,15 +3884,9 @@
       QA_STATE.utilityLastResult = res;
       renderUtilityTraceResults(res);
       renderUtilityTrace3DOverlay(res);
-      if (
-        Array.isArray(res.stations) &&
-        res.stations.length >= 2 &&
-        typeof window.syncUserTracedUtilityToGisLayer === "function"
-      ) {
+      if (Array.isArray(res.stations) && res.stations.length >= 2 && typeof window.syncUserTracedUtilityToGisLayer === "function") {
         window.syncUserTracedUtilityToGisLayer(res, payload.scan_id);
-        if (typeof showToast === "function") {
-          showToast(t("已完成管溝追蹤並同步至自建管線圖層", "Utility pipe traced & synced to User As-Built layer"));
-        }
+        if (typeof showToast === "function") showToast(t("已完成管溝追蹤並同步至自建管線圖層", "Utility pipe traced & synced to User As-Built layer"));
       }
     } catch (err) {
       console.error("[UtilityTracer] Error:", err);
@@ -3966,60 +3898,31 @@
     const card = document.getElementById("utilityTracerResultsCard");
     if (!card) return;
     card.style.display = "block";
-
     const stations = res.stations || [];
     let tableRows = "";
     stations.forEach((s) => {
       const covCls = s.cover_pass ? "color:#10b981;font-weight:700;" : "color:#ef4444;font-weight:700;";
-      tableRows += `
-        <tr>
-          <td style="font-weight:700;">${s.station_label}</td>
-          <td>${s.name}</td>
-          <td style="text-align:right;">${s.invert_z}m</td>
-          <td style="text-align:right;">${s.crown_z}m</td>
-          <td style="text-align:right;${covCls}">${s.cover_depth_m}m</td>
-          <td style="text-align:right;">${s.slope_ratio}</td>
-        </tr>
-      `;
+      tableRows += `<tr><td style="font-weight:700;">${s.station_label}</td><td>${s.name}</td><td style="text-align:right;">${s.invert_z}m</td><td style="text-align:right;">${s.crown_z}m</td><td style="text-align:right;${covCls}">${s.cover_depth_m}m</td><td style="text-align:right;">${s.slope_ratio}</td></tr>`;
     });
-
     card.innerHTML = `
       <div class="gs-qa-card">
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px;">
           <div>
             <div style="font-size:10px;color:var(--ui-text-muted);">${t("總長度 (2D / 3D)", "Length (2D/3D)")}</div>
-            <div style="font-size:12px;font-weight:800;color:var(--ui-text-primary);">
-              ${res.total_length_2d_m || 0}m / ${res.total_length_3d_m || 0}m
-            </div>
+            <div style="font-size:12px;font-weight:800;color:var(--ui-text-primary);">${res.total_length_2d_m || 0}m / ${res.total_length_3d_m || 0}m</div>
           </div>
           <div>
             <div style="font-size:10px;color:var(--ui-text-muted);">${t("總體坡度", "Overall Slope")}</div>
-            <div style="font-size:12px;font-weight:800;color:var(--ui-text-primary);">
-              ${res.overall_slope_ratio || "—"} (${res.overall_slope_pct || 0}%)
-            </div>
+            <div style="font-size:12px;font-weight:800;color:var(--ui-text-primary);">${res.overall_slope_ratio || "—"} (${res.overall_slope_pct || 0}%)</div>
           </div>
         </div>
       </div>
-
-      <!-- Station Table -->
       <div style="max-height:160px;overflow-y:auto;border:1px solid var(--ui-border);border-radius:6px;margin-top:6px;">
         <table class="gs-qa-table" style="width:100%;font-size:10px;">
-          <thead>
-            <tr>
-              <th>${t("樁號", "Station")}</th>
-              <th>${t("點號", "Pt")}</th>
-              <th style="text-align:right;">${t("管底", "Invert")}</th>
-              <th style="text-align:right;">${t("管頂", "Crown")}</th>
-              <th style="text-align:right;">${t("覆土", "Cover")}</th>
-              <th style="text-align:right;">${t("坡度", "Slope")}</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${tableRows}
-          </tbody>
+          <thead><tr><th>${t("樁號", "Station")}</th><th>${t("點號", "Pt")}</th><th style="text-align:right;">${t("管底", "Invert")}</th><th style="text-align:right;">${t("管頂", "Crown")}</th><th style="text-align:right;">${t("覆土", "Cover")}</th><th style="text-align:right;">${t("坡度", "Slope")}</th></tr></thead>
+          <tbody>${tableRows}</tbody>
         </table>
-      </div>
-    `;
+      </div>`;
   }
 
   function renderUtilityTrace3DOverlay(res) {
@@ -4029,11 +3932,8 @@
       utilityTrace3DGroup = window.__GS_CURVED_QA.buildUtilityTraceThreeGroup(res);
     }
     if (!utilityTrace3DGroup) return;
-    if (window.studioThree.overlayGroup) {
-      window.studioThree.overlayGroup.add(utilityTrace3DGroup);
-    } else {
-      window.studioThree.scene.add(utilityTrace3DGroup);
-    }
+    if (window.studioThree.overlayGroup) window.studioThree.overlayGroup.add(utilityTrace3DGroup);
+    else window.studioThree.scene.add(utilityTrace3DGroup);
     if (window.studioThree.renderer && window.studioThree.camera) {
       window.studioThree.renderer.render(window.studioThree.scene, window.studioThree.camera);
     }
@@ -4042,7 +3942,6 @@
   // =========================================================================
   // 3. COMPARE VIEW ΔV VOLUME TAKEOFF
   // =========================================================================
-
   function openCompareVolumeTakeoffInspector() {
     if (typeof showSidePanel !== "function") return;
     if (typeof setActiveStudioTool === "function" && (!window.STATE || window.STATE.activeTool !== "compare_volume")) {
@@ -4050,35 +3949,20 @@
     }
     const baseId = (window.STATE && window.STATE.compareBaseScanId) || (window.STATE && window.STATE.activeScanId) || "";
     const compId = (window.STATE && window.STATE.compareScanId) || baseId;
-
     const html = `
       <div class="gs-qa-container" id="compareVolumeContainer">
-        <!-- Compact Header & CRS Pill -->
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
-          <span style="font-size:12px;font-weight:700;color:var(--ui-text-primary);">
-            ${QA_SVGS.COMPARE} ${t("多時期比對 ΔV 土方計算", "Compare View ΔV Volume")}
-          </span>
+          <span style="font-size:12px;font-weight:700;color:var(--ui-text-primary);">${QA_SVGS.COMPARE} ${t("多時期比對 ΔV 土方計算", "Compare View ΔV Volume")}</span>
           <span class="gcp-crs-pill">EPSG:3826 + TWVD2001</span>
         </div>
-
-        <!-- Scan Epoches Selector -->
         <div class="gs-qa-card">
-          <div style="font-size:10.5px;color:var(--ui-text-muted);margin-bottom:2px;">
-            ${t("基期 (Epoch 1) vs 比對期 (Epoch 2)", "Baseline vs Compare Epoch")}
-          </div>
-          <div style="font-size:11px;font-weight:700;color:var(--ui-text-primary);">
-            ${baseId || "Baseline"} &nbsp;&rarr;&nbsp; ${compId || "Compare"}
-          </div>
-
+          <div style="font-size:10.5px;color:var(--ui-text-muted);margin-bottom:2px;">${t("基期 (Epoch 1) vs 比對期 (Epoch 2)", "Baseline vs Compare Epoch")}</div>
+          <div style="font-size:11px;font-weight:700;color:var(--ui-text-primary);">${baseId || "Baseline"} &nbsp;&rarr;&nbsp; ${compId || "Compare"}</div>
         </div>
-
-        <!-- Material Parameters -->
         <div class="gs-qa-card">
           <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;">
             <div>
-              <label style="font-size:10.5px;color:var(--ui-text-muted);display:block;margin-bottom:2px;">
-                ${t("土壤土質", "Material")}
-              </label>
+              <label style="font-size:10.5px;color:var(--ui-text-muted);display:block;margin-bottom:2px;">${t("土壤土質", "Material")}</label>
               <select id="selCmpSoilMaterial" class="gs-select" style="width:100%;">
                 <option value="common_earth" selected>${t("普通土 (Common Earth)", "Common Earth")}</option>
                 <option value="crushed_rock">${t("碎石級配 (Crushed Rock)", "Crushed Rock")}</option>
@@ -4087,52 +3971,30 @@
               </select>
             </div>
             <div>
-              <label style="font-size:10.5px;color:var(--ui-text-muted);display:block;margin-bottom:2px;">
-                ${t("卡車容量 (m³)", "Truck (m³)")}
-              </label>
+              <label style="font-size:10.5px;color:var(--ui-text-muted);display:block;margin-bottom:2px;">${t("卡車容量 (m³)", "Truck (m³)")}</label>
               <input type="number" id="inpCmpTruckCap" class="gs-input" value="12" step="1" />
             </div>
           </div>
         </div>
-
-        <!-- 1-Word Action Button Toolbar -->
         <div style="display:grid;grid-template-columns:repeat(3, 1fr);gap:4px;margin-top:4px;">
-          <button type="button" class="btn-xs primary" id="btnRunCompareVolume" title="${t("計算時期差體積", "Compute")}">
-            ${QA_SVGS.CALC} ${t("計算", "Compute")}
-          </button>
-          <button type="button" class="btn-xs" id="btnPickComparePoly" title="${t("在 3D 模型繪製多邊形範圍", "Polygon")}">
-            ${QA_SVGS.PICK} ${t("圈選", "Polygon")}
-          </button>
-          <button type="button" class="btn-xs" id="btnExportCompareCsv" title="${t("導出體積報表", "Export CSV")}">
-            ${QA_SVGS.CSV} ${t("導出", "CSV")}
-          </button>
+          <button type="button" class="btn-xs primary" id="btnRunCompareVolume" title="${t("計算時期差體積", "Compute")}">${QA_SVGS.CALC} ${t("計算", "Compute")}</button>
+          <button type="button" class="btn-xs" id="btnPickComparePoly" title="${t("在 3D 模型繪製多邊形範圍", "Polygon")}">${QA_SVGS.PICK} ${t("圈選", "Polygon")}</button>
+          <button type="button" class="btn-xs" id="btnExportCompareCsv" title="${t("導出體積報表", "Export CSV")}">${QA_SVGS.CSV} ${t("導出", "CSV")}</button>
         </div>
-
-        <!-- Dynamic Results Card -->
-        <div id="compareVolumeResultsCard" style="display:none;margin-top:8px;">
-          <!-- Populated by renderCompareVolumeResults -->
-        </div>
-      </div>
-    `;
-
+        <div id="compareVolumeResultsCard" style="display:none;margin-top:8px;"></div>
+      </div>`;
     showSidePanel(t("時期差體積計算", "Compare Volume"), html);
     bindCompareVolumeEvents(baseId, compId);
     runCompareVolumeTakeoff(baseId, compId);
   }
 
   function bindCompareVolumeEvents(baseId, compId) {
-    document.getElementById("btnRunCompareVolume")?.addEventListener("click", () => {
-      runCompareVolumeTakeoff(baseId, compId);
-    });
-
+    document.getElementById("btnRunCompareVolume")?.addEventListener("click", () => runCompareVolumeTakeoff(baseId, compId));
     document.getElementById("btnPickComparePoly")?.addEventListener("click", () => {
       QA_STATE.isPickingComparePoly = true;
       QA_STATE.comparePolyDraft = [];
-      if (typeof showToast === "function") {
-        showToast(t("請在 3D 模型表面點擊至少 3 處頂點圈選比較範圍", "Click 3+ vertices on 3D surface to bound compare region"));
-      }
+      if (typeof showToast === "function") showToast(t("請在 3D 模型表面點擊至少 3 處頂點圈選比較範圍", "Click 3+ vertices on 3D surface to bound compare region"));
     });
-
     document.getElementById("btnExportCompareCsv")?.addEventListener("click", () => {
       const r = QA_STATE.compareVolumeLastResult;
       if (!r) {
@@ -4149,22 +4011,13 @@
   }
 
   async function runCompareVolumeTakeoff(baseId, compId) {
-    const matType = document.getElementById("selCmpSoilMaterial")?.value || "common_earth";
-    const truckCap = safeFloat(document.getElementById("inpCmpTruckCap")?.value, 12.0);
-
     const payload = {
       baseline_scan_id: baseId,
       compare_scan_id: compId,
-      material_type: matType,
-      truck_capacity_m3: truckCap,
-      polygon:
-        (Array.isArray(QA_STATE.comparePolyDraft) && QA_STATE.comparePolyDraft.length >= 3
-          ? QA_STATE.comparePolyDraft
-          : null) ||
-        (window.STATE && window.STATE.activeVolumePolygon) ||
-        null,
+      material_type: document.getElementById("selCmpSoilMaterial")?.value || "common_earth",
+      truck_capacity_m3: safeFloat(document.getElementById("inpCmpTruckCap")?.value, 12.0),
+      polygon: (Array.isArray(QA_STATE.comparePolyDraft) && QA_STATE.comparePolyDraft.length >= 3 ? QA_STATE.comparePolyDraft : null) || (window.STATE && window.STATE.activeVolumePolygon) || null,
     };
-
     try {
       const res = typeof apiPost === "function" ? await apiPost("/api/survey/compare-volume", payload) : null;
       if (!res || res.status !== "ok") {
@@ -4185,63 +4038,29 @@
     compareVolume3DGroup = clear3DGroup(compareVolume3DGroup);
     compareVolume3DGroup = new window.THREE.Group();
     compareVolume3DGroup.name = "GS_CompareVolume_Overlay";
-
     const originTwd = (typeof localToTwd97 === "function") ? localToTwd97({ x: 0, y: 0, z: 0 }) : { e: 0, n: 0, h: 0 };
     const cells = res.heatmap_cells || [];
-
-    const cutMat = new window.THREE.MeshStandardMaterial({
-      color: 0xef4444,
-      emissive: 0xef4444,
-      emissiveIntensity: 0.5,
-      roughness: 0.3,
-      transparent: true,
-      opacity: 0.85,
-      depthTest: false,
-    });
-    const fillMat = new window.THREE.MeshStandardMaterial({
-      color: 0x3b82f6,
-      emissive: 0x3b82f6,
-      emissiveIntensity: 0.5,
-      roughness: 0.3,
-      transparent: true,
-      opacity: 0.85,
-      depthTest: false,
-    });
-
+    const cutMat = new window.THREE.MeshStandardMaterial({ color: 0xef4444, emissive: 0xef4444, emissiveIntensity: 0.5, roughness: 0.3, transparent: true, opacity: 0.85, depthTest: false });
+    const fillMat = new window.THREE.MeshStandardMaterial({ color: 0x3b82f6, emissive: 0x3b82f6, emissiveIntensity: 0.5, roughness: 0.3, transparent: true, opacity: 0.85, depthTest: false });
     const minPt = new window.THREE.Vector3(Infinity, Infinity, Infinity);
     const maxPt = new window.THREE.Vector3(-Infinity, -Infinity, -Infinity);
-
     cells.forEach((cell) => {
       const lx = Number(cell.e) - originTwd.e;
       const ly_b = Number(cell.z_base) - originTwd.h;
       const ly_c = Number(cell.z_comp) - originTwd.h;
       const lz = originTwd.n - Number(cell.n);
       const dz = Number(cell.delta_z || (ly_c - ly_b));
-
       const h = Math.max(0.15, Math.min(6.0, Math.abs(dz)));
-      const prismGeo = new window.THREE.BoxGeometry(0.85, h, 0.85);
-      const isCut = dz < 0;
-      const prism = new window.THREE.Mesh(prismGeo, isCut ? cutMat : fillMat);
+      const prism = new window.THREE.Mesh(new window.THREE.BoxGeometry(0.85, h, 0.85), dz < 0 ? cutMat : fillMat);
       const midY = (ly_b + ly_c) * 0.5;
       prism.position.set(lx, midY, lz);
       prism.renderOrder = 996;
       compareVolume3DGroup.add(prism);
-
-      minPt.x = Math.min(minPt.x, lx);
-      minPt.y = Math.min(minPt.y, midY);
-      minPt.z = Math.min(minPt.z, lz);
-      maxPt.x = Math.max(maxPt.x, lx);
-      maxPt.y = Math.max(maxPt.y, midY);
-      maxPt.z = Math.max(maxPt.z, lz);
+      minPt.x = Math.min(minPt.x, lx); minPt.y = Math.min(minPt.y, midY); minPt.z = Math.min(minPt.z, lz);
+      maxPt.x = Math.max(maxPt.x, lx); maxPt.y = Math.max(maxPt.y, midY); maxPt.z = Math.max(maxPt.z, lz);
     });
-
-    if (window.studioThree.overlayGroup) {
-      window.studioThree.overlayGroup.add(compareVolume3DGroup);
-    } else {
-      window.studioThree.scene.add(compareVolume3DGroup);
-    }
-
-    // Auto-frame camera on compare volume region
+    if (window.studioThree.overlayGroup) window.studioThree.overlayGroup.add(compareVolume3DGroup);
+    else window.studioThree.scene.add(compareVolume3DGroup);
     if (cells.length > 0 && window.studioThree.camera && window.studioThree.controls) {
       const center = new window.THREE.Vector3().addVectors(minPt, maxPt).multiplyScalar(0.5);
       const span = Math.max(maxPt.x - minPt.x, maxPt.z - minPt.z, 15);
@@ -4249,7 +4068,6 @@
       window.studioThree.camera.position.set(center.x + span * 0.85, center.y + span * 0.7, center.z + span * 0.85);
       window.studioThree.controls.update();
     }
-
     if (window.studioThree.renderer && window.studioThree.camera) {
       window.studioThree.renderer.render(window.studioThree.scene, window.studioThree.camera);
     }
@@ -4259,38 +4077,25 @@
     const card = document.getElementById("compareVolumeResultsCard");
     if (!card) return;
     card.style.display = "block";
-
     const bal = res.site_balance || {};
     card.innerHTML = `
       <div class="gs-qa-grade-box pass">
-        <div style="font-size:10px;text-transform:uppercase;color:var(--ui-text-muted);">
-          ${t("淨土方差 (ΔV)", "Net Volume (ΔV)")}
-        </div>
-        <div style="font-size:18px;font-weight:800;color:currentColor;">
-          ${res.net_volume_delta_m3 > 0 ? "+" : ""}${res.net_volume_delta_m3 || 0} m³
-        </div>
-        <div style="font-size:10.5px;font-weight:700;margin-top:2px;">
-          ${bal.type || "—"}
-        </div>
+        <div style="font-size:10px;text-transform:uppercase;color:var(--ui-text-muted);">${t("淨土方差 (ΔV)", "Net Volume (ΔV)")}</div>
+        <div style="font-size:18px;font-weight:800;color:currentColor;">${res.net_volume_delta_m3 > 0 ? "+" : ""}${res.net_volume_delta_m3 || 0} m³</div>
+        <div style="font-size:10.5px;font-weight:700;margin-top:2px;">${bal.type || "—"}</div>
       </div>
-
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px;margin-top:6px;">
         <div class="gs-qa-stat-pill">
           <div style="font-size:9.5px;color:var(--ui-text-muted);">${t("挖方 (BCM)", "Cut (BCM)")}</div>
-          <div style="font-size:12px;font-weight:800;color:#ef4444;">
-            ${res.cut_volume_bcm || 0} m³
-          </div>
+          <div style="font-size:12px;font-weight:800;color:#ef4444;">${res.cut_volume_bcm || 0} m³</div>
           <div style="font-size:9px;color:var(--ui-text-muted);">${res.cut_mass_tonnes || 0} t</div>
         </div>
         <div class="gs-qa-stat-pill">
           <div style="font-size:9.5px;color:var(--ui-text-muted);">${t("填方 (CCM)", "Fill (CCM)")}</div>
-          <div style="font-size:12px;font-weight:800;color:#3b82f6;">
-            ${res.fill_volume_ccm || 0} m³
-          </div>
+          <div style="font-size:12px;font-weight:800;color:#3b82f6;">${res.fill_volume_ccm || 0} m³</div>
           <div style="font-size:9px;color:var(--ui-text-muted);">${res.fill_mass_tonnes || 0} t</div>
         </div>
       </div>
-
       <div class="gs-qa-card" style="margin-top:6px;">
         <div style="display:flex;justify-content:space-between;font-size:10.5px;margin-bottom:3px;">
           <span style="color:var(--ui-text-muted);">${t("預估卡車車次", "Haul Trips")}:</span>
@@ -4300,14 +4105,12 @@
           <span style="color:var(--ui-text-muted);">${t("拘束限制條件", "Limiting Constraint")}:</span>
           <span style="font-weight:700;color:var(--ui-text-primary);">${bal.limiting_constraint || "—"}</span>
         </div>
-      </div>
-    `;
+      </div>`;
   }
 
   // =========================================================================
   // 4. RTK STAKEOUT EXPORT STRICTLY IN E, N, Z ORDER
   // =========================================================================
-
   function openRtkStakeoutInspector() {
     if (typeof showSidePanel !== "function") return;
     if (typeof setActiveStudioTool === "function" && (!window.STATE || window.STATE.activeTool !== "stakeout")) {
@@ -4315,7 +4118,6 @@
     }
     const scanId = (window.STATE && window.STATE.activeScanId) || "";
     const curMode = QA_STATE.stakeoutSourceMode || "custom";
-
     const html = `<div class="gs-qa-container" id="rtkStakeoutContainer">
       ${typeof window.renderSurveyContainerSubtabsHtml === "function" ? window.renderSurveyContainerSubtabsHtml("stakeout") : ""}
       ${typeof window.renderSurveyToolExplanationBannerHtml === "function" ? window.renderSurveyToolExplanationBannerHtml("RTK 工地放樣點導出", "RTK Construction Stakeout Export", "於 3D 模型拾取自訂放樣點或生成規則基礎網格，嚴格依 TWD97 (E, N, Z) 順序匯出 CSV、Leica/Trimble TXT、3D DXF 及 A4 現場簽核表。", "Pick custom stakeout points on the 3D surface or generate a regular foundation grid. Exports strictly in TWD97 (Easting, Northing, Elevation) order to CSV, Leica/Trimble TXT, 3D DXF, and printable A4 field sheets.") : ""}
@@ -4364,11 +4166,8 @@
       </div>
       <div id="stakeoutPointsCard" style="margin-top:8px;"></div>
     </div>`;
-
     showSidePanel(t("RTK 放樣導出", "RTK Stakeout"), html);
-    if (typeof window.bindSurveyContainerSubtabs === "function") {
-      window.bindSurveyContainerSubtabs("stakeout");
-    }
+    if (typeof window.bindSurveyContainerSubtabs === "function") window.bindSurveyContainerSubtabs("stakeout");
     bindRtkStakeoutEvents(scanId);
     runGenerateStakeout(scanId, { focusCamera: false });
   }
@@ -4391,17 +4190,10 @@
         runGenerateStakeout(scanId, { focusCamera: false });
       });
     });
-
     ["stkGridSpacingE", "stkGridSpacingN", "stkGridCountE", "stkGridCountN"].forEach((id) => {
-      document.getElementById(id)?.addEventListener("change", () => {
-        runGenerateStakeout(scanId, { focusCamera: false });
-      });
+      document.getElementById(id)?.addEventListener("change", () => runGenerateStakeout(scanId, { focusCamera: false }));
     });
-
-    document.getElementById("btnGenStakeout")?.addEventListener("click", () => {
-      runGenerateStakeout(scanId, { focusCamera: true });
-    });
-
+    document.getElementById("btnGenStakeout")?.addEventListener("click", () => runGenerateStakeout(scanId, { focusCamera: true }));
     document.getElementById("btnPickStakeoutPt")?.addEventListener("click", () => {
       const customRadio = document.querySelector('input[name="stkSourceMode"][value="custom"]');
       if (customRadio && !customRadio.checked) {
@@ -4411,51 +4203,28 @@
       QA_STATE.isPickingStakeoutPoint = !QA_STATE.isPickingStakeoutPoint;
       document.getElementById("btnPickStakeoutPt")?.classList.toggle("primary", QA_STATE.isPickingStakeoutPoint);
       if (typeof showToast === "function") {
-        showToast(
-          QA_STATE.isPickingStakeoutPoint
-            ? t("3D 拾取模式已開啟 — 請在 3D 模型表面點擊新增放樣點", "3D pick active — click on the 3D surface to add stakeout points")
-            : t("已結束 3D 放樣點拾取模式", "Exited 3D stakeout point pick mode")
-        );
+        showToast(QA_STATE.isPickingStakeoutPoint ? t("3D 拾取模式已開啟 — 請在 3D 模型表面點擊新增放樣點", "3D pick active — click on the 3D surface to add stakeout points") : t("已結束 3D 放樣點拾取模式", "Exited 3D stakeout point pick mode"));
       }
     });
-
     document.getElementById("btnClearStakeoutPts")?.addEventListener("click", () => {
       QA_STATE.stakeoutPoints = [];
       QA_STATE.isPickingStakeoutPoint = false;
       document.getElementById("btnPickStakeoutPt")?.classList.remove("primary");
       runGenerateStakeout(scanId, { focusCamera: false });
-      if (typeof showToast === "function") {
-        showToast(t("已重設放樣點位列表", "Stakeout point list reset"));
-      }
+      if (typeof showToast === "function") showToast(t("已重設放樣點位列表", "Stakeout point list reset"));
     });
-
     document.getElementById("btnExportStakeoutCsv")?.addEventListener("click", () => {
       if (!QA_STATE.stakeoutLastResult) return;
-      downloadBlob(
-        QA_STATE.stakeoutLastResult.csv_export || "",
-        `stakeout_ENZ_${QA_STATE.stakeoutLastResult.scan_id || "site"}.csv`,
-        "text/csv;charset=utf-8;"
-      );
+      downloadBlob(QA_STATE.stakeoutLastResult.csv_export || "", `stakeout_ENZ_${QA_STATE.stakeoutLastResult.scan_id || "site"}.csv`, "text/csv;charset=utf-8;");
     });
-
     document.getElementById("btnExportStakeoutTxt")?.addEventListener("click", () => {
       if (!QA_STATE.stakeoutLastResult) return;
-      downloadBlob(
-        QA_STATE.stakeoutLastResult.txt_export || "",
-        `stakeout_rover_${QA_STATE.stakeoutLastResult.scan_id || "site"}.txt`,
-        "text/plain;charset=utf-8;"
-      );
+      downloadBlob(QA_STATE.stakeoutLastResult.txt_export || "", `stakeout_rover_${QA_STATE.stakeoutLastResult.scan_id || "site"}.txt`, "text/plain;charset=utf-8;");
     });
-
     document.getElementById("btnExportStakeoutDxf")?.addEventListener("click", () => {
       if (!QA_STATE.stakeoutLastResult) return;
-      downloadBlob(
-        QA_STATE.stakeoutLastResult.dxf_export || "",
-        `stakeout_3D_${QA_STATE.stakeoutLastResult.scan_id || "site"}.dxf`,
-        "application/dxf;charset=utf-8;"
-      );
+      downloadBlob(QA_STATE.stakeoutLastResult.dxf_export || "", `stakeout_3D_${QA_STATE.stakeoutLastResult.scan_id || "site"}.dxf`, "application/dxf;charset=utf-8;");
     });
-
     document.getElementById("btnPrintStakeoutSheet")?.addEventListener("click", () => {
       if (!QA_STATE.stakeoutLastResult || !QA_STATE.stakeoutLastResult.html_field_sheet) return;
       const win = window.open("", "_blank");
@@ -4475,9 +4244,7 @@
     const spacingN = Math.max(1, safeFloat(document.getElementById("stkGridSpacingN")?.value, 10));
     const countE = Math.max(2, Math.min(15, Math.round(safeFloat(document.getElementById("stkGridCountE")?.value, 4))));
     const countN = Math.max(2, Math.min(15, Math.round(safeFloat(document.getElementById("stkGridCountN")?.value, 4))));
-
-    let gridOriginE = null;
-    let gridOriginN = null;
+    let gridOriginE = null, gridOriginN = null;
     if (typeof window.localToTwd97 === "function") {
       const centerTwd = window.localToTwd97({ x: 0, y: 0, z: 0 });
       if (centerTwd && Number.isFinite(centerTwd.e) && Number.isFinite(centerTwd.n)) {
@@ -4485,7 +4252,6 @@
         gridOriginN = Number((centerTwd.n - ((countN - 1) * spacingN) * 0.5).toFixed(3));
       }
     }
-
     const payload = {
       scan_id: scanId || (window.STATE && window.STATE.activeScanId) || "",
       source_mode: srcMode,
@@ -4497,12 +4263,10 @@
       grid_count_e: countE,
       grid_count_n: countN,
     };
-
     try {
       const res = typeof apiPost === "function" ? await apiPost("/api/survey/stakeout-export", payload) : null;
       if (!res || res.status !== "ok") return;
       QA_STATE.stakeoutLastResult = res;
-      // Render 3D first so mesh surface draping updates point elevations if needed
       renderStakeout3DOverlay(res, opts);
       renderStakeoutPointsTable(res);
     } catch (err) {
@@ -4513,7 +4277,6 @@
   function renderStakeoutPointsTable(res) {
     const card = document.getElementById("stakeoutPointsCard");
     if (!card) return;
-
     const pts = res.points || [];
     const isCustom = QA_STATE.stakeoutSourceMode !== "grid" && QA_STATE.stakeoutPoints.length > 0;
     let rows = "";
@@ -4526,7 +4289,6 @@
         <td><div style="display:flex;align-items:center;justify-content:space-between;gap:4px;"><span>${p.code}</span>${isCustom ? `<button type="button" class="btn-del-stk-pt" data-del-stk-idx="${idx}" style="border:none;background:rgba(239,68,68,0.18);color:#f87171;border-radius:4px;padding:0 5px;font-size:10px;cursor:pointer;" title="${t("刪除此點", "Delete point")}">x</button>` : ""}</div></td>
       </tr>`;
     });
-
     card.innerHTML = `<div style="display:flex;justify-content:space-between;align-items:center;font-size:10px;color:var(--ui-text-secondary);margin-bottom:4px;">
         <span>${t(`共 ${pts.length} 個放樣點 (點擊列可聚焦 3D 位置)`, `${pts.length} stakeout points (click row to focus in 3D)`)}</span>
         <span style="color:#fbbf24;font-weight:600;">${QA_STATE.stakeoutSourceMode === "grid" ? t("規則基礎網格", "Grid Array") : QA_STATE.stakeoutPoints.length > 0 ? t("自訂拾取點", "Custom Picked") : t("預設示範點", "Default Sample")}</span>
@@ -4537,33 +4299,23 @@
           <tbody id="stakeoutPtsBody">${rows}</tbody>
         </table>
       </div>`;
-
     card.querySelectorAll(".stk-point-row").forEach((trEl) => {
       trEl.addEventListener("click", (ev) => {
         if (ev.target && ev.target.closest(".btn-del-stk-pt")) return;
         const idx = parseInt(trEl.getAttribute("data-stk-idx") || "-1", 10);
         const pt = pts[idx];
         if (!pt) return;
-        const localVec =
-          pt._localVec ||
-          (typeof window.surveyTwd97ToLocalVec3 === "function"
-            ? window.surveyTwd97ToLocalVec3(pt.easting, pt.northing, pt.elevation, false, [pt.local_x, pt.local_y, pt.local_z])
-            : null);
-        if (localVec && typeof window.focusStudioCameraOnLocalPoint === "function") {
-          window.focusStudioCameraOnLocalPoint(localVec, 16);
-        }
+        const localVec = pt._localVec || (typeof window.surveyTwd97ToLocalVec3 === "function" ? window.surveyTwd97ToLocalVec3(pt.easting, pt.northing, pt.elevation, false, [pt.local_x, pt.local_y, pt.local_z]) : null);
+        if (localVec && typeof window.focusStudioCameraOnLocalPoint === "function") window.focusStudioCameraOnLocalPoint(localVec, 16);
       });
     });
-
     card.querySelectorAll(".btn-del-stk-pt").forEach((btn) => {
       btn.addEventListener("click", (ev) => {
         ev.stopPropagation();
         const idx = parseInt(btn.getAttribute("data-del-stk-idx") || "-1", 10);
         if (idx >= 0 && idx < QA_STATE.stakeoutPoints.length) {
           QA_STATE.stakeoutPoints.splice(idx, 1);
-          QA_STATE.stakeoutPoints.forEach((item, i) => {
-            item.ptid = `STK-${String(i + 1).padStart(3, "0")}`;
-          });
+          QA_STATE.stakeoutPoints.forEach((item, i) => { item.ptid = `STK-${String(i + 1).padStart(3, "0")}`; });
           const scanId = (window.STATE && window.STATE.activeScanId) || "";
           runGenerateStakeout(scanId, { focusCamera: false });
         }
@@ -4576,87 +4328,42 @@
     clearStakeoutVisuals3D();
     stakeout3DGroup = new window.THREE.Group();
     stakeout3DGroup.name = "GS_Stakeout_Overlay";
-
     const pts = (res && res.points) || [];
     const THREE = window.THREE;
-
     const minPt = new THREE.Vector3(Infinity, Infinity, Infinity);
     const maxPt = new THREE.Vector3(-Infinity, -Infinity, -Infinity);
-
     const ringGeo = new THREE.RingGeometry(0.32, 0.62, 24);
     ringGeo.rotateX(-Math.PI / 2);
-
     pts.forEach((p, idx) => {
       const e = p.e !== undefined ? p.e : p.easting;
       const n = p.n !== undefined ? p.n : p.northing;
       const h = p.h !== undefined ? p.h : p.elevation;
-      const explicitLocal =
-        Number.isFinite(Number(p.local_x)) && Number.isFinite(Number(p.local_y)) && Number.isFinite(Number(p.local_z))
-          ? [Number(p.local_x), Number(p.local_y), Number(p.local_z)]
-          : null;
-
-      const posVec =
-        typeof window.surveyTwd97ToLocalVec3 === "function"
-          ? window.surveyTwd97ToLocalVec3(e, n, h, !p._exactPicked, explicitLocal)
-          : new THREE.Vector3(0, 0, 0);
-
+      const explicitLocal = Number.isFinite(Number(p.local_x)) && Number.isFinite(Number(p.local_y)) && Number.isFinite(Number(p.local_z)) ? [Number(p.local_x), Number(p.local_y), Number(p.local_z)] : null;
+      const posVec = typeof window.surveyTwd97ToLocalVec3 === "function" ? window.surveyTwd97ToLocalVec3(e, n, h, !p._exactPicked, explicitLocal) : new THREE.Vector3(0, 0, 0);
       p._localVec = posVec;
       p.local_x = Number(posVec.x.toFixed(3));
       p.local_y = Number(posVec.y.toFixed(3));
       p.local_z = Number(posVec.z.toFixed(3));
-      if (posVec.hitMesh && !p._exactPicked && Number.isFinite(posVec.surfaceH)) {
-        p.elevation = Number(posVec.surfaceH.toFixed(3));
-      }
-
+      if (posVec.hitMesh && !p._exactPicked && Number.isFinite(posVec.surfaceH)) p.elevation = Number(posVec.surfaceH.toFixed(3));
       const colHex = p._exactPicked ? 0x10b981 : 0xf59e0b;
-
-      // 1. Zoom-invariant 3D Survey Pin
-      if (typeof window.add3DPinMarker === "function") {
-        window.add3DPinMarker(posVec, colHex, stakeout3DGroup);
-      }
-
-      // 2. High-visibility ground target ring
-      const ringMat = new THREE.MeshBasicMaterial({
-        color: colHex,
-        side: THREE.DoubleSide,
-        transparent: true,
-        opacity: 0.85,
-        depthTest: false,
-      });
+      if (typeof window.add3DPinMarker === "function") window.add3DPinMarker(posVec, colHex, stakeout3DGroup);
+      const ringMat = new THREE.MeshBasicMaterial({ color: colHex, side: THREE.DoubleSide, transparent: true, opacity: 0.85, depthTest: false });
       const ringMesh = new THREE.Mesh(ringGeo, ringMat);
       ringMesh.position.set(posVec.x, posVec.y + 0.04, posVec.z);
       ringMesh.renderOrder = 997;
       stakeout3DGroup.add(ringMesh);
-
-      // 3. Vertical survey range pole
-      const dropGeo = new THREE.BufferGeometry().setFromPoints([
-        new THREE.Vector3(posVec.x, posVec.y, posVec.z),
-        new THREE.Vector3(posVec.x, posVec.y + 1.6, posVec.z),
-      ]);
-      const dropMat = new THREE.LineBasicMaterial({ color: colHex, depthTest: false });
-      const dropLine = new THREE.Line(dropGeo, dropMat);
+      const dropGeo = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(posVec.x, posVec.y, posVec.z), new THREE.Vector3(posVec.x, posVec.y + 1.6, posVec.z)]);
+      const dropLine = new THREE.Line(dropGeo, new THREE.LineBasicMaterial({ color: colHex, depthTest: false }));
       dropLine.renderOrder = 997;
       stakeout3DGroup.add(dropLine);
-
-      // 4. Floating 2D Label Badge
       if (typeof window.add2DBadge === "function") {
         const badgePos = new THREE.Vector3(posVec.x, posVec.y + 1.65, posVec.z);
         const labelHtml = `<span style="color:${p._exactPicked ? "#34d399" : "#fbbf24"};font-weight:700;">${p.ptid}</span> <span style="opacity:0.9;">Z:${Number(p.elevation).toFixed(2)}m</span>`;
-        window.add2DBadge(badgePos, labelHtml, "badge-stakeout-pt", {
-          isSurveyToolBadge: true,
-          surveyTool: "stakeout",
-          priority: 95 - idx,
-        });
+        window.add2DBadge(badgePos, labelHtml, "badge-stakeout-pt", { isSurveyToolBadge: true, surveyTool: "stakeout", priority: 95 - idx });
       }
-
-      minPt.x = Math.min(minPt.x, posVec.x);
-      minPt.y = Math.min(minPt.y, posVec.y);
-      minPt.z = Math.min(minPt.z, posVec.z);
-      maxPt.x = Math.max(maxPt.x, posVec.x);
-      maxPt.y = Math.max(maxPt.y, posVec.y);
-      maxPt.z = Math.max(maxPt.z, posVec.z);
+      minPt.x = Math.min(minPt.x, posVec.x); minPt.y = Math.min(minPt.y, posVec.y); minPt.z = Math.min(minPt.z, posVec.z);
+      maxPt.x = Math.max(maxPt.x, posVec.x); maxPt.y = Math.max(maxPt.y, posVec.y); maxPt.z = Math.max(maxPt.z, posVec.z);
     });
-
     if (res && pts.length > 0) {
       if (typeof res.csv_export === "string") {
         const hdr = res.csv_export.split("\n").filter((l) => l.startsWith("#") || l.startsWith("PtID,"));
@@ -4669,13 +4376,8 @@
         res.txt_export = hdr.concat(body).join("\n");
       }
     }
-
-    if (window.studioThree.overlayGroup) {
-      window.studioThree.overlayGroup.add(stakeout3DGroup);
-    } else {
-      window.studioThree.scene.add(stakeout3DGroup);
-    }
-
+    if (window.studioThree.overlayGroup) window.studioThree.overlayGroup.add(stakeout3DGroup);
+    else window.studioThree.scene.add(stakeout3DGroup);
     if (opts.focusCamera && pts.length > 0 && window.studioThree.camera && window.studioThree.controls) {
       const center = new THREE.Vector3().addVectors(minPt, maxPt).multiplyScalar(0.5);
       const span = Math.max(maxPt.x - minPt.x, maxPt.z - minPt.z, 14);
@@ -4683,19 +4385,13 @@
       window.studioThree.camera.position.set(center.x + span * 0.65, center.y + span * 0.55, center.z + span * 0.65);
       window.studioThree.controls.update();
     }
-
-    if (typeof window.updateZoomInvariantElements === "function") {
-      window.updateZoomInvariantElements();
-    }
-    if (typeof window.update2DBadgePositions === "function") {
-      window.update2DBadgePositions();
-    }
+    if (typeof window.updateZoomInvariantElements === "function") window.updateZoomInvariantElements();
+    if (typeof window.update2DBadgePositions === "function") window.update2DBadgePositions();
     if (window.studioThree.renderer && window.studioThree.camera) {
       window.studioThree.renderer.render(window.studioThree.scene, window.studioThree.camera);
     }
   }
 
-  // Blob download utility
   function downloadBlob(content, filename, mimeType) {
     const blob = new Blob([content], { type: mimeType });
     const url = URL.createObjectURL(blob);
@@ -4718,13 +4414,9 @@
         const cleanPt = { x: Number(pt.x), y: Number(pt.y), z: Number(pt.z) };
         QA_STATE.curvedSplinePoints[idx] = cleanPt;
         QA_STATE.curvedHasExplicitSpline = true;
-        if (QA_STATE.flatnessCache?.curvedMeta?.splinePts?.[idx]) {
-          QA_STATE.flatnessCache.curvedMeta.splinePts[idx] = cleanPt;
-        }
+        if (QA_STATE.flatnessCache?.curvedMeta?.splinePts?.[idx]) QA_STATE.flatnessCache.curvedMeta.splinePts[idx] = cleanPt;
         const actObj = getActiveFlatnessObject();
-        if (actObj?.curvedMeta?.splinePts?.[idx]) {
-          actObj.curvedMeta.splinePts[idx] = cleanPt;
-        }
+        if (actObj?.curvedMeta?.splinePts?.[idx]) actObj.curvedMeta.splinePts[idx] = cleanPt;
       }
       if (action === "commit") applyCurvedSplineExtrusionAnalysis({ updateActiveObject: true });
       return;
@@ -4735,13 +4427,9 @@
         QA_STATE.curvedExtrudeTargetPt = cleanPt;
         QA_STATE.flatnessExtrudeDirMode = "custom_e1";
         QA_STATE.curvedHasExplicitSpline = true;
-        if (QA_STATE.flatnessCache?.curvedMeta) {
-          QA_STATE.flatnessCache.curvedMeta.extrudeHandlePt = cleanPt;
-        }
+        if (QA_STATE.flatnessCache?.curvedMeta) QA_STATE.flatnessCache.curvedMeta.extrudeHandlePt = cleanPt;
         const actObj = getActiveFlatnessObject();
-        if (actObj?.curvedMeta) {
-          actObj.curvedMeta.extrudeHandlePt = cleanPt;
-        }
+        if (actObj?.curvedMeta) actObj.curvedMeta.extrudeHandlePt = cleanPt;
         const selDir = document.getElementById("selFlatnessExtrudeDir");
         if (selDir) selDir.value = "custom_e1";
       }
@@ -4749,57 +4437,29 @@
       return;
     }
     const linkedId = st.qaLinkedAreaMeasId;
-    const isLinked =
-      Boolean(linkedId) &&
-      (source === "flatnessPolygonPoints" ||
-        source === "drainagePolygonPoints" ||
-        (source === "completed" && measId === linkedId));
-
+    const isLinked = Boolean(linkedId) && (source === "flatnessPolygonPoints" || source === "drainagePolygonPoints" || (source === "completed" && measId === linkedId));
     if (isLinked) {
-      const areaMeas = (st.completedMeasurements || []).find(
-        (m) => m && m.id === linkedId && m.type === "area" && Array.isArray(m.points)
-      );
+      const areaMeas = (st.completedMeasurements || []).find((m) => m && m.id === linkedId && m.type === "area" && Array.isArray(m.points));
       const targets = [];
       if (source !== "completed" && areaMeas) targets.push(areaMeas.points);
-      if (source !== "flatnessPolygonPoints" && Array.isArray(st.flatnessPolygonPoints) && st.flatnessPolygonPoints.length >= 3) {
-        targets.push(st.flatnessPolygonPoints);
-      }
-      if (source !== "drainagePolygonPoints" && Array.isArray(st.drainagePolygonPoints) && st.drainagePolygonPoints.length >= 3) {
-        targets.push(st.drainagePolygonPoints);
-      }
+      if (source !== "flatnessPolygonPoints" && Array.isArray(st.flatnessPolygonPoints) && st.flatnessPolygonPoints.length >= 3) targets.push(st.flatnessPolygonPoints);
+      if (source !== "drainagePolygonPoints" && Array.isArray(st.drainagePolygonPoints) && st.drainagePolygonPoints.length >= 3) targets.push(st.drainagePolygonPoints);
       for (const arr of targets) {
-        if (action === "move" && pt && arr[idx] && typeof arr[idx].copy === "function") {
-          arr[idx].copy(pt);
-        } else if (action === "insert" && pt && Number.isFinite(idx)) {
-          arr.splice(idx, 0, typeof pt.clone === "function" ? pt.clone() : pt);
-        } else if (action === "delete" && Number.isFinite(idx) && arr.length > 3) {
-          arr.splice(idx, 1);
-        }
+        if (action === "move" && pt && arr[idx] && typeof arr[idx].copy === "function") arr[idx].copy(pt);
+        else if (action === "insert" && pt && Number.isFinite(idx)) arr.splice(idx, 0, typeof pt.clone === "function" ? pt.clone() : pt);
+        else if (action === "delete" && Number.isFinite(idx) && arr.length > 3) arr.splice(idx, 1);
       }
     }
-
     if (action === "commit") {
-      if (
-        (source === "drainagePolygonPoints" || (isLinked && st.activeTool === "drainage")) &&
-        Array.isArray(st.drainagePolygonPoints) &&
-        st.drainagePolygonPoints.length >= 3 &&
-        typeof window.renderDrainageAndSlopeVisuals3D === "function"
-      ) {
+      if ((source === "drainagePolygonPoints" || (isLinked && st.activeTool === "drainage")) && Array.isArray(st.drainagePolygonPoints) && st.drainagePolygonPoints.length >= 3 && typeof window.renderDrainageAndSlopeVisuals3D === "function") {
         window.renderDrainageAndSlopeVisuals3D();
       }
-      if (
-        isLinked &&
-        source !== "flatnessPolygonPoints" &&
-        st.activeTool === "flatness" &&
-        Array.isArray(st.flatnessPolygonPoints) &&
-        st.flatnessPolygonPoints.length >= 3
-      ) {
+      if (isLinked && source !== "flatnessPolygonPoints" && st.activeTool === "flatness" && Array.isArray(st.flatnessPolygonPoints) && st.flatnessPolygonPoints.length >= 3) {
         lockFlatnessPolygonAndAnalyze(st.flatnessPolygonPoints);
       }
     }
   }
 
-  // Global exports & API bindings
   window.syncQaLinkedPolygonEdit = syncQaLinkedPolygonEdit;
   window.openSurfaceFlatnessQaInspector = openSurfaceFlatnessQaInspector;
   window.lockFlatnessPolygonAndAnalyze = lockFlatnessPolygonAndAnalyze;
@@ -4850,14 +4510,14 @@
         const lblStatus = document.getElementById("lblFlatnessCurvedStatus");
         if (lblStatus) {
           lblStatus.textContent = scnt >= 3
-            ? t(`已選 ${scnt} 個弧線點 — 點「套用分析」或選「擠出終點」`, `${scnt} spline pts placed — click Apply or Pick Extrude End`)
-            : t(`已選 ${scnt}/3 個弧線點 — 再點 ${3 - scnt} 點`, `${scnt}/3 spline pts placed — click ${3 - scnt} more`);
+            ? t(`已選 ${scnt} 個黃色弧線點 — 點「套用曲面」或選「擠出終點」`, `${scnt} yellow spline pts placed — click Apply or Pick E1`)
+            : t(`已選 ${scnt}/3 個黃色弧線點 — 再點 ${3 - scnt} 點`, `${scnt}/3 yellow spline pts placed — click ${3 - scnt} more`);
         }
         refreshFlatnessDraftVisuals();
         if (typeof showToast === "function") {
           showToast(scnt < 3
-            ? t(`弧線控制點 S${scnt} 已標記 — 再點 ${3 - scnt} 點可形成曲面`, `Spline point S${scnt} placed — click ${3 - scnt} more`)
-            : t(`弧線控制點 S${scnt} 已標記 — 可繼續加點或點擊「套用分析」`, `Spline point S${scnt} placed — click Apply to analyze`));
+            ? t(`黃色弧線控制點 S${scnt} 已標記 — 再點 ${3 - scnt} 點可形成曲面`, `Yellow spline point S${scnt} placed — click ${3 - scnt} more`)
+            : t(`黃色弧線控制點 S${scnt} 已標記 — 可繼續加點或點擊「套用曲面」`, `Yellow spline point S${scnt} placed — click Apply`));
         }
         return true;
       }
@@ -4869,7 +4529,7 @@
         document.getElementById("btnPickFlatnessExtrudePt")?.classList.remove("primary");
         const selDir = document.getElementById("selFlatnessExtrudeDir");
         if (selDir) selDir.value = "custom_e1";
-        if (Array.isArray(QA_STATE.curvedSplinePoints) && QA_STATE.curvedSplinePoints.length >= 3) {
+        if (Array.isArray(QA_STATE.curvedSplinePoints) && QA_STATE.curvedSplinePoints.length >= 2) {
           applyCurvedSplineExtrusionAnalysis({ updateActiveObject: Boolean(QA_STATE.activeFlatnessObjectId) });
         } else {
           refreshFlatnessDraftVisuals();
@@ -4878,18 +4538,19 @@
       }
       if (!Array.isArray(window.STATE.measurePoints)) window.STATE.measurePoints = [];
       if (window.STATE.flatnessPolygonLocked && window.STATE.measurePoints.length === 0) {
-        startNewFlatnessObjectDraft(false);
+        if (QA_STATE.polygonIsRibbonDerived && QA_STATE.flatnessPlaneMode === "curved_extruded" && Array.isArray(QA_STATE.curvedSplinePoints) && QA_STATE.curvedSplinePoints.length >= 2) {
+          window.STATE.flatnessPolygonPoints = [];
+          window.STATE.flatnessPolygonLocked = false;
+          QA_STATE.polygonIsRibbonDerived = false;
+          QA_STATE.curvedHasExplicitSpline = true;
+        } else {
+          startNewFlatnessObjectDraft(false);
+        }
       }
       const startPt = window.STATE.measurePoints[0];
-      const closedOnStart =
-        window.STATE.measurePoints.length >= 3 &&
-        startPt &&
-        (typeof isNearStartVertex === "function"
-          ? isNearStartVertex(pt, startPt)
-          : isNearStartVertex === true ||
-            (typeof pt.distanceTo === "function" && pt.distanceTo(startPt) < 0.65));
+      const closedOnStart = window.STATE.measurePoints.length >= 3 && startPt && (typeof isNearStartVertex === "function" ? isNearStartVertex(pt, startPt) : isNearStartVertex === true || (typeof pt.distanceTo === "function" && pt.distanceTo(startPt) < 0.65));
       if (closedOnStart) {
-        lockFlatnessPolygonAndAnalyze(window.STATE.measurePoints.slice());
+        lockFlatnessPolygonAndAnalyze(window.STATE.measurePoints.slice(), { updateActiveObject: Boolean(QA_STATE.activeFlatnessObjectId && QA_STATE.curvedHasExplicitSpline) });
         return true;
       }
       window.STATE.polygonLocked = false;
@@ -4899,27 +4560,15 @@
       if (typeof syncStudioMobileToolHud === "function") syncStudioMobileToolHud();
       const cnt = window.STATE.measurePoints.length;
       if (typeof showToast === "function") {
-        if (cnt < 3) {
-          showToast(t(`平整度頂點 V${cnt} 已標記 — 再點 ${3 - cnt} 點可形成範圍`, `Flatness vertex V${cnt} placed — click ${3 - cnt} more`));
-        } else {
-          showToast(t(`已標記 ${cnt} 個頂點 — 點擊紅色起點 V1 或按 Enter 閉合分析`, `${cnt} vertices placed — click red V1 or press Enter to analyze`));
-        }
+        showToast(cnt < 3 ? t(`平整度頂點 V${cnt} 已標記 — 再點 ${3 - cnt} 點可形成範圍`, `Flatness vertex V${cnt} placed — click ${3 - cnt} more`) : t(`已標記 ${cnt} 個頂點 — 點擊紅色起點 V1 或按 Enter 閉合分析`, `${cnt} vertices placed — click red V1 or press Enter to analyze`));
       }
       return true;
     }
     if (tool === "trench" || QA_STATE.isPickingUtilityPoint) {
       const depthCover = safeFloat(document.getElementById("inpUtilMinCover")?.value, 1.2);
-      QA_STATE.utilityTrenchPoints.push({
-        e: Number(twd.e.toFixed(3)),
-        n: Number(twd.n.toFixed(3)),
-        h: Number((twd.h - depthCover).toFixed(3)),
-        ground_h: Number(twd.h.toFixed(3)),
-      });
-      if (QA_STATE.utilityTrenchPoints.length >= 2) {
-        runUtilityTrace(scanId);
-      } else if (typeof showToast === "function") {
-        showToast(t("已設定管溝起點 — 請點擊下一處管溝節點", "Trench Pt #1 placed — click next trench vertex"));
-      }
+      QA_STATE.utilityTrenchPoints.push({ e: Number(twd.e.toFixed(3)), n: Number(twd.n.toFixed(3)), h: Number((twd.h - depthCover).toFixed(3)), ground_h: Number(twd.h.toFixed(3)) });
+      if (QA_STATE.utilityTrenchPoints.length >= 2) runUtilityTrace(scanId);
+      else if (typeof showToast === "function") showToast(t("已設定管溝起點 — 請點擊下一處管溝節點", "Trench Pt #1 placed — click next trench vertex"));
       return true;
     }
     if (QA_STATE.isPickingStakeoutPoint) {
@@ -4946,9 +4595,7 @@
         local_z: pt && Number.isFinite(pt.z) ? Number(pt.z.toFixed(3)) : undefined,
         _exactPicked: true,
       });
-      if (typeof showToast === "function") {
-        showToast(t(`已新增放樣點 ${ptid} (E:${twd.e.toFixed(2)}, N:${twd.n.toFixed(2)}, Z:${elev.toFixed(2)}m)`, `Added ${ptid} (E:${twd.e.toFixed(2)}, N:${twd.n.toFixed(2)}, Z:${elev.toFixed(2)}m)`));
-      }
+      if (typeof showToast === "function") showToast(t(`已新增放樣點 ${ptid} (E:${twd.e.toFixed(2)}, N:${twd.n.toFixed(2)}, Z:${elev.toFixed(2)}m)`, `Added ${ptid} (E:${twd.e.toFixed(2)}, N:${twd.n.toFixed(2)}, Z:${elev.toFixed(2)}m)`));
       runGenerateStakeout(scanId, { focusCamera: false });
       return true;
     }
