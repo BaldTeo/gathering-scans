@@ -1072,12 +1072,13 @@ class GatheringScansHandler(CloudAndTunnelHandlerMixin, ServerWriteRoutesMixin, 
                 if splat_cnt <= 0:
                     splat_cnt = max(0, (os.path.getsize(gs_cand) - 16) // 32)
                 try:
-                    with open(ts_path, "r", encoding="utf-8") as tsf_chk:
-                        ts_ext = (json.load(tsf_chk) or {}).get("extras") or {}
-                    if ts_ext.get("is_gaussian_splat"):
-                        is_gsplat = True
-                    if isinstance(ts_ext.get("gaussian_splat_origin"), list):
-                        splat_origin = ts_ext["gaussian_splat_origin"]
+                    if os.path.getsize(ts_path) <= 2 * 1024 * 1024:
+                        with open(ts_path, "r", encoding="utf-8") as tsf_chk:
+                            ts_ext = (json.load(tsf_chk) or {}).get("extras") or {}
+                        if ts_ext.get("is_gaussian_splat"):
+                            is_gsplat = True
+                        if isinstance(ts_ext.get("gaussian_splat_origin"), list):
+                            splat_origin = ts_ext["gaussian_splat_origin"]
                 except Exception:
                     pass
         if not has_gsplat_layer:
@@ -1132,6 +1133,19 @@ class GatheringScansHandler(CloudAndTunnelHandlerMixin, ServerWriteRoutesMixin, 
                     if ts_path.lower().endswith(".glb"):
                         leaf_glbs = [ts_path]
                         total_leaf_count = 1
+                    elif os.path.getsize(ts_path) > 2 * 1024 * 1024:
+                        tiles_dir_m = os.path.join(bdir_m, "tiles")
+                        all_tile_glbs = (
+                            [os.path.join(tiles_dir_m, fn) for fn in sorted(os.listdir(tiles_dir_m)) if fn.lower().endswith(".glb")]
+                            if os.path.isdir(tiles_dir_m)
+                            else []
+                        )
+                        total_leaf_count = max(1, len(all_tile_glbs))
+                        if len(all_tile_glbs) > 12:
+                            _step = max(1, len(all_tile_glbs) // 12)
+                            leaf_glbs = all_tile_glbs[::_step][:12]
+                        else:
+                            leaf_glbs = all_tile_glbs
                     else:
                         with open(ts_path, "r", encoding="utf-8") as _mf:
                             _tso = json.load(_mf)

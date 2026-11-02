@@ -1084,19 +1084,26 @@ def _extract_tileset_georef_and_fix_axis(tileset_path: str, geoid_sep_m: float =
     if not (tileset_path and os.path.isfile(tileset_path) and tileset_path.lower().endswith(".json")):
         return out
     try:
-        with open(tileset_path, "r", encoding="utf-8") as f:
+        read_ts_path = tileset_path
+        ts_file_sz = os.path.getsize(tileset_path)
+        if ts_file_sz > 2 * 1024 * 1024:
+            cand_prev_ts = os.path.join(os.path.dirname(tileset_path), "preview_tileset.json")
+            if os.path.isfile(cand_prev_ts):
+                read_ts_path = cand_prev_ts
+        with open(read_ts_path, "r", encoding="utf-8") as f:
             ts = json.load(f)
         asset = ts.get("asset") or {}
-        raw_str = json.dumps(ts)
         has_root_tf = bool((ts.get("root") or {}).get("transform"))
-        if str(asset.get("gltfUpAxis", "")).lower() == "z" and has_root_tf and ".glb" in raw_str.lower():
-            asset.pop("gltfUpAxis", None)
-            ts["asset"] = asset
-            try:
-                with open(tileset_path, "w", encoding="utf-8") as wf:
-                    json.dump(ts, wf, indent=2)
-            except Exception:
-                pass
+        if str(asset.get("gltfUpAxis", "")).lower() == "z" and has_root_tf and ts_file_sz <= 2 * 1024 * 1024:
+            raw_str = json.dumps(ts)
+            if ".glb" in raw_str.lower():
+                asset.pop("gltfUpAxis", None)
+                ts["asset"] = asset
+                try:
+                    with open(tileset_path, "w", encoding="utf-8") as wf:
+                        json.dump(ts, wf, indent=2)
+                except Exception:
+                    pass
 
         root = ts.get("root") or {}
         transform = root.get("transform")
@@ -1968,19 +1975,24 @@ def _discover_folder_scan_item(
     gaussian_splat_origin = meta.get("gaussian_splat_origin")
     if tileset_path and tileset_path.lower().endswith(".json") and os.path.isfile(tileset_path):
         try:
-            with open(tileset_path, "r", encoding="utf-8") as tsf:
-                ts_doc_peek = json.load(tsf)
-            ts_extras = ts_doc_peek.get("extras") or {}
-            if ts_extras.get("is_gaussian_splat"):
-                is_gaussian_splat = True
-                has_gaussian_splat_layer = True
-            if ts_extras.get("has_gaussian_splat_layer") or ts_extras.get("gaussian_splat_uri"):
-                has_gaussian_splat_layer = True
-            if has_gaussian_splat_layer:
-                splat_count = int(ts_extras.get("splat_count") or splat_count or 0)
-                gaussian_splat_uri = str(ts_extras.get("gaussian_splat_uri") or gaussian_splat_uri or "tiles/splats.gsplat")
-                if isinstance(ts_extras.get("gaussian_splat_origin"), list):
-                    gaussian_splat_origin = ts_extras["gaussian_splat_origin"]
+            peek_path = tileset_path
+            if os.path.getsize(tileset_path) > 2 * 1024 * 1024:
+                cand_prev = os.path.join(os.path.dirname(tileset_path), "preview_tileset.json")
+                peek_path = cand_prev if os.path.isfile(cand_prev) else ""
+            if peek_path:
+                with open(peek_path, "r", encoding="utf-8") as tsf:
+                    ts_doc_peek = json.load(tsf)
+                ts_extras = ts_doc_peek.get("extras") or {}
+                if ts_extras.get("is_gaussian_splat"):
+                    is_gaussian_splat = True
+                    has_gaussian_splat_layer = True
+                if ts_extras.get("has_gaussian_splat_layer") or ts_extras.get("gaussian_splat_uri"):
+                    has_gaussian_splat_layer = True
+                if has_gaussian_splat_layer:
+                    splat_count = int(ts_extras.get("splat_count") or splat_count or 0)
+                    gaussian_splat_uri = str(ts_extras.get("gaussian_splat_uri") or gaussian_splat_uri or "tiles/splats.gsplat")
+                    if isinstance(ts_extras.get("gaussian_splat_origin"), list):
+                        gaussian_splat_origin = ts_extras["gaussian_splat_origin"]
         except Exception:
             pass
 

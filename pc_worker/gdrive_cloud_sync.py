@@ -300,7 +300,14 @@ def extract_3tz_toc(zip_path: str) -> Dict[str, Dict[str, int]]:
     return toc
 
 
-def build_scan_3tz_package(scan: Dict[str, Any], force: bool = False) -> Optional[Dict[str, Any]]:
+import threading
+
+_CLOUD_SYNC_LOCK = threading.Lock()
+
+
+def build_scan_3tz_package(
+    scan: Dict[str, Any], force: bool = False, cached_pkg: Optional[Dict[str, Any]] = None
+) -> Optional[Dict[str, Any]]:
     """
     Packages a single scan's optimized web tileset, preview tileset, GLB tiles, pre-gzipped
     GLB tiles, and thumbnail into `<scan_id>.3tz` (`ZIP_STORED`) inside Google Drive's
@@ -319,38 +326,36 @@ def build_scan_3tz_package(scan: Dict[str, Any], force: bool = False) -> Optiona
 
     pkg_path = os.path.join(target_dir, f"{scan_id}.3tz")
     base_dir = os.path.dirname(ts_path)
-    proj_dir = str(scan.get("project_dir") or os.path.dirname(base_dir) or "")
     r_glb = os.path.join(base_dir, "tiles", "root.glb")
-    p_glb = os.path.join(base_dir, "preview_low", "tiles", "root.glb")
     s_gsplat = os.path.join(base_dir, "tiles", "splats.gsplat")
-    meta_json = os.path.join(proj_dir, "scan_meta.json") if proj_dir else ""
     src_mtime = os.path.getmtime(ts_path)
-    for cand in (r_glb, p_glb, s_gsplat, meta_json):
+    for cand in (r_glb, s_gsplat):
         if cand and os.path.isfile(cand):
             src_mtime = max(src_mtime, os.path.getmtime(cand))
-    for sub_d in ("content", os.path.join("preview_low", "content"), "tiles"):
-        sd_full = os.path.join(base_dir, sub_d)
-        if os.path.isdir(sd_full):
-            try:
-                for fn in os.listdir(sd_full)[:64]:
-                    if fn.lower().endswith(".glb"):
-                        src_mtime = max(src_mtime, os.path.getmtime(os.path.join(sd_full, fn)))
-            except OSError:
-                pass
 
     if not force and os.path.isfile(pkg_path) and os.path.getsize(pkg_path) > 1024:
         try:
-            if os.path.getmtime(pkg_path) >= src_mtime:
-                # Mirror to my_drive_dir if missing
-                if my_drive_dir and shared_dir and my_drive_dir != shared_dir:
-                    md_pkg = os.path.join(my_drive_dir, f"{scan_id}.3tz")
-                    if not os.path.isfile(md_pkg) or os.path.getsize(md_pkg) != os.path.getsize(pkg_path):
-                        shutil.copy2(pkg_path, md_pkg)
+            pkg_sz = os.path.getsize(pkg_path)
+            pkg_mt = os.path.getmtime(pkg_path)
+            if pkg_mt >= src_mtime:
+                if (
+                    isinstance(cached_pkg, dict)
+                    and int(cached_pkg.get("size_bytes") or 0) == pkg_sz
+                    and isinstance(cached_pkg.get("toc"), dict)
+                    and len(cached_pkg["toc"]) > 0
+                ):
+                    return {
+                        "scan_id": scan_id,
+                        "pkg_path": pkg_path,
+                        "size_bytes": pkg_sz,
+                        "mtime": int(pkg_mt),
+                        "toc": cached_pkg["toc"],
+                    }
                 return {
                     "scan_id": scan_id,
                     "pkg_path": pkg_path,
-                    "size_bytes": os.path.getsize(pkg_path),
-                    "mtime": int(os.path.getmtime(pkg_path)),
+                    "size_bytes": pkg_sz,
+                    "mtime": int(pkg_mt),
                     "toc": extract_3tz_toc(pkg_path),
                 }
         except Exception:
@@ -542,6 +547,16 @@ def sync_all_scans_to_gdrive_and_vps(db: Any, auth_share: Any = None, force: boo
     2. Queries `DriveFS` for the Google Drive `file_id` of each `<scan_id>.3tz`.
     3. Saves `data/gdrive_cloud_manifest.json` locally and pushes it to the VPS (`/api/cloud-manifest/sync`).
     """
+    acquired = _CLOUD_SYNC_LOCK.acquire(blocking=force)
+    if not acquired:
+        return {"status": "busy"}
+    try:
+        return _sync_all_scans_to_gdrive_and_vps_locked(db, auth_share=auth_share, force=force)
+    finally:
+        _CLOUD_SYNC_LOCK.release()
+
+
+def _sync_all_scans_to_gdrive_and_vps_locked(db: Any, auth_share: Any = None, force: bool = False) -> Dict[str, Any]:
     scans = db.list_scans()
     prev_manifest: Dict[str, Any] = {}
     if os.path.isfile(CLOUD_MANIFEST_PATH):
@@ -558,9 +573,9 @@ def sync_all_scans_to_gdrive_and_vps(db: Any, auth_share: Any = None, force: boo
         if s.get("status") != "completed":
             continue
         sid = s["scan_id"]
-        pkg_info = build_scan_3tz_package(s, force=force)
+        old_p = prev_pkgs.get(sid) or {}
+        pkg_info = build_scan_3tz_package(s, force=force, cached_pkg=old_p)
         if pkg_info:
-            old_p = prev_pkgs.get(sid) or {}
             pkg_info["file_id"] = old_p.get("file_id", "")
             pkg_info["my_drive_file_id"] = old_p.get("my_drive_file_id", "")
             packages[sid] = pkg_info
