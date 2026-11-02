@@ -1783,7 +1783,8 @@ body.theme-dark .subtab-btn.active {
   .bim-bottom-dock,
   .bim-measure-bottom-container {
     left: calc(50% - (var(--studio-inspector-w, 0px) * 0.5)) !important;
-    transition: left 0.22s cubic-bezier(0.22, 1, 0.36, 1);
+    max-width: calc(100vw - var(--studio-inspector-w, 0px) - 28px) !important;
+    transition: left 0.22s cubic-bezier(0.22, 1, 0.36, 1), max-width 0.22s ease;
   }
 
   .gs-studio-top-bar {
