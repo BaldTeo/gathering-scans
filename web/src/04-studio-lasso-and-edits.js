@@ -2666,6 +2666,9 @@
       showToast(tr("已清除土方多邊形", "Cleared volume polygon"));
       return true;
     }
+    if (vDesc.source === "flatnessSplinePoints" || vDesc.source === "flatnessExtrusionHandle") {
+      return Boolean(window.syncQaLinkedPolygonEdit?.(vDesc.source, "delete", vDesc.pointIndex, null, vDesc.label));
+    }
     if (vDesc.source === "flatnessPolygonPoints" && Array.isArray(STATE.flatnessPolygonPoints)) {
       if (STATE.flatnessPolygonPoints.length > 3 && Number.isFinite(vDesc.pointIndex)) {
         STATE.flatnessPolygonPoints.splice(vDesc.pointIndex, 1);
@@ -4821,73 +4824,37 @@
         pCtx.strokeRect(14, 14, 480, 52);
         pCtx.textAlign = "left";
         pCtx.textBaseline = "top";
-        pCtx.font = "bold 13px sans-serif";
-        pCtx.fillStyle = "#f8fafc";
-        pCtx.fillText(
-          `${volumeRes.stockpile_name || "Volume Enclosure"} · Base: ${volumeRes.base_mode || "triangulated_boundary"}`,
-          24,
-          22
-        );
-        pCtx.font = "bold 12.5px monospace";
-        pCtx.fillStyle = "#38bdf8";
-        pCtx.fillText(
-          `Fill: +${volumeRes.fill_volume_m3} m³   Cut: -${volumeRes.cut_volume_m3} m³   Net: ${
-            Number(volumeRes.net_volume_m3) >= 0 ? "+" : ""
-          }${volumeRes.net_volume_m3} m³ (${volumeRes.estimated_tonnage_t} t)`,
-          24,
-          42
-        );
+        pCtx.font = "bold 13px sans-serif"; pCtx.fillStyle = "#f8fafc";
+        pCtx.fillText(`${volumeRes.stockpile_name || "Volume Enclosure"} · Base: ${volumeRes.base_mode || "triangulated_boundary"}`, 24, 22);
+        pCtx.font = "bold 12.5px monospace"; pCtx.fillStyle = "#38bdf8";
+        pCtx.fillText(`Fill: +${volumeRes.fill_volume_m3} m³   Cut: -${volumeRes.cut_volume_m3} m³   Net: ${Number(volumeRes.net_volume_m3) >= 0 ? "+" : ""}${volumeRes.net_volume_m3} m³ (${volumeRes.estimated_tonnage_t} t)`, 24, 42);
       }
       perspectiveImgDataUrl = pCanvas.toDataURL("image/png");
 
       // 2. Figure 2 — Top-Down (Nadir) View with All Point Labels (V1..Vn) & Thick Boundary onto 880x560 canvas
-      const nW = 880;
-      const nH = 560;
-      const aspect = nW / nH;
-      const halfSpanZ = Math.max(spanZ * 0.5 * 1.42, (spanX * 0.5 * 1.42) / aspect, 3.0);
-      const halfSpanX = halfSpanZ * aspect;
-      const nadirCam = new THREE.OrthographicCamera(
-        -halfSpanX,
-        halfSpanX,
-        halfSpanZ,
-        -halfSpanZ,
-        0.5,
-        Math.max(800, spanMax * 12 + 400)
-      );
+      const nW = 880, nH = 560, aspect = nW / nH;
+      const halfSpanZ = Math.max(spanZ * 0.5 * 1.42, (spanX * 0.5 * 1.42) / aspect, 3.0), halfSpanX = halfSpanZ * aspect;
+      const nadirCam = new THREE.OrthographicCamera(-halfSpanX, halfSpanX, halfSpanZ, -halfSpanZ, 0.5, Math.max(800, spanMax * 12 + 400));
       nadirCam.position.set(cx, maxY + Math.max(100, spanMax * 4), cz);
-      nadirCam.up.set(0, 0, -1);
-      nadirCam.lookAt(new THREE.Vector3(cx, cy, cz));
-      nadirCam.updateProjectionMatrix();
-      nadirCam.updateMatrixWorld(true);
+      nadirCam.up.set(0, 0, -1); nadirCam.lookAt(new THREE.Vector3(cx, cy, cz));
+      nadirCam.updateProjectionMatrix(); nadirCam.updateMatrixWorld(true);
 
-      // Hide volumeGroup during raw nadir terrain render so our crisp 2D canvas vector overlay + cell shading is ultra-clean
       const prevVolVis = studioThree.volumeGroup ? studioThree.volumeGroup.visible : true;
       if (studioThree.volumeGroup) studioThree.volumeGroup.visible = false;
       studioThree.renderer.render(studioThree.scene, nadirCam);
       if (studioThree.volumeGroup) studioThree.volumeGroup.visible = prevVolVis;
 
       const nCanvas = document.createElement("canvas");
-      nCanvas.width = nW;
-      nCanvas.height = nH;
+      nCanvas.width = nW; nCanvas.height = nH;
       const nCtx = nCanvas.getContext("2d");
-      nCtx.fillStyle = "#0f172a";
-      nCtx.fillRect(0, 0, nW, nH);
+      nCtx.fillStyle = "#0f172a"; nCtx.fillRect(0, 0, nW, nH);
       nCtx.drawImage(studioThree.renderer.domElement, 0, 0, nW, nH);
 
-      const toNadirXY = (lx, lz) => [
-        ((lx - cx + halfSpanX) / (2 * halfSpanX)) * nW,
-        ((lz - cz + halfSpanZ) / (2 * halfSpanZ)) * nH,
-      ];
-
-      // Engineering coordinate grid ticks (E, N)
+      const toNadirXY = (lx, lz) => [((lx - cx + halfSpanX) / (2 * halfSpanX)) * nW, ((lz - cz + halfSpanZ) / (2 * halfSpanZ)) * nH];
       const originTwd = localToTwd97({ x: 0, y: 0, z: 0 });
-      const ce = Number(originTwd.e || 0);
-      const cn = Number(originTwd.n || 0);
-      const ch = Number(originTwd.h || 0);
-      nCtx.strokeStyle = "rgba(226, 232, 240, 0.22)";
-      nCtx.lineWidth = 1;
-      nCtx.font = "10.5px monospace";
-      nCtx.fillStyle = "rgba(248, 250, 252, 0.85)";
+      const ce = Number(originTwd.e || 0), cn = Number(originTwd.n || 0), ch = Number(originTwd.h || 0);
+      nCtx.strokeStyle = "rgba(226, 232, 240, 0.22)"; nCtx.lineWidth = 1;
+      nCtx.font = "10.5px monospace"; nCtx.fillStyle = "rgba(248, 250, 252, 0.85)";
       for (let gi = 1; gi <= 4; gi++) {
         const frac = gi / 5, gxPx = frac * nW, gzPx = frac * nH;
         const lxVal = cx - halfSpanX + frac * 2 * halfSpanX, lzVal = cz - halfSpanZ + frac * 2 * halfSpanZ;

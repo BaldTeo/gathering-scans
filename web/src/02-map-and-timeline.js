@@ -2242,6 +2242,7 @@
               ? box.min.y - sphere.center.y - 0.3
               : -0.2;
           }
+          const maxPreviewAniso = Math.min(8, previewThree.renderer?.capabilities?.getMaxAnisotropy?.() || 4);
           model.traverse((c) => {
             if (c.isMesh && c.material) {
               const mats = Array.isArray(c.material) ? c.material : [c.material];
@@ -2252,6 +2253,10 @@
                 }
                 if (m && m.side !== THREE.DoubleSide) {
                   m.side = THREE.DoubleSide;
+                }
+                if (m && m.map && (m.map.anisotropy || 1) < maxPreviewAniso) {
+                  m.map.anisotropy = maxPreviewAniso;
+                  m.map.needsUpdate = true;
                 }
                 applyBrightnessToMaterial(m, STATE.scanBrightness);
               });
@@ -2354,6 +2359,7 @@
             typeof isScanOrTilesetGaussianSplat === "function"
               ? isScanOrTilesetGaussianSplat(scan, tr)
               : Boolean(scan.is_gaussian_splat || tr.root?.extras?.is_gaussian_splat || tr.root?.parent?.extras?.is_gaussian_splat);
+          const maxPreviewAniso = Math.min(8, previewThree.renderer?.capabilities?.getMaxAnisotropy?.() || 4);
           ev.scene.traverse((c) => {
             if (c.isMesh && c.material) {
               const mats = Array.isArray(c.material) ? c.material : [c.material];
@@ -2373,6 +2379,10 @@
                 }
                 if (m.side !== THREE.DoubleSide) {
                   m.side = THREE.DoubleSide;
+                }
+                if (m.map && (m.map.anisotropy || 1) < maxPreviewAniso) {
+                  m.map.anisotropy = maxPreviewAniso;
+                  m.map.needsUpdate = true;
                 }
                 applyBrightnessToMaterial(m, STATE.scanBrightness);
               });

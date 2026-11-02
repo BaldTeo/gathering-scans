@@ -2471,7 +2471,7 @@
         vEndM = Math.max(extrudeDepthM, maxDomW);
         extrudeDepthM = Math.max(0.2, vEndM);
       } else {
-        vEndM = Math.max(extrudeDepthM, maxDomW);
+        vEndM = extrudeDepthM;
       }
     }
 
@@ -2520,36 +2520,111 @@
     } else {
       let splineSeedPts = projPts3D.slice();
       if (config.hasExplicitSpline && domainPts3D.length >= 3 && splineSeedPts.length >= 2) {
-        const pFirst = splineSeedPts[0];
-        const pSecond = splineSeedPts[1];
-        const pLast = splineSeedPts[splineSeedPts.length - 1];
-        const pPrev = splineSeedPts[splineSeedPts.length - 2];
-        const tStart = cVecNorm({ x: pFirst.x - pSecond.x, y: pFirst.y - pSecond.y, z: pFirst.z - pSecond.z });
-        const tEnd = cVecNorm({ x: pLast.x - pPrev.x, y: pLast.y - pPrev.y, z: pLast.z - pPrev.z });
-        let maxStartExt = 0;
-        let maxEndExt = 0;
-        for (let i = 0; i < domainPts3D.length; i++) {
-          const dp = domainPts3D[i];
-          const dw = (dp.x - originP.x) * wAxis.x + (dp.y - originP.y) * wAxis.y + (dp.z - originP.z) * wAxis.z;
-          const px = dp.x - dw * wAxis.x, py = dp.y - dw * wAxis.y, pz = dp.z - dw * wAxis.z;
-          const dStart = (px - pFirst.x) * tStart.x + (py - pFirst.y) * tStart.y + (pz - pFirst.z) * tStart.z;
-          const dEnd = (px - pLast.x) * tEnd.x + (py - pLast.y) * tEnd.y + (pz - pLast.z) * tEnd.z;
-          if (dStart > maxStartExt) maxStartExt = Math.min(25.0, dStart);
-          if (dEnd > maxEndExt) maxEndExt = Math.min(25.0, dEnd);
-        }
-        if (maxStartExt > 0.05) {
-          splineSeedPts.unshift({
-            x: pFirst.x + maxStartExt * tStart.x,
-            y: pFirst.y + maxStartExt * tStart.y,
-            z: pFirst.z + maxStartExt * tStart.z,
-          });
-        }
-        if (maxEndExt > 0.05) {
-          splineSeedPts.push({
-            x: pLast.x + maxEndExt * tEnd.x,
-            y: pLast.y + maxEndExt * tEnd.y,
-            z: pLast.z + maxEndExt * tEnd.z,
-          });
+        if (circleFit.isValidArc && circleFit.rmsResidualM <= 0.12 && ctrlPts2D.length >= 3) {
+          const a = circleFit.centerU;
+          const b = circleFit.centerV;
+          const R = circleFit.radiusM;
+          const angles = ctrlPts2D.map((pt) => Math.atan2(pt.v - b, pt.u - a));
+          for (let i = 1; i < angles.length; i++) {
+            while (angles[i] - angles[i - 1] > Math.PI) angles[i] -= 2 * Math.PI;
+            while (angles[i] - angles[i - 1] < -Math.PI) angles[i] += 2 * Math.PI;
+          }
+          const th0 = angles[0];
+          const th1 = angles[angles.length - 1];
+          const dirSign = th1 >= th0 ? 1 : -1;
+          let minRel = 0;
+          let maxRel = Math.abs(th1 - th0);
+          const midAngle = 0.5 * (th0 + th1);
+          for (let i = 0; i < domainPts3D.length; i++) {
+            const p = domainPts3D[i];
+            const pu = (p.x - originP.x) * e1Axis.x + (p.y - originP.y) * e1Axis.y + (p.z - originP.z) * e1Axis.z;
+            const pv = (p.x - originP.x) * e2Axis.x + (p.y - originP.y) * e2Axis.y + (p.z - originP.z) * e2Axis.z;
+            let th = Math.atan2(pv - b, pu - a);
+            while (th - midAngle > Math.PI) th -= 2 * Math.PI;
+            while (th - midAngle < -Math.PI) th += 2 * Math.PI;
+            const rel = (th - th0) * dirSign;
+            if (rel < minRel && rel > -Math.PI * 0.85) minRel = rel;
+            if (rel > maxRel && rel < Math.PI * 1.65) maxRel = rel;
+          }
+          const avgGap = circleFit.rmsResidualM <= 0.015
+            ? 0.04
+            : Math.max(0.05, Math.min(0.18, Math.abs(th1 - th0) / Math.max(1, angles.length - 1)));
+          if (circleFit.rmsResidualM <= 0.015) {
+            const fullStart = th0 + dirSign * minRel;
+            const fullEnd = th0 + dirSign * maxRel;
+            const nFull = Math.max(16, Math.min(64, Math.ceil(Math.abs(fullEnd - fullStart) / avgGap)));
+            splineSeedPts = [];
+            for (let s = 0; s <= nFull; s++) {
+              const th = fullStart + (s / nFull) * (fullEnd - fullStart);
+              const cu = a + R * Math.cos(th), cv = b + R * Math.sin(th);
+              splineSeedPts.push({
+                x: originP.x + cu * e1Axis.x + cv * e2Axis.x,
+                y: originP.y + cu * e1Axis.y + cv * e2Axis.y,
+                z: originP.z + cu * e1Axis.z + cv * e2Axis.z,
+              });
+            }
+          } else {
+            if (minRel < -0.01) {
+              const prePts = [];
+              const nPre = Math.max(1, Math.min(12, Math.round(Math.abs(minRel) / avgGap)));
+              for (let s = nPre; s >= 1; s--) {
+                const th = th0 + dirSign * (minRel * (s / nPre));
+                const cu = a + R * Math.cos(th), cv = b + R * Math.sin(th);
+                prePts.push({
+                  x: originP.x + cu * e1Axis.x + cv * e2Axis.x,
+                  y: originP.y + cu * e1Axis.y + cv * e2Axis.y,
+                  z: originP.z + cu * e1Axis.z + cv * e2Axis.z,
+                });
+              }
+              splineSeedPts = prePts.concat(splineSeedPts);
+            }
+            const spanOrig = Math.abs(th1 - th0);
+            if (maxRel > spanOrig + 0.01) {
+              const extraAng = maxRel - spanOrig;
+              const nPost = Math.max(1, Math.min(12, Math.round(extraAng / avgGap)));
+              for (let s = 1; s <= nPost; s++) {
+                const th = th1 + dirSign * (extraAng * (s / nPost));
+                const cu = a + R * Math.cos(th), cv = b + R * Math.sin(th);
+                splineSeedPts.push({
+                  x: originP.x + cu * e1Axis.x + cv * e2Axis.x,
+                  y: originP.y + cu * e1Axis.y + cv * e2Axis.y,
+                  z: originP.z + cu * e1Axis.z + cv * e2Axis.z,
+                });
+              }
+            }
+          }
+        } else {
+          const pFirst = splineSeedPts[0];
+          const pSecond = splineSeedPts[1];
+          const pLast = splineSeedPts[splineSeedPts.length - 1];
+          const pPrev = splineSeedPts[splineSeedPts.length - 2];
+          const tStart = cVecNorm({ x: pFirst.x - pSecond.x, y: pFirst.y - pSecond.y, z: pFirst.z - pSecond.z });
+          const tEnd = cVecNorm({ x: pLast.x - pPrev.x, y: pLast.y - pPrev.y, z: pLast.z - pPrev.z });
+          let maxStartExt = 0;
+          let maxEndExt = 0;
+          for (let i = 0; i < domainPts3D.length; i++) {
+            const dp = domainPts3D[i];
+            const dw = (dp.x - originP.x) * wAxis.x + (dp.y - originP.y) * wAxis.y + (dp.z - originP.z) * wAxis.z;
+            const px = dp.x - dw * wAxis.x, py = dp.y - dw * wAxis.y, pz = dp.z - dw * wAxis.z;
+            const dStart = (px - pFirst.x) * tStart.x + (py - pFirst.y) * tStart.y + (pz - pFirst.z) * tStart.z;
+            const dEnd = (px - pLast.x) * tEnd.x + (py - pLast.y) * tEnd.y + (pz - pLast.z) * tEnd.z;
+            if (dStart > maxStartExt) maxStartExt = Math.min(25.0, dStart);
+            if (dEnd > maxEndExt) maxEndExt = Math.min(25.0, dEnd);
+          }
+          if (maxStartExt > 0.05) {
+            splineSeedPts.unshift({
+              x: pFirst.x + maxStartExt * tStart.x,
+              y: pFirst.y + maxStartExt * tStart.y,
+              z: pFirst.z + maxStartExt * tStart.z,
+            });
+          }
+          if (maxEndExt > 0.05) {
+            splineSeedPts.push({
+              x: pLast.x + maxEndExt * tEnd.x,
+              y: pLast.y + maxEndExt * tEnd.y,
+              z: pLast.z + maxEndExt * tEnd.z,
+            });
+          }
         }
       }
       rawCurve3D = evaluateCatmullRomChain3D(splineSeedPts, N_RAW);
@@ -2818,7 +2893,7 @@
       e1Axis,
       e2Axis,
       originP,
-      splinePts3D: projPts3D,
+      splinePts3D: pts,
       extrudeHandle3D,
       ribbonBoundaryPts3D,
       planeSummary,

@@ -37,6 +37,7 @@ from pc_worker.preview_generator import (
     ensure_scan_full_quality_thumbnail,
     ensure_scan_low_quality_preview,
     shift_glb_node_translation,
+    simplify_glb_via_welded_qem,
 )
 
 _WIN_NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000) if os.name == "nt" else 0
@@ -575,29 +576,54 @@ def _pack_cells_to_glb_tile(
         total_tris = len(all_tris)
         if target_tris is not None and total_tris > target_tris:
             ratio = max(0.02, min(0.98, float(target_tris) / float(total_tris)))
-            cmd.extend(["-si", f"{ratio:.4f}", "-sa", "-slb"])
+            cmd.extend(["-si", f"{ratio:.4f}", "-slb", "-sv"])
 
         subprocess.run(cmd, check=True, capture_output=True, timeout=180, creationflags=_WIN_NO_WINDOW)
+
+        with open(out_glb_path, "rb") as rf:
+            comp_bytes = rf.read()
+        jlen_c = struct.unpack_from("<I", comp_bytes, 12)[0]
+        j_c = json.loads(comp_bytes[20 : 20 + jlen_c].decode("utf-8"))
+        final_tris = len(all_tris)
+        accs_c = j_c.get("accessors") or []
+        for m_c in j_c.get("meshes") or []:
+            for p_c in m_c.get("primitives") or []:
+                if "indices" in p_c and p_c["indices"] < len(accs_c):
+                    final_tris = int(accs_c[p_c["indices"]].get("count", 0)) // 3
+
+        if target_tris is not None and final_tris > int(target_tris * 1.65):
+            tmp_wqem = out_glb_path + ".wqem.glb"
+            if simplify_glb_via_welded_qem(
+                tmp_raw,
+                tmp_wqem,
+                target_triangles=target_tris,
+                vp_bits=16,
+                vt_bits=16,
+            ):
+                try:
+                    os.replace(tmp_wqem, out_glb_path)
+                    with open(out_glb_path, "rb") as rf2:
+                        comp_bytes = rf2.read()
+                    jlen_c2 = struct.unpack_from("<I", comp_bytes, 12)[0]
+                    j_c2 = json.loads(comp_bytes[20 : 20 + jlen_c2].decode("utf-8"))
+                    accs_c2 = j_c2.get("accessors") or []
+                    for m_c in j_c2.get("meshes") or []:
+                        for p_c in m_c.get("primitives") or []:
+                            if "indices" in p_c and p_c["indices"] < len(accs_c2):
+                                final_tris = int(accs_c2[p_c["indices"]].get("count", 0)) // 3
+                except OSError:
+                    pass
+            elif os.path.exists(tmp_wqem):
+                try:
+                    os.remove(tmp_wqem)
+                except OSError:
+                    pass
     finally:
         if os.path.exists(tmp_raw):
             try:
                 os.remove(tmp_raw)
             except OSError:
                 pass
-
-    # Read meshopt-compressed GLB, count final triangles, and apply 64-bit TWD97 offset
-    with open(out_glb_path, "rb") as rf:
-        comp_bytes = rf.read()
-
-    jlen_c = struct.unpack_from("<I", comp_bytes, 12)[0]
-    j_c = json.loads(comp_bytes[20 : 20 + jlen_c].decode("utf-8"))
-
-    final_tris = len(all_tris)
-    accs_c = j_c.get("accessors") or []
-    for m_c in j_c.get("meshes") or []:
-        for p_c in m_c.get("primitives") or []:
-            if "indices" in p_c and p_c["indices"] < len(accs_c):
-                final_tris = int(accs_c[p_c["indices"]].get("count", 0)) // 3
 
     ox, oy, oz = offset_xyz
     if abs(ox) > 1.0 or abs(oy) > 1.0 or abs(oz) > 0.001:

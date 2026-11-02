@@ -4010,7 +4010,9 @@ vm.runInContext(fs.readFileSync('./web/src/12-public-utilities-gis.js', 'utf8'),
   const wfBMeta = sandbox.window.QA_STATE.flatnessCache.curvedMeta;
   const wfBRmsMm = sandbox.window.QA_STATE.flatnessCache.rmsMm;
 
-  // Test that picking custom sub-segment S1..S3 inside an existing Inspection Polygon NEVER overwrites polyPts
+  // Test that picking custom sub-segment S1..S3 inside an existing Inspection Polygon NEVER overwrites polyPts,
+  // and that even in 'spline' mode on a wide polygon, circular curvature is extended smoothly (< 1mm RMS)
+  sandbox.window.QA_STATE.flatnessCurveType = 'spline';
   const subSplinePts = [-0.22, 0.0, 0.22].map(a => ({ x: 5.0 * Math.sin(a), y: 1.8, z: -5.0 + 5.0 * Math.cos(a) }));
   sandbox.window.QA_STATE.curvedSplinePoints = subSplinePts;
   sandbox.window.QA_STATE.curvedHasExplicitSpline = true;
@@ -4018,8 +4020,25 @@ vm.runInContext(fs.readFileSync('./web/src/12-public-utilities-gis.js', 'utf8'),
   const preservedPolyLen = sandbox.window.STATE.flatnessPolygonPoints.length;
   const preservedPolyV0X = sandbox.window.STATE.flatnessPolygonPoints[0].x;
   const subSplinePassPct = sandbox.window.QA_STATE.surfaceQaLastResult.pass_rate_pct;
+  const subSplineRmsMm = sandbox.window.QA_STATE.flatnessCache.rmsMm;
   const subSplineVStartM = sandbox.window.QA_STATE.flatnessCache.curvedMeta.vStartM;
   const subSplineVEndM = sandbox.window.QA_STATE.flatnessCache.curvedMeta.vEndM;
+
+  // Test custom extrudeDepthM updates vEndM while evaluating all cells inside the polygon
+  sandbox.window.QA_STATE.flatnessExtrudeDepthM = 1.2;
+  sandbox.window.QA_STATE.flatnessHasCustomExtrudeDepth = true;
+  await sandbox.window.lockFlatnessPolygonAndAnalyze(sandbox.window.STATE.flatnessPolygonPoints, { updateActiveObject: true });
+  const customDepthVEndM = sandbox.window.QA_STATE.flatnessCache.curvedMeta.vEndM;
+  const customDepthPassPct = sandbox.window.QA_STATE.surfaceQaLastResult.pass_rate_pct;
+  const f2ObjId = sandbox.window.QA_STATE.activeFlatnessObjectId;
+
+  // Test switching between F1 (custom_e1) and F2 (auto extrudeDir) does not leak curvedExtrudeTargetPt into F2
+  const allObjs = sandbox.window.getFlatnessObjectsForActiveScan();
+  const f1ObjId = allObjs[0].id;
+  sandbox.window.selectFlatnessObject(f1ObjId, false);
+  const f1SelectedTargetPt = Boolean(sandbox.window.QA_STATE.curvedExtrudeTargetPt);
+  sandbox.window.selectFlatnessObject(f2ObjId, false);
+  const f2SelectedTargetPt = sandbox.window.QA_STATE.curvedExtrudeTargetPt;
 
   // Test Circle Arc mode on nearly collinear points (forceArc ensures isValidArc === true) + manualRadiusM override
   const nearlyFlatFit = sandbox.window.__GS_CURVED_QA.buildCurvedExtrudedSurfaceEvaluator({
@@ -4063,7 +4082,12 @@ vm.runInContext(fs.readFileSync('./web/src/12-public-utilities-gis.js', 'utf8'),
     preservedPolyLen,
     preservedPolyDeltaX: Math.abs(preservedPolyV0X - polyPts[0].x),
     subSplinePassPct,
+    subSplineRmsMm,
     subSplineSpanM: subSplineVEndM - subSplineVStartM,
+    customDepthVEndM,
+    customDepthPassPct,
+    f1SelectedTargetPt,
+    f2SelectedTargetPtIsNull: f2SelectedTargetPt === null,
     nearlyFlatValidArc: nearlyFlatFit.isValidArc,
     nearlyFlatRadiusM: nearlyFlatFit.radiusM,
     sCurveRmsMm,
@@ -4094,7 +4118,12 @@ vm.runInContext(fs.readFileSync('./web/src/12-public-utilities-gis.js', 'utf8'),
             self.assertEqual(int(out["preservedPolyLen"]), 4)
             self.assertLess(float(out["preservedPolyDeltaX"]), 1e-5)
             self.assertGreaterEqual(float(out["subSplinePassPct"]), 99.0)
+            self.assertLess(float(out["subSplineRmsMm"]), 1.0)
             self.assertGreater(float(out["subSplineSpanM"]), 2.0)
+            self.assertAlmostEqual(float(out["customDepthVEndM"]), 1.2, delta=1e-3)
+            self.assertGreaterEqual(float(out["customDepthPassPct"]), 99.0)
+            self.assertTrue(bool(out["f1SelectedTargetPt"]))
+            self.assertTrue(bool(out["f2SelectedTargetPtIsNull"]))
             self.assertTrue(bool(out["nearlyFlatValidArc"]))
             self.assertAlmostEqual(float(out["nearlyFlatRadiusM"]), 12.5, delta=1e-3)
             self.assertLess(float(out["sCurveRmsMm"]), 3.0)
@@ -4254,18 +4283,19 @@ vm.runInContext(fs.readFileSync('./web/src/12-public-utilities-gis.js', 'utf8'),
         import inspect
         import json as _json
         from pc_worker.native_octree_builder import build_native_octree_from_scalable_tileset
-        from pc_worker.preview_generator import build_low_quality_preview_glb
+        from pc_worker.preview_generator import build_low_quality_preview_glb, simplify_glb_via_welded_qem
 
         # 1. Verify build_native_octree_from_scalable_tileset defaults preserve_existing_crop=False
         sig_oct = inspect.signature(build_native_octree_from_scalable_tileset)
         self.assertIn("preserve_existing_crop", sig_oct.parameters)
         self.assertFalse(sig_oct.parameters["preserve_existing_crop"].default)
 
-        # 2. Verify build_low_quality_preview_glb defaults to ultra-quick 55k tris, 1024px JPEG, allow_aggressive=True
+        # 2. Verify build_low_quality_preview_glb defaults to sharp 110k tris, 2048px JPEG, allow_aggressive=False (never -sa UV corruption)
         sig_prev = inspect.signature(build_low_quality_preview_glb)
-        self.assertEqual(sig_prev.parameters["target_triangles"].default, 55000)
-        self.assertEqual(sig_prev.parameters["max_tex_dim"].default, 1024)
-        self.assertTrue(sig_prev.parameters["allow_aggressive"].default)
+        self.assertEqual(sig_prev.parameters["target_triangles"].default, 110000)
+        self.assertEqual(sig_prev.parameters["max_tex_dim"].default, 2048)
+        self.assertFalse(sig_prev.parameters["allow_aggressive"].default)
+        self.assertTrue(callable(simplify_glb_via_welded_qem))
 
         # 3. Verify edited_daan_652376 ('DaAn') is uncropped on disk (full ~87m x 80m park, > 400 tiles)
         daan_dir = r"C:\GatheringScans\edited_daan_652376"
@@ -4284,7 +4314,7 @@ vm.runInContext(fs.readFileSync('./web/src/12-public-utilities-gis.js', 'utf8'),
             self.assertGreater(float(daan_meta["bounding_box"]["half_extents"][0]), 35.0)
             daan_prev_glb = os.path.join(daan_dir, "tileset", "preview_low", "tiles", "root.glb")
             self.assertTrue(os.path.isfile(daan_prev_glb))
-            self.assertLess(os.path.getsize(daan_prev_glb), 1_200_000)
+            self.assertLess(os.path.getsize(daan_prev_glb), 3_800_000)
 
         # 4. Verify Map View loads preview_tileset.json across all devices in rough mode and tie-breaks same-date scans
         with open(os.path.join(BASE_DIR, "web", "src", "02-map-and-timeline.js"), "r", encoding="utf-8") as f:

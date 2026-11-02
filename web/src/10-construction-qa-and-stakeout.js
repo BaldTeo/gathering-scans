@@ -1285,7 +1285,9 @@
                 useE1Depth: QA_STATE.flatnessExtrudeDirMode === "custom_e1",
               });
               if (curvedRes && curvedRes.curvedMeta) {
-                QA_STATE.curvedSplinePoints = curvedRes.curvedMeta.splinePts.map((p) => ({ x: p.x, y: p.y, z: p.z }));
+                if (!QA_STATE.curvedHasExplicitSpline) {
+                  QA_STATE.curvedSplinePoints = curvedRes.curvedMeta.splinePts.map((p) => ({ x: p.x, y: p.y, z: p.z }));
+                }
                 if (QA_STATE.flatnessExtrudeDirMode === "custom_e1" && curvedRes.curvedMeta.extrudeHandlePt) {
                   QA_STATE.curvedExtrudeTargetPt = { ...curvedRes.curvedMeta.extrudeHandlePt };
                 }
@@ -2079,7 +2081,7 @@
       if (Array.isArray(cMeta.splinePts) && cMeta.splinePts.length >= 2) {
         QA_STATE.curvedSplinePoints = cMeta.splinePts.map((p) => ({ x: Number(p.x) || 0, y: Number(p.y) || 0, z: Number(p.z) || 0 }));
       }
-      QA_STATE.curvedExtrudeTargetPt = cMeta.extrudeHandlePt ? { ...cMeta.extrudeHandlePt } : null;
+      QA_STATE.curvedExtrudeTargetPt = QA_STATE.flatnessExtrudeDirMode === "custom_e1" && cMeta.extrudeHandlePt ? { ...cMeta.extrudeHandlePt } : null;
       QA_STATE.curvedHasExplicitSpline = Boolean(obj.curvedHasExplicitSpline);
     } else {
       QA_STATE.curvedSplinePoints = [];
@@ -2286,14 +2288,7 @@
       const lastObj = savedObjs.find((o) => o.id === QA_STATE.activeFlatnessObjectId) || savedObjs[savedObjs.length - 1];
       if (lastObj) {
         QA_STATE.activeFlatnessObjectId = lastObj.id;
-        QA_STATE.flatnessCache = lastObj.cache;
-        QA_STATE.surfaceQaLastResult = lastObj.metrics;
-        QA_STATE.flatnessPlaneMode = lastObj.planeMode || "best_fit_3d";
-        QA_STATE.flatnessToleranceMm = Number(lastObj.toleranceMm) || 3.0;
-        QA_STATE.flatnessVolumeMode = lastObj.volumeMode || "threshold";
-        QA_STATE.flatnessDisplayMode = lastObj.displayMode || "tiles";
-        QA_STATE.flatnessShowPass3D = Boolean(lastObj.showPass3D);
-        QA_STATE.flatnessResolutionCm = Number(lastObj.resolutionCm || lastObj.cache?.resolutionCm) || 15;
+        syncControlsToActiveFlatnessObject(lastObj);
       }
     }
 
@@ -4409,19 +4404,53 @@
   function syncQaLinkedPolygonEdit(source, action, idx, pt = null, measId = null) {
     const st = window.STATE;
     if (!st) return;
-    if (source === "flatnessSplinePoints" && Number.isFinite(idx) && Array.isArray(QA_STATE.curvedSplinePoints) && QA_STATE.curvedSplinePoints[idx]) {
-      if ((action === "move" || action === "commit") && pt) {
+    if (source === "flatnessSplinePoints" && Number.isFinite(idx) && Array.isArray(QA_STATE.curvedSplinePoints)) {
+      if (action === "delete") {
+        if (QA_STATE.curvedSplinePoints.length > 2 && QA_STATE.curvedSplinePoints[idx]) {
+          QA_STATE.curvedSplinePoints.splice(idx, 1);
+          QA_STATE.curvedHasExplicitSpline = true;
+          applyCurvedSplineExtrusionAnalysis({ updateActiveObject: Boolean(QA_STATE.activeFlatnessObjectId) });
+        }
+        return true;
+      }
+      if ((action === "move" || action === "commit") && pt && QA_STATE.curvedSplinePoints[idx]) {
         const cleanPt = { x: Number(pt.x), y: Number(pt.y), z: Number(pt.z) };
         QA_STATE.curvedSplinePoints[idx] = cleanPt;
         QA_STATE.curvedHasExplicitSpline = true;
         if (QA_STATE.flatnessCache?.curvedMeta?.splinePts?.[idx]) QA_STATE.flatnessCache.curvedMeta.splinePts[idx] = cleanPt;
         const actObj = getActiveFlatnessObject();
         if (actObj?.curvedMeta?.splinePts?.[idx]) actObj.curvedMeta.splinePts[idx] = cleanPt;
+        if (action === "move" && QA_STATE.flatnessCache?.curvedMeta && window.__GS_CURVED_QA?.buildCurvedExtrudedSurfaceEvaluator) {
+          const ev = window.__GS_CURVED_QA.buildCurvedExtrudedSurfaceEvaluator({
+            splinePts: QA_STATE.curvedSplinePoints,
+            hasExplicitSpline: true,
+            curveType: QA_STATE.flatnessCurveType || "spline",
+            extrudeDirMode: QA_STATE.flatnessExtrudeDirMode || "auto",
+            extrudeDepthM: QA_STATE.flatnessExtrudeDepthM || 1.8,
+            hasCustomExtrudeDepth: Boolean(QA_STATE.flatnessHasCustomExtrudeDepth),
+            manualRadiusM: QA_STATE.flatnessManualArcRadiusM,
+            polyPts: getExistingUserFlatnessPolygonPts(),
+            extrudeTargetPt: QA_STATE.curvedExtrudeTargetPt || null,
+            useE1Depth: QA_STATE.flatnessExtrudeDirMode === "custom_e1" && Boolean(QA_STATE.curvedExtrudeTargetPt),
+          });
+          if (ev && Array.isArray(ev.lut)) {
+            QA_STATE.flatnessCache.curvedMeta.lut = ev.lut;
+            QA_STATE.flatnessCache.curvedMeta.wAxis = ev.wAxis;
+            QA_STATE.flatnessCache.curvedMeta.vStartM = ev.vStartM;
+            QA_STATE.flatnessCache.curvedMeta.vEndM = ev.vEndM;
+          }
+        }
       }
       if (action === "commit") applyCurvedSplineExtrusionAnalysis({ updateActiveObject: true });
-      return;
+      return true;
     }
     if (source === "flatnessExtrusionHandle") {
+      if (action === "delete") {
+        QA_STATE.curvedExtrudeTargetPt = null;
+        if (QA_STATE.flatnessExtrudeDirMode === "custom_e1") QA_STATE.flatnessExtrudeDirMode = "auto";
+        applyCurvedSplineExtrusionAnalysis({ updateActiveObject: Boolean(QA_STATE.activeFlatnessObjectId) });
+        return true;
+      }
       if ((action === "move" || action === "commit") && pt) {
         const cleanPt = { x: Number(pt.x), y: Number(pt.y), z: Number(pt.z) };
         QA_STATE.curvedExtrudeTargetPt = cleanPt;
@@ -4432,6 +4461,27 @@
         if (actObj?.curvedMeta) actObj.curvedMeta.extrudeHandlePt = cleanPt;
         const selDir = document.getElementById("selFlatnessExtrudeDir");
         if (selDir) selDir.value = "custom_e1";
+        if (action === "move" && QA_STATE.flatnessCache?.curvedMeta && window.__GS_CURVED_QA?.buildCurvedExtrudedSurfaceEvaluator) {
+          const ev = window.__GS_CURVED_QA.buildCurvedExtrudedSurfaceEvaluator({
+            splinePts: QA_STATE.curvedSplinePoints,
+            hasExplicitSpline: true,
+            curveType: QA_STATE.flatnessCurveType || "spline",
+            extrudeDirMode: "custom_e1",
+            extrudeDepthM: QA_STATE.flatnessExtrudeDepthM || 1.8,
+            hasCustomExtrudeDepth: Boolean(QA_STATE.flatnessHasCustomExtrudeDepth),
+            manualRadiusM: QA_STATE.flatnessManualArcRadiusM,
+            polyPts: getExistingUserFlatnessPolygonPts(),
+            extrudeTargetPt: cleanPt,
+            useE1Depth: true,
+          });
+          if (ev && Array.isArray(ev.lut)) {
+            QA_STATE.flatnessCache.curvedMeta.lut = ev.lut;
+            QA_STATE.flatnessCache.curvedMeta.wAxis = ev.wAxis;
+            QA_STATE.flatnessCache.curvedMeta.vStartM = ev.vStartM;
+            QA_STATE.flatnessCache.curvedMeta.vEndM = ev.vEndM;
+            QA_STATE.flatnessCache.curvedMeta.extrudeDepthM = ev.extrudeDepthM;
+          }
+        }
       }
       if (action === "commit") applyCurvedSplineExtrusionAnalysis({ updateActiveObject: true });
       return;
