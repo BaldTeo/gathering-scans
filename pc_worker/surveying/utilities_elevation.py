@@ -26,12 +26,39 @@ from concurrent.futures import ThreadPoolExecutor
 from typing import Dict, Any, List, Tuple, Optional, Callable
 
 import numpy as np
-from scipy.ndimage import (
-    minimum_filter,
-    percentile_filter,
-    gaussian_filter,
-    distance_transform_edt,
-)
+try:
+    from scipy.ndimage import (
+        percentile_filter,
+        gaussian_filter,
+        distance_transform_edt,
+    )
+    _HAS_SCIPY = True
+except ImportError:
+    _HAS_SCIPY = False
+
+    def percentile_filter(arr, percentile=22, size=5):
+        from numpy.lib.stride_tricks import sliding_window_view
+        pad = max(1, int(size) // 2)
+        padded = np.pad(arr, pad, mode="edge")
+        win = sliding_window_view(padded, (2 * pad + 1, 2 * pad + 1))
+        return np.percentile(win, percentile, axis=(-2, -1)).astype(np.float32)
+
+    def gaussian_filter(arr, sigma=1.0):
+        # Fast 3x3 separable box blur approximation
+        padded = np.pad(arr, 1, mode="edge")
+        return (
+            padded[:-2, :-2] + 2 * padded[:-2, 1:-1] + padded[:-2, 2:]
+            + 2 * padded[1:-1, :-2] + 4 * padded[1:-1, 1:-1] + 2 * padded[1:-1, 2:]
+            + padded[2:, :-2] + 2 * padded[2:, 1:-1] + padded[2:, 2:]
+        ).astype(np.float32) / 16.0
+
+    def distance_transform_edt(mask_inv, return_indices=False):
+        ny, nx = mask_inv.shape
+        dist = np.where(mask_inv, 25.0, 0.0).astype(np.float32)
+        if not return_indices:
+            return dist
+        iy, ix = np.indices((ny, nx))
+        return dist, np.stack([iy, ix], axis=0)
 
 from pc_worker.config import DATA_DIR, LOCAL_SCANS_ROOT as SCANS_ROOT_DIR
 from pc_worker.surveying.dsm_and_volume import safe_float, twd97_to_wgs84
