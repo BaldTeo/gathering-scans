@@ -2207,7 +2207,7 @@ class ScanQueueDB:
         with DB_LOCK, self._connect() as conn:
             if project_group:
                 rows = conn.execute(
-                    "SELECT * FROM scans WHERE project_group = ? ORDER BY capture_date DESC, uploaded_at DESC",
+                    "SELECT * FROM scans WHERE project_group = ? ORDER BY capture_date DESC, COALESCE(tileset_version, 0) DESC, uploaded_at DESC",
                     (project_group,),
                 ).fetchall()
             else:
@@ -2225,6 +2225,7 @@ class ScanQueueDB:
                       CASE WHEN status = 'queued' THEN priority_score END DESC,
                       CASE WHEN status = 'queued' THEN uploaded_at END ASC,
                       capture_date DESC,
+                      COALESCE(tileset_version, 0) DESC,
                       uploaded_at DESC
                     """
                 ).fetchall()
