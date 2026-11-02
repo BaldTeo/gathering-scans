@@ -4447,6 +4447,40 @@ vm.runInContext(fs.readFileSync('./web/src/12-public-utilities-gis.js', 'utf8'),
         self.assertIn("mhRimByLayer", js12)
         self.assertIn("vertex_scan_ground_hs", js12)
 
+    def test_54_ui_redesign_phase2_invariants(self):
+        with open(os.path.join(BASE_DIR, "web", "index.html"), "r", encoding="utf-8") as f:
+            html = f.read()
+        for required_id in (
+            'id="mapCatalogModeSwitcher"',
+            'id="btnCloseLibraryToMap"',
+            'id="btnCloseSiteTimeline"',
+            'id="btnStudioBackToTimeline"',
+            'id="btnCompareBackToMap"',
+            'id="studioInspectorEdgeTab"',
+            'id="btnToggleEditDockCollapse"',
+            'id="studioEditingDock"',
+        ):
+            self.assertIn(required_id, html)
+        self.assertIn("gs-edit-dock-collapsed", html)
+        for banned_emoji in ("⚡", "🗑", "🎯", "🔒", "🐢", "🧭", "📂", "🏛"):
+            self.assertNotIn(banned_emoji, html)
+
+        with open(os.path.join(BASE_DIR, "web", "survey-bim.css"), "r", encoding="utf-8") as f:
+            bim_css = f.read()
+        self.assertIn("--studio-inspector-w:", bim_css)
+        self.assertIn("#studioEditingDock.gs-edit-dock-collapsed", bim_css)
+        self.assertIn("#viewMap.gs-library-mode-active", bim_css)
+
+        with open(os.path.join(BASE_DIR, "web", "src", "01-core-state.js"), "r", encoding="utf-8") as f:
+            js01 = f.read()
+        self.assertIn("function getUnassignedScansList()", js01)
+        self.assertIn('nextMode === "unassigned"', js01)
+
+        with open(os.path.join(BASE_DIR, "web", "src", "06-studio-align-and-optimizer.js"), "r", encoding="utf-8") as f:
+            js06 = f.read()
+        self.assertIn('getElementById("btnToggleEditDockCollapse")', js06)
+        self.assertIn('dock.classList.remove("gs-edit-dock-collapsed")', js06)
+
 
 if __name__ == "__main__":
     unittest.main()

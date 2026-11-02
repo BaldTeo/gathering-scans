@@ -89,6 +89,19 @@
     update2DBadgePositions();
   });
 
+  document.getElementById("studioInspectorEdgeTab")?.addEventListener("click", (ev) => {
+    ev.stopPropagation();
+    const panel = document.getElementById("studioSidePanel");
+    if (!panel) return;
+    STATE.sidePanelMinimized = false;
+    panel.classList.remove("mobile-minimized", "gs-panel-minimized");
+    const lblCollapse = document.getElementById("lblCollapseSidePanel");
+    if (lblCollapse) lblCollapse.textContent = "▾";
+    if (typeof syncStudioMobileToolHud === "function") syncStudioMobileToolHud();
+    if (typeof syncMobileToastPosition === "function") syncMobileToastPosition();
+    update2DBadgePositions();
+  });
+
   function closeSidePanel() {
     const panel = document.getElementById("studioSidePanel");
     const panelTool = panel ? panel.getAttribute("data-active-tool") || "" : "";

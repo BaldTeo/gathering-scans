@@ -2374,11 +2374,23 @@
     return Array.from(byKey.values());
   }
 
+  function getUnassignedScansList() {
+    return (STATE.scans || []).filter((s) => {
+      const crs = String(s.crs || "").toUpperCase();
+      return s.lat == null || s.lon == null || crs.includes("LOCAL") || isLibraryScan(s);
+    });
+  }
+
   function setLeftPaneMode(mode, folderName = null) {
-    const nextMode = mode === "library" ? "library" : "map";
-    STATE.leftPaneMode = nextMode;
+    const raw = String(mode || "map").toLowerCase();
+    const nextMode = raw === "library" ? "library" : raw === "unassigned" ? "unassigned" : "map";
+    const isDrawerOpen = nextMode === "library" || nextMode === "unassigned";
+    STATE.leftPaneMode = isDrawerOpen ? "library" : "map";
+    STATE.catalogSubMode = nextMode;
     if (folderName) {
       STATE.selectedLibraryFolder = folderName === "ALL" ? "ALL" : normalizeCanonicalFolderName(folderName).en;
+    } else if (nextMode === "unassigned") {
+      STATE.selectedLibraryFolder = "ALL";
     }
 
     const navLibBtn = document.getElementById("btnNavLibrary");
@@ -2390,41 +2402,48 @@
     const mapControlsRail = document.querySelector("#viewMap .gs-map-controls-rail");
     const mapBottomLeftBar = document.querySelector("#viewMap .gs-map-bottom-left-bar");
 
-    if (navLibBtn) navLibBtn.classList.toggle("active", STATE.activeView === "map" && nextMode === "library");
-    if (navMapBtn) navMapBtn.classList.toggle("active", STATE.activeView === "map" && nextMode === "map");
+    if (navLibBtn) navLibBtn.classList.toggle("active", STATE.activeView === "map" && isDrawerOpen);
+    if (navMapBtn) navMapBtn.classList.toggle("active", STATE.activeView === "map" && !isDrawerOpen);
+    document.querySelectorAll("#mapCatalogModeSwitcher [data-catalog-mode]").forEach((btn) => {
+      const m = btn.getAttribute("data-catalog-mode");
+      btn.classList.toggle(
+        "active",
+        (m === "sites" && nextMode === "map") || (m === "unassigned" && nextMode === "unassigned") || (m === "library" && nextMode === "library")
+      );
+    });
     if (viewMapEl) {
-      viewMapEl.classList.toggle("gs-library-mode-active", nextMode === "library");
+      viewMapEl.classList.toggle("gs-library-mode-active", isDrawerOpen);
     }
     if (mapContainerEl) {
-      mapContainerEl.style.display = nextMode === "library" ? "none" : "";
+      mapContainerEl.style.display = "";
     }
     if (mapHudTop) {
-      mapHudTop.style.display = nextMode === "library" ? "none" : "";
+      mapHudTop.style.display = "";
     }
     if (mapControlsRail) {
-      mapControlsRail.style.display = nextMode === "library" ? "none" : "";
+      mapControlsRail.style.display = isDrawerOpen ? "none" : "";
     }
     if (mapBottomLeftBar) {
-      mapBottomLeftBar.style.display = nextMode === "library" ? "none" : "";
+      mapBottomLeftBar.style.display = isDrawerOpen ? "none" : "";
     }
     if (libOverlay) {
-      libOverlay.style.display = nextMode === "library" ? "flex" : "none";
+      libOverlay.style.display = isDrawerOpen ? "flex" : "none";
     }
 
     renderModelLibraryView();
-    if (nextMode === "library") {
+    if (isDrawerOpen) {
       document.getElementById("clusterHoverPopover")?.classList.remove("active");
-      const libScans = getLibraryScansList();
+      const pool = nextMode === "unassigned" ? getUnassignedScansList() : getLibraryScansList();
       const selFolder = STATE.selectedLibraryFolder || "ALL";
       const targetScan =
         (selFolder !== "ALL"
-          ? libScans.find((s) => String(s.project_group || "").toLowerCase() === String(selFolder).toLowerCase())
-          : null) || libScans[0];
+          ? pool.find((s) => String(s.project_group || "").toLowerCase() === String(selFolder).toLowerCase())
+          : null) || pool[0];
       if (targetScan && typeof openSiteTimeline === "function") {
         openSiteTimeline(targetScan.project_group, targetScan.scan_id);
       }
     } else {
-      // Returning to Map mode: if timeline currently displays a library scan/folder, restore Map Site & Scan
+      // Returning to Map Sites mode: if timeline currently displays a library scan/folder, restore Map Site & Scan
       const curScan = (STATE.scans || []).find((s) => s.scan_id === (STATE.selectedTimelineScanId || STATE.activeScanId));
       if (!curScan || isLibraryScan(curScan)) {
         const mapTarget = resolveInitialMapSiteAndScan(STATE.scans);
@@ -2440,17 +2459,22 @@
         }
       }
     }
+    setTimeout(() => {
+      if (typeof gsMap !== "undefined" && gsMap && typeof gsMap.drawMap === "function") {
+        gsMap.drawMap();
+      }
+    }, 45);
   }
 
   function _getLibraryFolderSvgIcon(iconKey) {
     const k = String(iconKey || "folder").toLowerCase();
-    if (k === "person" || k === "🧑" || k === "👤") {
+    if (k === "person") {
       return `<svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" style="flex-shrink:0;"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>`;
     }
-    if (k === "tool" || k === "🚜" || k === "🛠️") {
+    if (k === "tool") {
       return `<svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" style="flex-shrink:0;"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>`;
     }
-    if (k === "cube" || k === "📦" || k === "🧊") {
+    if (k === "cube") {
       return `<svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" style="flex-shrink:0;"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg>`;
     }
     return `<svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" style="flex-shrink:0;"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>`;
@@ -2459,11 +2483,18 @@
   function renderModelLibraryView() {
     const folders = getLibraryFoldersList();
     const allLibScans = getLibraryScansList();
+    const unassignedScans = getUnassignedScansList();
+    const isUnassignedMode = STATE.catalogSubMode === "unassigned";
+    const activePool = isUnassignedMode ? unassignedScans : allLibScans;
 
     const badgeEl = document.getElementById("libraryTotalCountBadge");
-    if (badgeEl) badgeEl.textContent = String(allLibScans.length);
+    if (badgeEl) badgeEl.textContent = String(activePool.length);
     const navBadgeEl = document.getElementById("navLibraryCountBadge");
     if (navBadgeEl) navBadgeEl.textContent = String(allLibScans.length);
+    const catLibBadgeEl = document.getElementById("catalogLibraryCountBadge");
+    if (catLibBadgeEl) catLibBadgeEl.textContent = String(allLibScans.length);
+    const catUnassBadgeEl = document.getElementById("catalogUnassignedCountBadge");
+    if (catUnassBadgeEl) catUnassBadgeEl.textContent = String(unassignedScans.length);
 
     const foldersBar = document.getElementById("libraryFoldersBar");
     const gridEl = document.getElementById("libraryModelsGrid");
@@ -2477,7 +2508,7 @@
       <button type="button" class="gs-lib-folder-pill ${selFolder === "ALL" ? "active" : ""}" data-folder="ALL">
         ${_getLibraryFolderSvgIcon("cube")}
         <span>${tr("全部", "All")}</span>
-        <span class="gs-lib-folder-count">${allLibScans.length}</span>
+        <span class="gs-lib-folder-count">${activePool.length}</span>
       </button>
     `;
     folders.forEach((f) => {
@@ -2500,7 +2531,7 @@
         STATE.selectedLibraryFolder = fname;
         renderModelLibraryView();
         if (fname !== "ALL") {
-          const matchScan = allLibScans.find((s) => String(s.project_group || "").toLowerCase() === fname.toLowerCase());
+          const matchScan = activePool.find((s) => String(s.project_group || "").toLowerCase() === fname.toLowerCase());
           if (matchScan && typeof openSiteTimeline === "function") {
             openSiteTimeline(matchScan.project_group, matchScan.scan_id);
           }
@@ -2514,7 +2545,7 @@
     if (btnDelFolder) btnDelFolder.style.display = canEdit && selFolder !== "ALL" ? "inline-flex" : "none";
 
     const q = String(STATE.librarySearchQuery || "").trim().toLowerCase();
-    const filteredScans = allLibScans.filter((s) => {
+    const filteredScans = activePool.filter((s) => {
       if (selFolder !== "ALL" && String(s.project_group || "").toLowerCase() !== selFolder.toLowerCase()) {
         return false;
       }

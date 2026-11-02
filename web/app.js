@@ -1137,7 +1137,7 @@
       badge.textContent = tr("工作站未連線 · 隧道離線", "PC Unreachable · Tunnel Offline");
       badge.style.background = "rgba(239,68,68,0.16)";
       badge.style.color = "#ef4444";
-      btnToggle.textContent = tr("啟動背景服務", "Start Daemon");
+      btnToggle.textContent = tr("啟動", "Start");
       if (detail) {
         detail.textContent = tr(
           "Windows 工作站反向隧道未連線。目前由 Google 雲端硬碟 .3tz 與瀏覽器快取提供掃描串流。",
@@ -1151,7 +1151,7 @@
       badge.textContent = tr(`執行中 · PID ${st.pid || "Active"}`, `Running · PID ${st.pid || "Active"}`);
       badge.style.background = "rgba(16,185,129,0.16)";
       badge.style.color = "#10b981";
-      btnToggle.textContent = tr("停止背景服務", "Stop Daemon");
+      btnToggle.textContent = tr("停止", "Stop");
       btnToggle.style.background = "rgba(239,68,68,0.14)";
       btnToggle.style.color = "#ef4444";
       btnToggle.style.borderColor = "rgba(239,68,68,0.35)";
@@ -1177,14 +1177,14 @@
       badge.textContent = tr("已停止 · 待命", "Stopped · Standby");
       badge.style.background = "rgba(245,158,11,0.16)";
       badge.style.color = "#f59e0b";
-      btnToggle.textContent = tr("啟動背景服務", "Start Daemon");
+      btnToggle.textContent = tr("啟動", "Start");
       btnToggle.style.background = "";
       btnToggle.style.color = "";
       btnToggle.style.borderColor = "";
       if (detail) {
         detail.textContent = tr(
-          "PC 背景 Google 雲端硬碟收件匣輪詢與 PIX4Dmatic 排程已暫停。點擊「啟動背景服務」即可恢復。",
-          "Background Google Drive Inbox polling & PIX4Dmatic queue are paused on PC. Click 'Start Daemon' to resume."
+          "PC 背景 Google 雲端硬碟收件匣輪詢與 PIX4Dmatic 排程已暫停。點擊「啟動」即可恢復。",
+          "Background Google Drive Inbox polling & PIX4Dmatic queue are paused on PC. Click 'Start' to resume."
         );
       }
     }
@@ -2401,15 +2401,27 @@
     });
   });
 
-  // 3D Model Library & Move Scan UI Listeners
+  // 3D Model Library, Unassigned, & Contextual Split-Map Mode Switcher Listeners
   document.getElementById("btnLeftModeMap")?.addEventListener("click", () => {
-    if (typeof setLeftPaneMode === "function") setLeftPaneMode("map");
+    if (typeof setLeftPaneMode === "function") setLeftPaneMode("sites");
   });
   document.getElementById("btnLeftModeLibrary")?.addEventListener("click", () => {
     if (typeof setLeftPaneMode === "function") setLeftPaneMode("library");
   });
   document.getElementById("btnLibraryBackToMap")?.addEventListener("click", () => {
-    if (typeof setLeftPaneMode === "function") setLeftPaneMode("map");
+    if (typeof setLeftPaneMode === "function") setLeftPaneMode("sites");
+  });
+  document.getElementById("btnCloseLibraryToMap")?.addEventListener("click", () => {
+    if (typeof setLeftPaneMode === "function") setLeftPaneMode("sites");
+  });
+  document.getElementById("btnCompareBackToMap")?.addEventListener("click", () => {
+    switchView("map");
+  });
+  document.querySelectorAll("#mapCatalogModeSwitcher [data-catalog-mode]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const m = btn.getAttribute("data-catalog-mode") || "sites";
+      if (typeof setLeftPaneMode === "function") setLeftPaneMode(m);
+    });
   });
   document.getElementById("librarySearchInput")?.addEventListener("input", (e) => {
     STATE.librarySearchQuery = e.target.value || "";
@@ -2910,7 +2922,7 @@
       const lblCol = document.getElementById("lblCollapseSidePanel");
       if (lblCol) {
         const isMin = Boolean(STATE.sidePanelMinimized);
-        lblCol.textContent = tr(isMin ? "▴ 展開" : "▾ 收合", isMin ? "▴ Expand" : "▾ Collapse");
+        lblCol.textContent = isMin ? "▴" : "▾";
       }
       if (STATE.activeView === "studio") {
         if (STATE.activeScan) {

@@ -822,7 +822,7 @@
     const sizeText = formatScanSizeMb(scan);
     const stageTag =
       scan.quality_stage === "preview_ready"
-        ? ` · ⚡ ${tr("快速預覽 (16K 完整版排隊中)", "Fast Preview (16K HQ Queued)")}`
+        ? ` · ${tr("快速預覽 (16K 完整版排隊中)", "Fast Preview (16K HQ Queued)")}`
         : "";
 
     metricsEl.textContent = `${crsText} · ${areaText} · ${polyText} · ${texText} · ${sizeText}${stageTag}`;
@@ -931,7 +931,7 @@
           <div style="font-size:11.5px;font-weight:700;color:var(--ui-text-primary);" data-i18n-zh="選擇下載格式" data-i18n-en="Download 3D Scan">${tr("選擇下載格式", "Download 3D Scan")}</div>
           <div style="font-size:10px;color:var(--ui-text-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="${safeScanName}">${safeScanName} · ${escapeHtml(formatScanPolyCount(scan, { short: true }))}</div>
         </div>
-        <button type="button" id="btnCloseDlPopover" style="background:none;border:none;color:var(--ui-text-muted);cursor:pointer;font-size:13px;padding:2px 5px;line-height:1;" title="${tr("關閉", "Close")}" data-i18n-title-zh="關閉" data-i18n-title-en="Close">✕</button>
+        <button type="button" id="btnCloseDlPopover" style="background:none;border:none;color:var(--ui-text-muted);cursor:pointer;padding:2px 5px;line-height:1;display:inline-flex;align-items:center;" title="${tr("關閉", "Close")}" data-i18n-title-zh="關閉" data-i18n-title-en="Close"><svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
       </div>
       <div style="display:flex;flex-direction:column;gap:5px;">
         ${formats
@@ -1019,17 +1019,17 @@
     const isPass1 = scan.pending_pass === "preview" && !isPreviewReady;
     if (st === "completed") {
       if (isPreviewReady) {
-        return `<span class="gs-tile-chip" style="background:rgba(139,92,246,0.92);color:#fff;font-weight:700;">${tr("⚡ 快速預覽版", "⚡ FAST PREVIEW")}</span>`;
+        return `<span class="gs-tile-chip" style="background:rgba(139,92,246,0.92);color:#fff;font-weight:700;">${tr("快速預覽版", "FAST PREVIEW")}</span>`;
       }
       return "";
     }
     if (st === "processing") {
       const pct = Math.round(Number(scan.progress_pct || 0));
       if (isPreviewReady) {
-        return `<span class="gs-tile-chip" style="background:rgba(139,92,246,0.92);color:#fff;font-weight:700;" title="${tr("快速預覽已上線可檢視，正在計算 16K 完整版", "Fast Preview is live & viewable while 16K HQ builds")}">${tr(`⚡ 預覽就緒 · 16K ${pct}%`, `⚡ PREVIEW · 16K ${pct}%`)}</span>`;
+        return `<span class="gs-tile-chip" style="background:rgba(139,92,246,0.92);color:#fff;font-weight:700;" title="${tr("快速預覽已上線可檢視，正在計算 16K 完整版", "Fast Preview is live & viewable while 16K HQ builds")}">${tr(`預覽就緒 · 16K ${pct}%`, `PREVIEW · 16K ${pct}%`)}</span>`;
       }
       if (isPass1) {
-        return `<span class="gs-tile-chip" style="background:rgba(2,132,199,0.92);color:#fff;font-weight:700;">${tr(`⚡ 快速預覽 ${pct}%`, `⚡ PREVIEW ${pct}%`)}</span>`;
+        return `<span class="gs-tile-chip" style="background:rgba(2,132,199,0.92);color:#fff;font-weight:700;">${tr(`快速預覽 ${pct}%`, `PREVIEW ${pct}%`)}</span>`;
       }
       return `<span class="gs-tile-chip" style="background:rgba(2,132,199,0.9);color:#fff;font-weight:700;">${tr(`處理中 ${pct}%`, `PROCESSING ${pct}%`)}</span>`;
     }
@@ -1048,12 +1048,11 @@
         if (idx >= 0) qPos = idx + 1;
       }
       if (isPreviewReady) {
-        const lbl = qPos > 0 ? tr(`⚡ 預覽版 · 16K 排隊 #${qPos}`, `⚡ PREVIEW · 16K #${qPos}`) : tr("⚡ 預覽版 · 16K 排隊", "⚡ PREVIEW · 16K QUEUED");
+        const lbl = qPos > 0 ? tr(`預覽版 · 16K 排隊 #${qPos}`, `PREVIEW · 16K #${qPos}`) : tr("預覽版 · 16K 排隊", "PREVIEW · 16K QUEUED");
         return `<span class="gs-tile-chip" style="background:rgba(139,92,246,0.92);color:#fff;font-weight:700;" title="${tr("快速預覽已上線可檢視，16K 完整版排隊中", "Fast Preview is live & viewable; 16K HQ upgrade is queued")}">${lbl}</span>`;
       }
       const isNext = qPos === 1 || Number(scan.force_next || 0) === 1;
-      const passPrefix = isPass1 ? "⚡ " : "";
-      const lbl = qPos > 0 ? tr(`${passPrefix}排隊 #${qPos}`, `${passPrefix}QUEUED #${qPos}`) : isNext ? tr(`${passPrefix}排隊 #1`, `${passPrefix}QUEUED #1`) : tr(`${passPrefix}排隊中`, `${passPrefix}QUEUED`);
+      const lbl = qPos > 0 ? tr(`排隊 #${qPos}`, `QUEUED #${qPos}`) : isNext ? tr("排隊 #1", "QUEUED #1") : tr("排隊中", "QUEUED");
       const bg = isNext ? "rgba(16,185,129,0.9)" : "rgba(245,158,11,0.9)";
       return `<span class="gs-tile-chip" style="background:${bg};color:#fff;font-weight:700;">${lbl}</span>`;
     }
@@ -3098,12 +3097,14 @@
         </label>
         <div class="gs-bin-item-actions recycle-bin-item-actions" style="display:flex;align-items:center;gap:6px;flex-shrink:0;flex-wrap:wrap;">
           <button type="button" class="btn-xs primary" data-bin-restore="${escapeHtml(sid)}" title="${tr("將此掃描還原至地圖與 3D 工作台", "Restore this scan back to Map & Studio")}">
-            ↩ ${tr("還原", "Restore")}
+            <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/></svg>
+            <span>${tr("還原", "Restore")}</span>
           </button>
           ${
             canPurge
               ? `<button type="button" class="btn-xs" data-bin-purge="${escapeHtml(sid)}" style="color:#ef4444;border-color:rgba(239,68,68,0.4);" title="${tr("從磁碟永久刪除此掃描與檔案", "Permanently delete this scan and its files from disk")}">
-                  🗑 ${tr("永久刪除", "Delete Forever")}
+                  <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+                  <span>${tr("清除", "Purge")}</span>
                 </button>`
               : ""
           }

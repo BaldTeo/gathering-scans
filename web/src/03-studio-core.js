@@ -3169,8 +3169,8 @@
     if (lockBtn) {
       lockBtn.classList.toggle("locked", fp.pointerLocked);
       lockBtn.textContent = fp.pointerLocked
-        ? tr("🔒 準星已鎖定 (Esc 解鎖滑鼠)", "🔒 Crosshair Locked (Esc to Unlock)")
-        : tr("🎯 點擊畫面鎖定滑鼠 (或拖曳旋轉)", "🎯 Click to Lock Mouse (or Drag to Look)");
+        ? tr("已鎖定", "Locked")
+        : tr("鎖定", "Lock");
     }
 
     const slider = document.getElementById("fpSpeedSlider");
@@ -3188,7 +3188,7 @@
         fp.locomotion === "walk"
           ? Math.min(9.0, Math.max(1.2, Math.min(12.0, fp.baseSpeed * 0.6)) * mult * (isCrouch ? 0.55 : 1.0))
           : fp.baseSpeed * mult;
-      lblSpeed.textContent = `${eff.toFixed(1)} m/s${sprint ? " ⚡" : slow ? " 🐢" : ""}`;
+      lblSpeed.textContent = `${eff.toFixed(1)} m/s`;
     }
 
     const upKey = document.getElementById("lblFpUpKeyHint");

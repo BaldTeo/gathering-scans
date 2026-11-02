@@ -1665,4 +1665,164 @@ body.theme-dark .subtab-btn.active {
   height: 10px;
 }
 
+/* =========================================================================
+   UI Redesign Phase 2: Contextual Split-Map, Right-Side Collapsible Edit Dock,
+   Inspector Right-Edge Restore Tab & Viewport-Centered Bottom Dock
+   ========================================================================= */
+#viewStudio {
+  --studio-inspector-w: 0px;
+}
 
+.gs-inspector-edge-tab {
+  display: none;
+  position: absolute;
+  right: 0;
+  top: 86px;
+  z-index: 96;
+  align-items: center;
+  gap: 5px;
+  padding: 7px 11px 7px 9px;
+  border-radius: 10px 0 0 10px;
+  border: 1px solid var(--ui-border-strong, #cbd5e1);
+  border-right: none;
+  background: var(--ui-bg-window, rgba(15, 23, 42, 0.92));
+  color: var(--ui-accent, #0284c7);
+  font-size: 11.5px;
+  font-weight: 700;
+  box-shadow: var(--ui-shadow-window, 0 8px 24px rgba(15, 23, 42, 0.16));
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  cursor: pointer;
+  transition: padding 0.16s ease, background 0.16s ease, color 0.16s ease;
+}
+
+.gs-inspector-edge-tab:hover {
+  padding-right: 15px;
+  background: var(--ui-accent, #0284c7);
+  color: #ffffff;
+}
+
+.gs-edit-dock-toggle-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  width: 100%;
+  min-width: 52px;
+  height: 28px;
+  padding: 0 7px;
+  border-radius: 8px;
+  border: 1px solid rgba(2, 132, 199, 0.32);
+  background: rgba(2, 132, 199, 0.12);
+  color: var(--ui-accent, #0284c7);
+  font-size: 10.5px;
+  font-weight: 800;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.gs-edit-dock-toggle-btn:hover {
+  background: var(--ui-accent, #0284c7);
+  color: #ffffff;
+}
+
+.gs-edit-dock-toggle-btn svg {
+  transition: transform 0.18s ease;
+}
+
+@media (min-width: 768px) {
+  #viewStudio:has(#studioSidePanel.active:not(.hidden):not(.gs-panel-minimized)) {
+    --studio-inspector-w: 380px;
+  }
+
+  /* Right-Edge Inspector Collapse & Restore Tab on Desktop */
+  #studioSidePanel.gs-panel-minimized {
+    transform: translateX(calc(100% + 28px)) !important;
+    opacity: 0 !important;
+    pointer-events: none !important;
+  }
+
+  #viewStudio:has(#studioSidePanel.active:not(.hidden).gs-panel-minimized) #studioInspectorEdgeTab {
+    display: inline-flex !important;
+  }
+
+  /* Right-Side Collapsible Editing Dock (#studioEditingDock) */
+  .gs-studio-editing-dock,
+  #studioEditingDock {
+    left: auto !important;
+    right: calc(16px + var(--studio-inspector-w, 0px)) !important;
+    top: 50%;
+    transform: translateY(-50%);
+    transition: right 0.22s cubic-bezier(0.22, 1, 0.36, 1), padding 0.18s ease;
+  }
+
+  #studioEditingDock.gs-edit-dock-collapsed {
+    right: calc(0px + var(--studio-inspector-w, 0px)) !important;
+    padding: 5px 6px !important;
+    border-radius: 10px 0 0 10px !important;
+    border-right: none !important;
+  }
+
+  #studioEditingDock.gs-edit-dock-collapsed .gs-edit-dock-btn {
+    display: none !important;
+  }
+
+  #studioEditingDock:not(.gs-edit-dock-collapsed) #svgEditDockChevron {
+    transform: rotate(180deg);
+  }
+}
+
+@media (min-width: 768px) and (max-width: 980px) {
+  #viewStudio:has(#studioSidePanel.active:not(.hidden):not(.gs-panel-minimized)) {
+    --studio-inspector-w: 320px;
+  }
+}
+
+@media (min-width: 1025px) {
+  #bimBottomDock,
+  .bim-bottom-dock,
+  .bim-measure-bottom-container {
+    left: calc(50% - (var(--studio-inspector-w, 0px) * 0.5)) !important;
+    transition: left 0.22s cubic-bezier(0.22, 1, 0.36, 1);
+  }
+
+  .gs-studio-top-bar {
+    right: calc(16px + var(--studio-inspector-w, 0px)) !important;
+    transition: right 0.22s cubic-bezier(0.22, 1, 0.36, 1);
+  }
+}
+
+@media (max-width: 767px) {
+  #btnToggleEditDockCollapse {
+    display: none !important;
+  }
+}
+
+/* Contextual Split-Map Mode for Unassigned & Library Catalog Modes */
+.gs-map-left-pane {
+  display: flex;
+  flex-direction: column;
+}
+
+#viewMap.gs-library-mode-active #mapContainer {
+  position: relative !important;
+  inset: auto !important;
+  flex: 0 0 38% !important;
+  height: 38% !important;
+  width: 100% !important;
+  display: block !important;
+}
+
+#viewMap.gs-library-mode-active .gs-map-hud-top {
+  display: flex !important;
+}
+
+#viewMap.gs-library-mode-active #modelLibraryOverlay {
+  position: relative !important;
+  inset: auto !important;
+  flex: 1 1 62% !important;
+  height: 62% !important;
+  width: 100% !important;
+  border-top: 1.5px solid var(--ui-border-strong, #334155);
+  z-index: 30;
+}

@@ -1436,7 +1436,8 @@ select.gs-input,
   box-shadow: -4px 0 20px rgba(15, 23, 42, 0.12);
 }
 
-#btnCloseSiteTimeline { display: none !important; }
+.gs-site-timeline-split:not(.active) { display: none !important; }
+#viewMap:not(:has(#siteTimelineSplitView.active)) .gs-map-left-pane { width: 100%; flex: 1 1 100%; }
 
 .gs-site-timeline-top {
   height: 30%;
@@ -4840,9 +4841,6 @@ body.theme-light .gs-lib-folder-pill {
 .gs-share-banner { gap: 10px; white-space: nowrap; }
 .gs-share-banner strong { white-space: nowrap; flex-shrink: 0; }
 body.gs-single-scan-share #mainModeSwitcher { display: none !important; }
-#viewMap.gs-library-mode-active #mapContainer,
-#viewMap.gs-library-mode-active .gs-map-zoom-controls,
-#viewMap.gs-library-mode-active .gs-map-hud-top,
 #viewMap.gs-library-mode-active .gs-map-controls-rail,
 #viewMap.gs-library-mode-active .gs-map-bottom-left-bar,
 #viewMap.gs-library-mode-active #clusterHoverPopover { display: none !important; }
