@@ -1342,7 +1342,12 @@ class PublicUtilitiesGISMixin(UtilitiesElevationMixin):
                     except Exception:
                         scan = {}
                 sample_ground_z, _cat_d, ref_ground_h, dtm_obj = self._build_multi_source_ground_sampler(
-                    scan_id, scan, ce, cn, safe_float(best_cached_data.get("ground_reference_h"), ch) or ch
+                    scan_id,
+                    scan,
+                    ce,
+                    cn,
+                    safe_float(best_cached_data.get("ground_reference_h"), ch) or ch,
+                    fallback_terrain_grid=best_cached_data.get("terrain_grid"),
                 )
 
                 if is_all_layers and abs(c_rad_best - radius_m) <= 2.0 and dist_best <= 15.0:

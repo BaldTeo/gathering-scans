@@ -205,32 +205,35 @@ class UtilitiesElevationMixin:
         ch: float,
         cat_data: Optional[Dict[str, Any]],
         min_street_floor_h: Optional[float] = None,
+        fallback_terrain_grid: Optional[Dict[str, Any]] = None,
     ) -> Optional[Dict[str, Any]]:
         """
         Extracts a bare-earth Digital Terrain Model (DTM) heightfield from the scan's `_dsm_cache_v5.npz`
         by applying a morphological lower-percentile canopy/building filter and anchoring to categorized roads.
+        When `_dsm_cache_v5.npz` is absent (e.g. on the cloud VPS), reconstructs `dtm_obj` from `fallback_terrain_grid`.
         """
-        if not scan_id:
+        if not scan_id and not fallback_terrain_grid:
             return None
         sc = dict(scan) if isinstance(scan, dict) else {}
-        if not sc.get("project_dir") and hasattr(self, "_resolve_scan_record"):
+        if scan_id and not sc.get("project_dir") and hasattr(self, "_resolve_scan_record"):
             try:
                 sc = self._resolve_scan_record(scan_id) or sc
             except Exception:
                 pass
 
-        proj_dir = sc.get("project_dir") or os.path.join(SCANS_ROOT_DIR, scan_id)
+        proj_dir = (sc.get("project_dir") or os.path.join(SCANS_ROOT_DIR, scan_id)) if scan_id else ""
         npz_path = os.path.join(proj_dir, "_dsm_cache_v5.npz") if (proj_dir and os.path.isdir(proj_dir)) else ""
-        mtime = os.path.getmtime(npz_path) if (npz_path and os.path.isfile(npz_path)) else 0.0
+        has_npz = bool(npz_path and os.path.isfile(npz_path))
+        mtime = os.path.getmtime(npz_path) if has_npz else -1.0
         floor_key = round(min_street_floor_h, 2) if min_street_floor_h is not None else -999.0
-        cache_key = f"{scan_id}_{floor_key}"
+        cache_key = f"{scan_id}_{floor_key}_{'npz' if has_npz else 'tg'}"
 
         cached = _BARE_EARTH_DTM_MEM_CACHE.get(cache_key)
         if cached is not None and abs(cached[0] - mtime) < 1e-3:
             return cached[1]
 
         dsm_data: Optional[Dict[str, Any]] = None
-        if npz_path and os.path.isfile(npz_path):
+        if has_npz:
             try:
                 z = np.load(npz_path)
                 dsm_data = {
@@ -246,6 +249,73 @@ class UtilitiesElevationMixin:
                 dsm_data = None
 
         if not dsm_data:
+            tg = fallback_terrain_grid if isinstance(fallback_terrain_grid, dict) else None
+            if tg is None and scan_id:
+                safe_sid = "".join(c if c.isalnum() or c in "_-" else "_" for c in str(scan_id))
+                master_fp = os.path.join(UTILITIES_CACHE_DIR, f"{safe_sid}_master_v3.json")
+                if os.path.isfile(master_fp):
+                    try:
+                        with open(master_fp, "r", encoding="utf-8") as mf:
+                            mdoc = json.load(mf)
+                        if isinstance(mdoc, dict) and isinstance(mdoc.get("terrain_grid"), dict):
+                            tg = mdoc["terrain_grid"]
+                    except Exception:
+                        tg = None
+            if isinstance(tg, dict):
+                try:
+                    nx_tg = int(tg.get("nx") or 0)
+                    ny_tg = int(tg.get("ny") or 0)
+                    z_list = tg.get("z_grid") or []
+                    if nx_tg >= 2 and ny_tg >= 2 and len(z_list) == nx_tg * ny_tg:
+                        e_min = float(tg["e_min"])
+                        e_max = float(tg["e_max"])
+                        n_min = float(tg["n_min"])
+                        n_max = float(tg["n_max"])
+                        res_x = max(0.04, (e_max - e_min) / max(1, nx_tg - 1))
+                        res_y = max(0.04, (n_max - n_min) / max(1, ny_tg - 1))
+                        res = 0.5 * (res_x + res_y)
+                        bare_smooth = np.asarray(z_list, dtype=np.float32).reshape((ny_tg, nx_tg))
+                        if min_street_floor_h is not None:
+                            bare_smooth = np.maximum(bare_smooth, float(min_street_floor_h))
+                        h_list = tg.get("hull_grid")
+                        if isinstance(h_list, list) and len(h_list) == nx_tg * ny_tg:
+                            hull = np.asarray([bool(v) for v in h_list], dtype=bool).reshape((ny_tg, nx_tg))
+                        else:
+                            hull = np.ones((ny_tg, nx_tg), dtype=bool)
+                        dist_out_cells = distance_transform_edt(~hull)
+                        if isinstance(dist_out_cells, tuple):
+                            dist_out_cells = dist_out_cells[0]
+                        dist_out_m = ( np.asarray(dist_out_cells, dtype=np.float32) * res ).astype(np.float32)
+                        inside_bare = bare_smooth[hull] if np.any(hull) else bare_smooth.ravel()
+                        scan_ground_ref_h = float(
+                            tg.get("scan_ground_ref_h")
+                            if tg.get("scan_ground_ref_h") is not None
+                            else np.percentile(inside_bare, 35)
+                        )
+                        if min_street_floor_h is not None:
+                            scan_ground_ref_h = max(scan_ground_ref_h, float(min_street_floor_h))
+                        dtm_obj = {
+                            "scan_id": scan_id,
+                            "e_min": e_min,
+                            "e_max": e_max,
+                            "n_min": n_min,
+                            "n_max": n_max,
+                            "res": res,
+                            "res_x": res_x,
+                            "res_y": res_y,
+                            "nx": nx_tg,
+                            "ny": ny_tg,
+                            "bare_grid": bare_smooth,
+                            "hull_mask": hull,
+                            "dist_out_m": dist_out_m,
+                            "dist_outside_m": dist_out_m,
+                            "scan_ground_ref_h": round(scan_ground_ref_h, 3),
+                            "terrain_grid": tg,
+                        }
+                        _BARE_EARTH_DTM_MEM_CACHE[cache_key] = (mtime, dtm_obj)
+                        return dtm_obj
+                except Exception:
+                    pass
             return None
 
         raw = np.asarray(dsm_data["dsm_raw"], dtype=np.float32)
@@ -342,11 +412,14 @@ class UtilitiesElevationMixin:
             "n_min": n_min,
             "n_max": n_max,
             "res": res,
+            "res_x": res,
+            "res_y": res,
             "nx": nx,
             "ny": ny,
             "bare_grid": bare_smooth,
             "hull_mask": hull,
             "dist_out_m": dist_out_m,
+            "dist_outside_m": dist_out_m,
             "scan_ground_ref_h": round(scan_ground_ref_h, 3),
             "terrain_grid": terrain_grid_payload,
         }
@@ -363,14 +436,15 @@ class UtilitiesElevationMixin:
             return None, 1e9
         e_min = dtm["e_min"]
         n_min = dtm["n_min"]
-        res = dtm["res"]
+        res_x = float(dtm.get("res_x") or dtm["res"])
+        res_y = float(dtm.get("res_y") or dtm["res"])
         nx = dtm["nx"]
         ny = dtm["ny"]
         grid = dtm["bare_grid"]
-        dist_out_m = dtm["dist_out_m"]
+        dist_out_m = dtm.get("dist_out_m") if dtm.get("dist_out_m") is not None else dtm["dist_outside_m"]
 
-        fe = (e_pt - e_min) / res
-        fn = (n_pt - n_min) / res
+        fe = (e_pt - e_min) / res_x
+        fn = (n_pt - n_min) / res_y
 
         # Extra Euclidean distance if outside bounding box [e_min..e_max, n_min..n_max]
         dx_box = 0.0
@@ -412,6 +486,7 @@ class UtilitiesElevationMixin:
         ce: float,
         cn: float,
         ch: float,
+        fallback_terrain_grid: Optional[Dict[str, Any]] = None,
     ) -> Tuple[Callable[..., float], Optional[Dict[str, Any]], float, Optional[Dict[str, Any]]]:
         """
         Builds a unified, multi-source ground elevation sampler `sample_ground_z(e, n, mode="hybrid")`
@@ -506,7 +581,14 @@ class UtilitiesElevationMixin:
         )
 
         dtm_obj = self._build_scan_bare_earth_dtm(
-            scan_id, scan, ce, cn, ch, cat_data, min_street_floor_h=min_street_floor_h
+            scan_id,
+            scan,
+            ce,
+            cn,
+            ch,
+            cat_data,
+            min_street_floor_h=min_street_floor_h,
+            fallback_terrain_grid=fallback_terrain_grid,
         )
 
         # Determine canonical reference ground elevation at scan center
@@ -661,7 +743,7 @@ class UtilitiesElevationMixin:
             return [], {"min_ground_h": 0.0, "max_ground_h": 0.0, "relief_m": 0.0, "scan_dtm_active": bool(dtm_obj)}
 
         # Pass 1: Drape point structures (manholes, catch basins, hydrants, poles) and build O(1) 2m spatial manhole grid
-        mh_grid: Dict[Tuple[str, int, int], List[Tuple[float, float, float]]] = {}
+        mh_grid: Dict[Tuple[str, int, int], List[Tuple[float, float, float, float, float]]] = {}
         all_ground_hs: List[float] = []
         draped_features: List[Dict[str, Any]] = []
 
@@ -705,24 +787,26 @@ class UtilitiesElevationMixin:
                     all_ground_hs.append(g_hyb)
                     if ftype in ("manhole", "catch_basin"):
                         gx, gy = int(pe // 2.0), int(pn // 2.0)
-                        mh_grid.setdefault((lyr, gx, gy), []).append((pe, pn, g_hyb))
+                        mh_grid.setdefault((lyr, gx, gy), []).append((pe, pn, g_hyb, g_scan, g_gov))
             draped_features.append(f)
 
-        def _snap_mh_rim(lyr_k: str, pe_q: float, pn_q: float, def_g: float) -> float:
+        def _snap_mh_rim(
+            lyr_k: str, pe_q: float, pn_q: float, def_hyb: float, def_scan: float, def_gov: float
+        ) -> Tuple[float, float, float]:
             gx, gy = int(pe_q // 2.0), int(pn_q // 2.0)
             best_d2 = 0.72  # 0.85m radius squared
-            best_rim = def_g
+            best_vals = (def_hyb, def_scan, def_gov)
             for dx_g in (-1, 0, 1):
                 for dy_g in (-1, 0, 1):
                     bucket = mh_grid.get((lyr_k, gx + dx_g, gy + dy_g))
                     if not bucket:
                         continue
-                    for me, mn, mrim in bucket:
+                    for me, mn, m_hyb, m_scan, m_gov in bucket:
                         d2 = (pe_q - me) ** 2 + (pn_q - mn) ** 2
                         if d2 <= best_d2:
                             best_d2 = d2
-                            best_rim = mrim
-            return best_rim
+                            best_vals = (m_hyb, m_scan, m_gov)
+            return best_vals
 
         # Pass 2: Drape linear features (pipes & box culverts) per-vertex with terrain subdivision & manhole snapping
         final_features: List[Dict[str, Any]] = []
@@ -795,7 +879,7 @@ class UtilitiesElevationMixin:
                 g_scan = sample_ground_z(pe, pn, "scan_only")
                 g_gov = sample_ground_z(pe, pn, "gov_only")
                 if i == 0 or i == len(pts_2d) - 1:
-                    g_hyb = _snap_mh_rim(lyr, pe, pn, g_hyb)
+                    g_hyb, g_scan, g_gov = _snap_mh_rim(lyr, pe, pn, g_hyb, g_scan, g_gov)
                 inv_i = round(g_hyb - dep_i, 3)
                 new_coords.append([round(pe, 3), round(pn, 3), inv_i])
                 v_ground_hs.append(round(g_hyb, 3))
