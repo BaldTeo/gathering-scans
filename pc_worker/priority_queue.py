@@ -366,8 +366,11 @@ class ScanQueueDB:
             "group_type",
             "user_edited_project",
         ):
-            if ex_k in scan_data and scan_data[ex_k] not in (None, "", [], {}):
-                extra_payload[ex_k] = scan_data[ex_k]
+            if ex_k in scan_data:
+                if scan_data[ex_k] not in (None, "", [], {}):
+                    extra_payload[ex_k] = scan_data[ex_k]
+                elif ex_k == "applied_adjustments":
+                    extra_payload.pop(ex_k, None)
         for pass_k in ("quality_stage", "pending_pass"):
             if pass_k in scan_data and scan_data[pass_k] is not None:
                 val_str = str(scan_data[pass_k]).strip()

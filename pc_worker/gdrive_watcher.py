@@ -1008,22 +1008,27 @@ def _walk_tight_leaf_center_and_extents(root: Dict[str, Any]) -> Tuple[float, fl
     the tight 3D mesh centroid and half-extents, avoiding sky-high cubic octree root boxes.
     """
     by_depth: Dict[int, List[List[float]]] = {}
+    leaf_boxes: List[List[float]] = []
 
     def _walk(node: Any, d: int) -> None:
-        if not isinstance(node, dict) or d > 8:
+        if not isinstance(node, dict) or d > 10:
             return
         content = node.get("content") or {}
         uri = content.get("uri") or content.get("url")
         box = (node.get("boundingVolume") or {}).get("box")
+        children = [c for c in (node.get("children") or []) if isinstance(c, dict)]
         if uri and isinstance(box, list) and len(box) >= 12:
-            by_depth.setdefault(d, []).append([float(v or 0.0) for v in box[:12]])
-        for ch in node.get("children") or []:
+            b12 = [float(v or 0.0) for v in box[:12]]
+            by_depth.setdefault(d, []).append(b12)
+            if not children:
+                leaf_boxes.append(b12)
+        for ch in children:
             _walk(ch, d + 1)
 
     _walk(root, 0)
     if by_depth:
         max_d = max(by_depth.keys())
-        boxes = by_depth[max_d]
+        boxes = leaf_boxes if leaf_boxes else by_depth[max_d]
         xs_all = [b[0] for b in boxes]
         ys_all = [b[1] for b in boxes]
         if len(boxes) >= 2 and (max(xs_all) - min(xs_all) > 1000.0 or max(ys_all) - min(ys_all) > 1000.0):

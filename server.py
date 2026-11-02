@@ -969,7 +969,7 @@ class GatheringScansHandler(CloudAndTunnelHandlerMixin, ServerWriteRoutesMixin, 
         if not ver_hint:
             ver_hint = str(abs(hash(f"{sid}:{s.get('updated_at') or s.get('capture_date') or ''}:{s.get('twd97_h') or 0}")) % 1000000000)
         ts_ver = f"opt6_{ver_hint}"
-        prev_ver = f"low3_{ver_hint}"
+        prev_ver = f"low4_{ver_hint}"
         if ts_path and ts_path[:2].upper() == "C:" and os.path.isfile(ts_path):
             try:
                 bdir = os.path.dirname(ts_path)
@@ -993,7 +993,7 @@ class GatheringScansHandler(CloudAndTunnelHandlerMixin, ServerWriteRoutesMixin, 
                     * 1000
                 )
                 ts_ver = f"opt6_{m_ts}"
-                prev_ver = f"low3_{m_prev}"
+                prev_ver = f"low4_{m_prev}"
                 s["tileset_version"] = m_ts
                 s["has_original_backup"] = os.path.isfile(os.path.join(proj_dir, "tileset_backup", "tileset.json"))
                 s["has_undo"] = os.path.isfile(os.path.join(proj_dir, "tileset_prev", "tileset.json"))

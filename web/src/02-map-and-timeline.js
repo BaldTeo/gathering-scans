@@ -1875,8 +1875,17 @@
 
     tr.loadSiblings = false;
 
+    const isPreviewTileset = Boolean(
+      tr._isPreviewTileset || String(tr._loadedTilesetUrl || "").includes("preview_tileset.json")
+    );
     const depthInfo = computeTilesetDepthLimits(tr.root, 30);
-    if (lodMode === "rough") {
+    if (isPreviewTileset) {
+      // preview_tileset.json is already pre-pruned on disk to a single root GLB or coarse octant tiles:
+      // allow TilesRenderer to traverse any empty container nodes and load all preview tiles immediately.
+      tr.maxDepth = Infinity;
+      tr.errorTarget = 0.0;
+      tr._maxActiveTiles = 96;
+    } else if (lodMode === "rough") {
       tr.errorTarget = 1e9;
       tr.maxDepth = depthInfo.roughMaxDepth;
       tr._maxActiveTiles = 16;
@@ -1904,7 +1913,9 @@
     }
 
     if (tr.downloadQueue) {
-      tr.downloadQueue.maxJobs = isIOS
+      tr.downloadQueue.maxJobs = isPreviewTileset
+        ? (isIOS ? 6 : 12)
+        : isIOS
         ? 3
         : isMobOrTab
         ? 4
@@ -1917,12 +1928,18 @@
         : 6;
     }
     if (tr.parseQueue) {
-      tr.parseQueue.maxJobs = isIOS ? 2 : isMobOrTab || isEmbed || isPreview ? 3 : 4;
+      tr.parseQueue.maxJobs = isPreviewTileset
+        ? (isIOS ? 3 : 6)
+        : isIOS
+        ? 2
+        : isMobOrTab || isEmbed || isPreview
+        ? 3
+        : 4;
     }
     if (tr.lruCache) {
       if (lodMode === "rough") {
-        tr.lruCache.minSize = 24;
-        tr.lruCache.maxSize = 48;
+        tr.lruCache.minSize = 48;
+        tr.lruCache.maxSize = 96;
         tr.lruCache.minBytesSize = 48 * 1024 * 1024;
         tr.lruCache.maxBytesSize = 96 * 1024 * 1024;
       } else if (lodMode === "max" && !isEmbed) {
@@ -1983,9 +2000,11 @@
     if ((!tr.root.content || !tr.root.content.uri) && !isTightRootBox) {
       const rootMat = (tr.root.engineData && tr.root.engineData.transform) || new THREE.Matrix4();
       const byDepth = new Map();
+      const leafPts = [];
       const tmpVec = new THREE.Vector3();
       const walk = (node, depth) => {
-        if (!node || depth > 6) return;
+        if (!node || depth > 10) return;
+        const hasChildren = Array.isArray(node.children) && node.children.length > 0;
         if (node.content && node.content.uri && node.boundingVolume && Array.isArray(node.boundingVolume.box)) {
           const b = node.boundingVolume.box;
           const cx = Number(b[0]) || 0;
@@ -1996,25 +2015,27 @@
           const hz = Math.abs(Number(b[5]) || 0) + Math.abs(Number(b[8]) || 0) + Math.abs(Number(b[11]) || 0);
           tmpVec.set(cx, cy, cz).applyMatrix4(rootMat);
           if (isFinite(tmpVec.x) && isFinite(tmpVec.y) && isFinite(tmpVec.z)) {
-            if (!byDepth.has(depth)) byDepth.set(depth, []);
-            byDepth.get(depth).push({
+            const ptItem = {
               x: tmpVec.x,
               y: tmpVec.y,
               z: tmpVec.z,
               hx,
               hy,
               hz,
-            });
+            };
+            if (!byDepth.has(depth)) byDepth.set(depth, []);
+            byDepth.get(depth).push(ptItem);
+            if (!hasChildren) leafPts.push(ptItem);
           }
         }
-        if (Array.isArray(node.children)) {
+        if (hasChildren) {
           node.children.forEach((c) => walk(c, depth + 1));
         }
       };
       walk(tr.root, 0);
       if (byDepth.size > 0) {
         const maxDepth = Math.max(...byDepth.keys());
-        let pts = byDepth.get(maxDepth) || [];
+        let pts = leafPts.length > 0 ? leafPts : (byDepth.get(maxDepth) || []);
         // Safeguard C: If leaf nodes span > 1,000m across disconnected islands, cluster and frame the dominant island
         if (pts.length > 2) {
           let spanMinX = Infinity, spanMaxX = -Infinity, spanMinY = Infinity, spanMaxY = -Infinity;
@@ -2179,7 +2200,8 @@
     const isMobileOrTab = typeof isMobileOrTabletDevice === "function" && isMobileOrTabletDevice();
     const isIOS = typeof isIOSOrIPadDevice === "function" && isIOSOrIPadDevice();
     const lodMode = STATE.previewLodMode || "rough";
-    const useRoughTilesetOnly = lodMode === "rough" && isIOS;
+    const useRoughTilesetOnly = !previewThree._forceFullTilesetFallback && lodMode === "rough";
+    previewThree._forceFullTilesetFallback = false;
     const streamUrl = useRoughTilesetOnly
       ? scan.preview_stream_url ||
         (scan.stream_url
@@ -2253,6 +2275,8 @@
       );
     } else if (window.TilesRenderer) {
       const tr = new window.TilesRenderer(streamUrl);
+      tr._loadedTilesetUrl = streamUrl;
+      tr._isPreviewTileset = Boolean(useRoughTilesetOnly && String(streamUrl).includes("preview_tileset.json"));
       tr.fetchOptions = { mode: "cors" };
       tr.preprocessURL = (uri) => preprocessTileStreamUrl(uri, streamUrl);
       tr.setCamera(previewThree.camera);
@@ -2263,6 +2287,16 @@
       const ktx2 = getKTX2Loader(previewThree.renderer);
       if (ktx2) gltfLoader.setKTX2Loader(ktx2);
       tr.manager.addHandler(/\.(gltf|glb)(\?.*)?$/i, gltfLoader);
+
+      tr.addEventListener("load-error", () => {
+        if (previewThree.tilesRenderer !== tr) return;
+        const loadedCount = Number(tr.stats && tr.stats.loaded) || 0;
+        if (tr._isPreviewTileset && loadedCount === 0 && !tr._retriedFullTileset) {
+          tr._retriedFullTileset = true;
+          previewThree._forceFullTilesetFallback = true;
+          loadScanIntoPreview(scan.scan_id, true);
+        }
+      });
 
       tr.addEventListener("load-tileset", () => {
         if (previewThree.tilesRenderer !== tr) return;
@@ -2454,6 +2488,25 @@
     }
 
     populateProjectScanDropdowns(grpName, chosenScan ? chosenScan.scan_id : null);
+
+    // Warm up browser cache for top timeline scans' ultra-quick preview_tileset.json + root preview_low GLB
+    if ((STATE.previewLodMode || "rough") === "rough") {
+      siteScans.slice(0, 3).forEach((s, idx) => {
+        const pUrl = s && s.preview_stream_url;
+        if (!pUrl || !String(pUrl).includes("preview_tileset.json")) return;
+        setTimeout(() => {
+          fetch(pUrl, { mode: "cors" })
+            .then((r) => (r.ok ? r.json() : null))
+            .then((ts) => {
+              const rUri = ts && ts.root && ts.root.content && ts.root.content.uri;
+              if (rUri && typeof preprocessTileStreamUrl === "function") {
+                fetch(preprocessTileStreamUrl(rUri, pUrl), { mode: "cors" }).catch(() => {});
+              }
+            })
+            .catch(() => {});
+        }, idx * 120);
+      });
+    }
 
     const roleInfo = getCurrentUserRoleInfo();
     const btnRenSite = document.getElementById("btnRenameTimelineSite");

@@ -264,7 +264,7 @@
     })(),
     previewLodMode: (function () {
       try {
-        const saved = localStorage.getItem("gs_preview_lod_mode_v2");
+        const saved = localStorage.getItem("gs_preview_lod_mode_v3");
         if (saved === "rough" || saved === "auto" || saved === "max") return saved;
       } catch (_e) {}
       return "rough";

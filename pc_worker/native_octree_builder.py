@@ -574,8 +574,8 @@ def _pack_cells_to_glb_tile(
         cmd = [GLTFPACK_EXE, "-i", tmp_raw, "-o", out_glb_path, "-vp", "16", "-vt", "16", "-cc"]
         total_tris = len(all_tris)
         if target_tris is not None and total_tris > target_tris:
-            ratio = max(0.05, min(0.98, float(target_tris) / float(total_tris)))
-            cmd.extend(["-si", f"{ratio:.4f}", "-slb"])
+            ratio = max(0.02, min(0.98, float(target_tris) / float(total_tris)))
+            cmd.extend(["-si", f"{ratio:.4f}", "-sa", "-slb"])
 
         subprocess.run(cmd, check=True, capture_output=True, timeout=180, creationflags=_WIN_NO_WINDOW)
     finally:
@@ -1094,7 +1094,22 @@ def build_tileset_from_pix4d_native_octree(
         except Exception as pe:
             print(f"[NativeOctreeBuilder] Warning building preview/thumbnail: {pe}")
 
-        # Persist accurate poly_count and size_bytes to scan_meta.json and ScanQueueDB
+        # Persist accurate poly_count, size_bytes, bounding_box, and uncropped status to scan_meta.json and ScanQueueDB
+        rbox_final = ((tileset_dict.get("root") or {}).get("boundingVolume") or {}).get("box") or []
+        new_bbox: Optional[Dict[str, Any]] = None
+        new_cov_area: Optional[float] = None
+        if len(rbox_final) >= 12:
+            cx_f, cy_f, cz_f = float(rbox_final[0]), float(rbox_final[1]), float(rbox_final[2])
+            hx_f = abs(float(rbox_final[3])) + abs(float(rbox_final[6])) + abs(float(rbox_final[9]))
+            hy_f = abs(float(rbox_final[4])) + abs(float(rbox_final[7])) + abs(float(rbox_final[10]))
+            hz_f = abs(float(rbox_final[5])) + abs(float(rbox_final[8])) + abs(float(rbox_final[11]))
+            new_bbox = {
+                "center": [round(cx_f, 3), round(cy_f, 3), round(cz_f, 2)],
+                "half_extents": [round(max(1.0, hx_f), 2), round(max(1.0, hy_f), 2), round(max(1.0, hz_f), 2)],
+            }
+            new_cov_area = round((hx_f * 2.0) * (hy_f * 2.0) * 0.68, 1)
+        ts_ver_ms = int(time.time() * 1000)
+
         try:
             meta_p = os.path.join(target_proj_dir, "scan_meta.json")
             meta_obj: Dict[str, Any] = {}
@@ -1104,8 +1119,28 @@ def build_tileset_from_pix4d_native_octree(
             meta_obj["poly_count"] = int(stats["leaf_triangles"])
             meta_obj["size_bytes"] = int(stats["total_bytes"])
             meta_obj["tileset_path"] = final_ts_json
+            meta_obj["tileset_version"] = ts_ver_ms
+            if new_bbox:
+                meta_obj["bounding_box"] = new_bbox
+                meta_obj["twd97_e"] = new_bbox["center"][0]
+                meta_obj["twd97_n"] = new_bbox["center"][1]
+                meta_obj["twd97_h"] = new_bbox["center"][2]
+                meta_obj["elev_m"] = new_bbox["center"][2]
+            if new_cov_area and new_cov_area > 0:
+                meta_obj["covered_area_m2"] = new_cov_area
+            if occ_mask is None:
+                meta_obj.pop("applied_adjustments", None)
+                tex_res = int(meta_obj.get("texture_resolution") or 16384)
+                tex_k = "16K" if tex_res >= 12288 else ("8K" if tex_res >= 6144 else ("4K" if tex_res >= 3072 else "2K"))
+                crs_lbl = str(meta_obj.get("crs") or "TWD97 (121) + TWVD2001")
+                old_stg = str(meta_obj.get("stage_label") or "")
+                if old_stg.startswith("Edited") or "Deleted" in old_stg or "Cropped" in old_stg:
+                    meta_obj["stage_label"] = f"Completed ({crs_lbl}, {tex_k} Web Tileset)"
+                old_notes = str(meta_obj.get("notes") or "")
+                if "Deleted" in old_notes or "Cropped" in old_notes:
+                    meta_obj["notes"] = f"Completed ({crs_lbl}, {tex_k} 9-Level Native Octree Web Tileset)"
             with open(meta_p, "w", encoding="utf-8") as mf:
-                json.dump(meta_obj, mf, indent=2)
+                json.dump(meta_obj, mf, ensure_ascii=False, indent=2)
         except Exception as me:
             print(f"[NativeOctreeBuilder] Warning updating scan_meta.json: {me}")
 
@@ -1118,6 +1153,26 @@ def build_tileset_from_pix4d_native_octree(
                 upd["size_bytes"] = int(stats["total_bytes"])
                 upd["poly_count"] = int(stats["leaf_triangles"])
                 upd["tileset_path"] = final_ts_json
+                upd["tileset_version"] = ts_ver_ms
+                if new_bbox:
+                    upd["bounding_box"] = new_bbox
+                    upd["twd97_e"] = new_bbox["center"][0]
+                    upd["twd97_n"] = new_bbox["center"][1]
+                    upd["twd97_h"] = new_bbox["center"][2]
+                    upd["elev_m"] = new_bbox["center"][2]
+                if new_cov_area and new_cov_area > 0:
+                    upd["covered_area_m2"] = new_cov_area
+                if occ_mask is None:
+                    upd["applied_adjustments"] = []
+                    tex_res = int(upd.get("texture_resolution") or 16384)
+                    tex_k = "16K" if tex_res >= 12288 else ("8K" if tex_res >= 6144 else ("4K" if tex_res >= 3072 else "2K"))
+                    crs_lbl = str(upd.get("crs") or "TWD97 (121) + TWVD2001")
+                    old_stg = str(upd.get("stage_label") or "")
+                    if old_stg.startswith("Edited") or "Deleted" in old_stg or "Cropped" in old_stg:
+                        upd["stage_label"] = f"Completed ({crs_lbl}, {tex_k} Web Tileset)"
+                    old_notes = str(upd.get("notes") or "")
+                    if "Deleted" in old_notes or "Cropped" in old_notes:
+                        upd["notes"] = f"Completed ({crs_lbl}, {tex_k} 9-Level Native Octree Web Tileset)"
                 db.upsert_scan(upd)
         except Exception as de:
             print(f"[NativeOctreeBuilder] Warning updating ScanQueueDB: {de}")
@@ -1133,12 +1188,14 @@ def build_native_octree_from_scalable_tileset(
     scan_id: str,
     proj_dir: str,
     progress_callback: Optional[Callable[[float, str], None]] = None,
+    preserve_existing_crop: bool = False,
 ) -> Dict[str, Any]:
     """
     Build a 9-level native octree 3D Tileset (`tileset/tileset.json`) directly from PIX4Dmatic's
     Scalable Mesh `.glb` octree cells (`**/processing/meshes/*/content/<lvl>_<x>_<y>_<z>.glb`).
-    Automatically preserves any existing 3D crop mask (`occ_mask`) when rebuilding a cropped or
-    derived scan whose existing `tileset.json` covers a smaller XY footprint than the raw octree.
+    - When `preserve_existing_crop=False` (default, e.g. after running or re-running in PIX4Dmatic),
+      builds the full uncropped scan from the raw octree so all previously deleted/cropped tiles are restored.
+    - When `preserve_existing_crop=True`, preserves any existing 3D crop mask (`occ_mask`) from `tileset/`.
     """
     content_glbs = glob.glob(
         os.path.join(proj_dir, "**", "processing", "meshes", "*", "content", "*_*_*_*.glb"),
@@ -1164,11 +1221,10 @@ def build_native_octree_from_scalable_tileset(
             except Exception:
                 pass
 
-    # Detect whether existing tileset/ represents a user-cropped subset of the raw Pix4Dmatic octree
     occ_mask: Optional[Dict[str, Any]] = None
     existing_ts_dir = os.path.join(proj_dir, "tileset")
     existing_ts_json = os.path.join(existing_ts_dir, "tileset.json")
-    if os.path.isfile(existing_ts_json):
+    if preserve_existing_crop and os.path.isfile(existing_ts_json):
         try:
             with open(existing_ts_json, "r", encoding="utf-8") as f:
                 ts_obj = json.load(f)
@@ -1176,7 +1232,6 @@ def build_native_octree_from_scalable_tileset(
             if isinstance(rbox, list) and len(rbox) >= 12:
                 ts_hx = abs(float(rbox[3])) + abs(float(rbox[6])) + abs(float(rbox[9]))
                 ts_hy = abs(float(rbox[4])) + abs(float(rbox[7])) + abs(float(rbox[10]))
-                # Compare against L2 raw octree XY span
                 l2_xs: List[float] = []
                 l2_ys: List[float] = []
                 for fp in content_glbs:
@@ -1199,11 +1254,21 @@ def build_native_octree_from_scalable_tileset(
         except Exception as mask_err:
             print(f"[NativeOctreeBuilder] Warning checking crop occupancy mask for {scan_id}: {mask_err}")
 
+    focal_bbox_local: Optional[Tuple[np.ndarray, np.ndarray]] = None
+    if occ_mask is None and len(content_glbs) > 5000:
+        # For massive multi-thousand-cell park octrees (e.g. DaAn with 7,800-9,500 cells),
+        # preserve full L2..L5 across the entire park and keep L6..L9 inside the central focal region.
+        focal_bbox_local = (
+            np.array([-16.5, -12.0, -10.0], dtype=np.float64),
+            np.array([16.5, 12.0, 10.0], dtype=np.float64),
+        )
+
     return build_tileset_from_pix4d_native_octree(
         src_proj_dir=proj_dir,
         target_proj_dir=proj_dir,
         occ_mask=occ_mask,
-        focal_bbox_local=None,
+        focal_bbox_local=focal_bbox_local,
+        outer_max_level=5,
         progress_callback=progress_callback,
     )
 

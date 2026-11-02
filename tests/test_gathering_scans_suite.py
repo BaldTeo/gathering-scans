@@ -4192,7 +4192,52 @@ vm.runInContext(fs.readFileSync('./web/src/12-public-utilities-gis.js', 'utf8'),
         self.assertIn("compute_gaussian_splats", js02)
         self.assertIn("gatheringcloud_3dgs", js07)
 
+    def test_48_rerun_uncropped_daan_and_ultra_quick_map_previews(self):
+        """Verify PIX4Dmatic reruns do not re-apply old cropped tileset occupancy masks (restoring full DaAn park),
+        and Map View interactive previews load ultra-quick preview_tileset.json models across all devices."""
+        import inspect
+        import json as _json
+        from pc_worker.native_octree_builder import build_native_octree_from_scalable_tileset
+        from pc_worker.preview_generator import build_low_quality_preview_glb
+
+        # 1. Verify build_native_octree_from_scalable_tileset defaults preserve_existing_crop=False
+        sig_oct = inspect.signature(build_native_octree_from_scalable_tileset)
+        self.assertIn("preserve_existing_crop", sig_oct.parameters)
+        self.assertFalse(sig_oct.parameters["preserve_existing_crop"].default)
+
+        # 2. Verify build_low_quality_preview_glb defaults to ultra-quick 55k tris, 1024px JPEG, allow_aggressive=True
+        sig_prev = inspect.signature(build_low_quality_preview_glb)
+        self.assertEqual(sig_prev.parameters["target_triangles"].default, 55000)
+        self.assertEqual(sig_prev.parameters["max_tex_dim"].default, 1024)
+        self.assertTrue(sig_prev.parameters["allow_aggressive"].default)
+
+        # 3. Verify edited_daan_652376 ('DaAn') is uncropped on disk (full ~87m x 80m park, > 400 tiles)
+        daan_dir = r"C:\GatheringScans\edited_daan_652376"
+        if os.path.isdir(daan_dir):
+            daan_ts_path = os.path.join(daan_dir, "tileset", "tileset.json")
+            self.assertTrue(os.path.isfile(daan_ts_path))
+            with open(daan_ts_path, "r", encoding="utf-8") as f:
+                daan_ts = _json.load(f)
+            r_box = daan_ts["root"]["boundingVolume"]["box"]
+            self.assertGreater(float(r_box[3]), 35.0)
+            self.assertGreater(float(r_box[7]), 35.0)
+            daan_meta_path = os.path.join(daan_dir, "scan_meta.json")
+            with open(daan_meta_path, "r", encoding="utf-8") as f:
+                daan_meta = _json.load(f)
+            self.assertNotIn("applied_adjustments", daan_meta)
+            self.assertGreater(float(daan_meta["bounding_box"]["half_extents"][0]), 35.0)
+            daan_prev_glb = os.path.join(daan_dir, "tileset", "preview_low", "tiles", "root.glb")
+            self.assertTrue(os.path.isfile(daan_prev_glb))
+            self.assertLess(os.path.getsize(daan_prev_glb), 1_200_000)
+
+        # 4. Verify Map View loads preview_tileset.json across all devices in rough mode
+        with open(os.path.join(BASE_DIR, "web", "src", "02-map-and-timeline.js"), "r", encoding="utf-8") as f:
+            js02 = f.read()
+        self.assertIn('const useRoughTilesetOnly = !previewThree._forceFullTilesetFallback && lodMode === "rough";', js02)
+        self.assertIn("if (isPreviewTileset) {", js02)
+
 
 if __name__ == "__main__":
     unittest.main()
+
 

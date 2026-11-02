@@ -2488,6 +2488,27 @@ def run_pix4dmatic_pipeline(
                         os.remove(p4m_path)
                     except OSError:
                         pass
+                # Archive any previously cropped/edited tileset so a fresh PIX4Dmatic rerun starts uncropped
+                old_ts_dir = os.path.join(project_dir, "tileset")
+                prev_rerun_ts_dir = os.path.join(project_dir, "tileset_prev_rerun")
+                if os.path.isdir(old_ts_dir):
+                    if os.path.isdir(prev_rerun_ts_dir):
+                        shutil.rmtree(prev_rerun_ts_dir, ignore_errors=True)
+                    try:
+                        os.replace(old_ts_dir, prev_rerun_ts_dir)
+                    except Exception:
+                        pass
+                meta_fp = os.path.join(project_dir, "scan_meta.json")
+                if os.path.isfile(meta_fp):
+                    try:
+                        with open(meta_fp, "r", encoding="utf-8") as mf:
+                            mdata = json.load(mf)
+                        if isinstance(mdata, dict) and "applied_adjustments" in mdata:
+                            mdata.pop("applied_adjustments", None)
+                            with open(meta_fp, "w", encoding="utf-8") as mf:
+                                json.dump(mdata, mf, indent=2)
+                    except Exception:
+                        pass
 
                 if part_paths:
                     for idx, zpath in enumerate(part_paths):

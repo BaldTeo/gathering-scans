@@ -100,6 +100,7 @@ def _downscale_glb_textures(raw_bytes: bytes, max_dim: int = 768, jpeg_quality: 
             isinstance((t.get("extensions") or {}).get("EXT_texture_webp"), dict)
             for t in (j.get("textures") or [])
         )
+        eff_max_dim = max(384, int(round(max_dim / (len(images) ** 0.5)))) if len(images) > 1 else max_dim
         img_bv_map: Dict[int, bytes] = {}
         for im in images:
             bvi = im.get("bufferView")
@@ -117,16 +118,16 @@ def _downscale_glb_textures(raw_bytes: bytes, max_dim: int = 768, jpeg_quality: 
                     if (
                         orig_fmt == "JPEG"
                         and im.get("mimeType") == "image/jpeg"
-                        and orig_w <= max_dim
-                        and orig_h <= max_dim
-                        and jpeg_quality >= 82
+                        and orig_w <= eff_max_dim
+                        and orig_h <= eff_max_dim
+                        and len(raw_img_bytes) <= 180_000
                         and not has_webp_ext
                     ):
-                        # Already JPEG within max_dim at high quality -> preserve exact bytes (zero re-encode loss)
+                        # Already compact JPEG within eff_max_dim -> preserve exact bytes
                         continue
                     pil_im = pil_hdr.convert("RGB")
-                    if orig_w > max_dim or orig_h > max_dim:
-                        pil_im.thumbnail((max_dim, max_dim), Image.Resampling.LANCZOS)
+                    if orig_w > eff_max_dim or orig_h > eff_max_dim:
+                        pil_im.thumbnail((eff_max_dim, eff_max_dim), Image.Resampling.LANCZOS)
                     out_buf = io.BytesIO()
                     pil_im.save(out_buf, format="JPEG", quality=jpeg_quality, optimize=True)
                     img_bv_map[bvi] = out_buf.getvalue()
@@ -370,13 +371,13 @@ def shift_glb_node_translation(raw_bytes: bytes, dx: float, dy: float, dz: float
 def build_low_quality_preview_glb(
     src_glb_path: str,
     dst_glb_path: str,
-    target_triangles: int = 100000,
-    max_tex_dim: int = 2048,
-    jpeg_quality: int = 85,
-    allow_aggressive: bool = False,
+    target_triangles: int = 55000,
+    max_tex_dim: int = 1024,
+    jpeg_quality: int = 78,
+    allow_aggressive: bool = True,
 ) -> bool:
     """
-    Generates a clean, watertight preview GLB from src_glb_path into dst_glb_path.
+    Generates an ultra-fast, lightweight preview GLB from src_glb_path into dst_glb_path.
     Shifts large TWD97 node.translation to local (0,0,0) before invoking gltfpack and restores
     the 64-bit offset afterward so C++ float32 never quantizes TWD97 coordinates to 25cm steps.
     """
@@ -389,7 +390,7 @@ def build_low_quality_preview_glb(
             raw_in = f.read()
         orig_tris = _get_glb_triangle_count(raw_in)
         if orig_tris > 0:
-            ratio = min(1.0, max(0.22, float(target_triangles) / float(orig_tris)))
+            ratio = min(1.0, max(0.01, float(target_triangles) / float(orig_tris)))
         else:
             ratio = 1.0
 
@@ -397,7 +398,7 @@ def build_low_quality_preview_glb(
         tmp_in_path = ""
         ox, oy, oz = extract_glb_large_offset(raw_in)
         ran_gltfpack = False
-        if os.path.isfile(GLTFPACK_EXE) and ratio < 0.85:
+        if os.path.isfile(GLTFPACK_EXE):
             in_for_gltfpack = src_glb_path
             if abs(ox) > 1000.0 or abs(oy) > 1000.0:
                 tmp_in_path = dst_glb_path + ".local_in.glb"
@@ -410,18 +411,12 @@ def build_low_quality_preview_glb(
                 in_for_gltfpack,
                 "-o",
                 tmp_path,
-                "-si",
-                f"{ratio:.4f}",
-                "-slb",
-                "-sv",
-                "-vp",
-                "14",
-                "-vt",
-                "14",
-                "-cc",
             ]
-            if allow_aggressive:
-                cmd.insert(-2, "-sa")
+            if ratio < 0.92:
+                cmd.extend(["-si", f"{ratio:.4f}", "-slb", "-sv"])
+                if allow_aggressive:
+                    cmd.append("-sa")
+            cmd.extend(["-vp", "14", "-vt", "14", "-cc"])
             res = subprocess.run(
                 cmd,
                 capture_output=True,
@@ -468,7 +463,7 @@ def build_low_quality_preview_glb(
 def ensure_scan_low_quality_preview(tileset_path: str, force: bool = False) -> Optional[str]:
     """
     Given a scan's `tileset_path` (e.g. `.../tileset.json` or `.../*-cesium_mesh.json`),
-    generates `<base_dir>/preview_tileset.json` and watertight preview GLB files inside `<base_dir>/preview_low/`.
+    generates `<base_dir>/preview_tileset.json` and ultra-quick preview GLB files inside `<base_dir>/preview_low/`.
     Returns the path to `preview_tileset.json` (or `.glb` if standalone GLB).
     """
     if not tileset_path or not os.path.isfile(tileset_path):
@@ -480,7 +475,7 @@ def ensure_scan_low_quality_preview(tileset_path: str, force: bool = False) -> O
         if not force and os.path.isfile(preview_glb) and os.path.getsize(preview_glb) > 256:
             return preview_glb
         if build_low_quality_preview_glb(
-            tileset_path, preview_glb, target_triangles=100000, max_tex_dim=2048, jpeg_quality=85
+            tileset_path, preview_glb, target_triangles=55000, max_tex_dim=1024, jpeg_quality=78, allow_aggressive=True
         ):
             return preview_glb
         return tileset_path
@@ -515,11 +510,13 @@ def ensure_scan_low_quality_preview(tileset_path: str, force: bool = False) -> O
     r_content = root.get("content") or {}
     r_uri = r_content.get("uri") if isinstance(r_content, dict) else None
 
+    if force and os.path.isdir(preview_low_dir):
+        shutil.rmtree(preview_low_dir, ignore_errors=True)
     os.makedirs(preview_low_dir, exist_ok=True)
     generated_count = 0
 
     if r_uri:
-        # Single-root tileset (Quadtree or single root GLB): keep up to ~110k tris (no -sa seam tearing) and crisp 2048px texture
+        # Single-root tileset (Native Octree or Quadtree root GLB): ultra-quick ~55k tris and 1024px JPEG (~400-700 KB)
         clean_r_uri = r_uri.split("?")[0]
         src_glb = os.path.join(base_dir, clean_r_uri)
         rel_clean = clean_r_uri.replace("\\", "/").lstrip("/")
@@ -528,10 +525,10 @@ def ensure_scan_low_quality_preview(tileset_path: str, force: bool = False) -> O
         if build_low_quality_preview_glb(
             src_glb,
             dst_glb,
-            target_triangles=110000,
-            max_tex_dim=2048,
-            jpeg_quality=85,
-            allow_aggressive=False,
+            target_triangles=55000,
+            max_tex_dim=1024,
+            jpeg_quality=78,
+            allow_aggressive=True,
         ):
             v_ts = int(os.path.getmtime(dst_glb)) if os.path.isfile(dst_glb) else int(time.time())
             root["content"]["uri"] = f"{dst_rel}?v={v_ts}"
@@ -539,15 +536,31 @@ def ensure_scan_low_quality_preview(tileset_path: str, force: bool = False) -> O
         root["geometricError"] = 0.0
         root["children"] = []
     else:
-        # PIX4Dmatic Cesium octree: traverse up to depth <= 3 to capture every octant branch's first content node
-        # and convert each octant GLB into a watertight preview tile (~24,000 tris, 1024px JPEG, no -sa)
+        # Multi-tile Cesium octree or merged scan: count coarse content nodes first so total preview stays ~0.6-1.4 MB
+        def _count_coarse_nodes(node: dict, depth: int = 0) -> int:
+            c = node.get("content") or {}
+            uri = c.get("uri") if isinstance(c, dict) else None
+            if uri:
+                return 1
+            if depth >= 4:
+                return 0
+            return sum(_count_coarse_nodes(ch, depth + 1) for ch in (node.get("children") or []))
+
+        total_coarse_tiles = max(1, _count_coarse_nodes(root, 0))
+        per_tile_tris = max(2500, min(25000, 65000 // total_coarse_tiles))
+        per_tile_tex = (
+            1024
+            if total_coarse_tiles <= 2
+            else (768 if total_coarse_tiles <= 6 else (512 if total_coarse_tiles <= 18 else 384))
+        )
+        per_tile_q = 78 if total_coarse_tiles <= 6 else 74
+
         def _prune_and_convert(node: dict, depth: int = 0) -> bool:
             nonlocal generated_count
             c = node.get("content") or {}
             uri = c.get("uri") if isinstance(c, dict) else None
             if uri:
                 clean_uri = uri.split("?")[0]
-                is_multiscan_tile = os.path.basename(clean_uri).lower().startswith("tile_s")
                 src_glb = os.path.join(base_dir, clean_uri)
                 rel_clean = clean_uri.replace("\\", "/").lstrip("/")
                 dst_rel = f"preview_low/{rel_clean}"
@@ -559,10 +572,10 @@ def ensure_scan_low_quality_preview(tileset_path: str, force: bool = False) -> O
                 elif build_low_quality_preview_glb(
                     src_glb,
                     dst_glb,
-                    target_triangles=75000 if is_multiscan_tile else 24000,
-                    max_tex_dim=2048 if is_multiscan_tile else 1024,
-                    jpeg_quality=85 if is_multiscan_tile else 82,
-                    allow_aggressive=False,
+                    target_triangles=per_tile_tris,
+                    max_tex_dim=per_tile_tex,
+                    jpeg_quality=per_tile_q,
+                    allow_aggressive=True,
                 ):
                     v_ts = int(os.path.getmtime(dst_glb)) if os.path.isfile(dst_glb) else int(time.time())
                     node["content"]["uri"] = f"{dst_rel}?v={v_ts}"

@@ -1615,16 +1615,11 @@
     const isIOS = typeof isIOSOrIPadDevice === "function" && isIOSOrIPadDevice();
     const isMobOrTab = isIOS || (typeof isMobileOrTabletDevice === "function" && isMobileOrTabletDevice());
     const lodMode = STATE.scanLodMode || "auto";
-    const useLowMemTileset =
-      !opts.forceFullRes &&
-      (Boolean(studioThree._forceLowMemStream) ||
-        (isIOS && lodMode === "rough"));
+    const useLowMemTileset = !opts.forceFullRes && (Boolean(studioThree._forceLowMemStream) || lodMode === "rough");
 
     let streamUrl = scan.stream_url || `/stream/${scan.scan_id}/tileset.json`;
     if (useLowMemTileset && scan.stream_type !== "glb" && !streamUrl.toLowerCase().endsWith(".glb")) {
-      streamUrl =
-        scan.preview_stream_url ||
-        streamUrl.replace("/tileset.json", "/preview_tileset.json");
+      streamUrl = scan.preview_stream_url || streamUrl.replace("/tileset.json", "/preview_tileset.json");
     }
     studioThree._loadedLowMemTileset = Boolean(useLowMemTileset);
     studioThree._loadedTilesetUrl = streamUrl;
@@ -3907,7 +3902,7 @@
     const validMode = mode === "rough" || mode === "auto" || mode === "max" ? mode : "rough";
     STATE.previewLodMode = validMode;
     try {
-      localStorage.setItem("gs_preview_lod_mode_v2", validMode);
+      localStorage.setItem("gs_preview_lod_mode_v3", validMode);
     } catch (_e) {}
 
     document.querySelectorAll("#previewLodModeSwitcher [data-lod-mode]").forEach((btn) => {
@@ -3918,17 +3913,12 @@
 
     const isIOS = typeof isIOSOrIPadDevice === "function" && isIOSOrIPadDevice();
     const isMobOrTab = isIOS || (typeof isMobileOrTabletDevice === "function" && isMobileOrTabletDevice());
-    const isLocalHost = window.location.hostname === "127.0.0.1" || window.location.hostname === "localhost";
     const previewTargetErr = validMode === "rough" ? 1e9 : validMode === "max" ? 1.2 : isMobOrTab ? 18.0 : 12.0;
 
     if (typeof previewThree !== "undefined" && previewThree) {
-      if (
-        validMode !== "rough" &&
-        String(previewThree._loadedTilesetUrl || "").includes("preview_tileset.json") &&
-        STATE.activeView === "map" &&
-        STATE.activeScanId &&
-        typeof loadScanIntoPreview === "function"
-      ) {
+      const loadedIsPreviewTs = String(previewThree._loadedTilesetUrl || "").includes("preview_tileset.json");
+      const wantsPreviewTs = validMode === "rough";
+      if (wantsPreviewTs !== loadedIsPreviewTs && STATE.activeView === "map" && STATE.activeScanId && typeof loadScanIntoPreview === "function") {
         loadScanIntoPreview(STATE.activeScanId, true);
       } else if (previewThree.tilesRenderer) {
         if (typeof configureTilesRendererLodAndCaps === "function") {
