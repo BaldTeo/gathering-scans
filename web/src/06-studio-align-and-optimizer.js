@@ -4345,28 +4345,35 @@
     return false;
   };
 
-  // Mobile Editing Umbrella Button Toggle (#btnMobileEditingUmbrella -> #studioEditingDock.mobile-expanded)
+  // Mobile & Desktop Collapsible Right Editing Dock (#btnToggleEditDockCollapse / #btnMobileEditingUmbrella -> #studioEditingDock.gs-edit-dock-collapsed)
+  function _setEditDockCollapsedState(collapsed) {
+    const dock = document.getElementById("studioEditingDock");
+    if (!dock) return;
+    const isCollapsed = Boolean(collapsed);
+    dock.classList.toggle("gs-edit-dock-collapsed", isCollapsed);
+    dock.classList.toggle("mobile-expanded", !isCollapsed);
+    document.getElementById("btnToggleEditDockCollapse")?.setAttribute("aria-expanded", isCollapsed ? "false" : "true");
+    const uBtn = document.getElementById("btnMobileEditingUmbrella");
+    if (uBtn) {
+      uBtn.classList.toggle("active", !isCollapsed);
+      uBtn.setAttribute("aria-expanded", isCollapsed ? "false" : "true");
+    }
+  }
+
   document.getElementById("btnMobileEditingUmbrella")?.addEventListener("click", (e) => {
     e.preventDefault();
     e.stopPropagation();
     const dock = document.getElementById("studioEditingDock");
-    const btn = document.getElementById("btnMobileEditingUmbrella");
-    if (!dock || !btn) return;
-    const expanded = dock.classList.toggle("mobile-expanded");
-    if (expanded) dock.classList.remove("gs-edit-dock-collapsed");
-    btn.classList.toggle("active", expanded);
-    btn.setAttribute("aria-expanded", expanded ? "true" : "false");
+    if (!dock) return;
+    _setEditDockCollapsedState(!dock.classList.contains("gs-edit-dock-collapsed"));
   });
 
-  // Desktop Collapsible Right Editing Dock (#btnToggleEditDockCollapse -> #studioEditingDock.gs-edit-dock-collapsed)
   document.getElementById("btnToggleEditDockCollapse")?.addEventListener("click", (e) => {
     e.preventDefault();
     e.stopPropagation();
     const dock = document.getElementById("studioEditingDock");
-    const btn = document.getElementById("btnToggleEditDockCollapse");
     if (!dock) return;
-    const isCollapsed = dock.classList.toggle("gs-edit-dock-collapsed");
-    if (btn) btn.setAttribute("aria-expanded", isCollapsed ? "false" : "true");
+    _setEditDockCollapsedState(!dock.classList.contains("gs-edit-dock-collapsed"));
   });
 
   // Once any editing dock tool is clicked/used, keep the right editing dock uncollapsed throughout editing
@@ -4375,8 +4382,8 @@
       const dock = document.getElementById("studioEditingDock");
       if (dock) {
         dock.classList.remove("gs-edit-dock-collapsed");
-        document.getElementById("btnToggleEditDockCollapse")?.setAttribute("aria-expanded", "true");
       }
+      _setEditDockCollapsedState(false);
     });
   });
 

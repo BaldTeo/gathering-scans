@@ -57,7 +57,7 @@
     }
     const edgeTab = document.getElementById("studioInspectorEdgeTab");
     if (edgeTab) {
-      const showEdgeTab = isOpen && isMin && window.innerWidth >= 768;
+      const showEdgeTab = isOpen && isMin;
       edgeTab.style.display = showEdgeTab ? "inline-flex" : "none";
     }
     const studioEl = document.getElementById("viewStudio");

@@ -4470,6 +4470,8 @@ vm.runInContext(fs.readFileSync('./web/src/12-public-utilities-gis.js', 'utf8'),
         self.assertIn("--studio-inspector-w:", bim_css)
         self.assertIn("#studioEditingDock.gs-edit-dock-collapsed", bim_css)
         self.assertIn("#viewMap.gs-library-mode-active", bim_css)
+        self.assertIn("#studioEditingDock #btnToggleEditDockCollapse", bim_css)
+        self.assertNotIn("#btnToggleEditDockCollapse {\n    display: none !important;\n  }", bim_css)
 
         with open(os.path.join(BASE_DIR, "web", "src", "01-core-state.js"), "r", encoding="utf-8") as f:
             js01 = f.read()
@@ -4477,6 +4479,7 @@ vm.runInContext(fs.readFileSync('./web/src/12-public-utilities-gis.js', 'utf8'),
         self.assertIn('nextMode === "unassigned"', js01)
         self.assertIn("if (isLibraryFolderGroup(s.project_group) || s.group_type === \"library\") return false;", js01)
         self.assertIn("if (!STATE.siteTimelineOpen || !curScan || isLibraryScan(curScan))", js01)
+        self.assertIn("if (isMobileViewport && typeof closeSiteTimeline === \"function\")", js01)
 
         with open(os.path.join(BASE_DIR, "web", "src", "03-studio-core.js"), "r", encoding="utf-8") as f:
             js03 = f.read()
@@ -4486,6 +4489,7 @@ vm.runInContext(fs.readFileSync('./web/src/12-public-utilities-gis.js', 'utf8'),
             js05 = f.read()
         self.assertIn("function syncSidePanelMinimizedState(", js05)
         self.assertIn("window.syncSidePanelMinimizedState = syncSidePanelMinimizedState;", js05)
+        self.assertIn("const showEdgeTab = isOpen && isMin;", js05)
         self.assertNotIn("lblCollapse.textContent =", js05)
         self.assertNotIn("lblCol.textContent =", js05)
 
@@ -4493,6 +4497,7 @@ vm.runInContext(fs.readFileSync('./web/src/12-public-utilities-gis.js', 'utf8'),
             js06 = f.read()
         self.assertIn('getElementById("btnToggleEditDockCollapse")', js06)
         self.assertIn('dock.classList.remove("gs-edit-dock-collapsed")', js06)
+        self.assertIn("function _setEditDockCollapsedState(collapsed)", js06)
 
         with open(os.path.join(BASE_DIR, "web", "app.js"), "r", encoding="utf-8") as f:
             app_js = f.read()

@@ -2416,6 +2416,9 @@
   });
   document.getElementById("btnCompareBackToMap")?.addEventListener("click", () => {
     switchView("map");
+    if (typeof window !== "undefined" && window.innerWidth <= 767 && typeof closeSiteTimeline === "function") {
+      closeSiteTimeline();
+    }
   });
   document.querySelectorAll("#mapCatalogModeSwitcher [data-catalog-mode]").forEach((btn) => {
     btn.addEventListener("click", () => {

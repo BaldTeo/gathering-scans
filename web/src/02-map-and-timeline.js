@@ -3490,7 +3490,14 @@
   document.getElementById("btnRightPreviewResetCamera")?.addEventListener("click", framePreviewCamera);
 
   document.getElementById("btnStudioBackToTimeline")?.addEventListener("click", () => {
-    openSiteTimeline(STATE.activeProjectGroup, STATE.activeScanId, true);
+    const isMob = typeof window !== "undefined" && window.innerWidth <= 767;
+    if (isMob) {
+      switchView("map");
+      closeSiteTimeline();
+      return;
+    }
+    switchView("map");
+    openSiteTimeline(STATE.activeProjectGroup, STATE.activeScanId, false);
   });
 
   document.getElementById("btnCapturePreviewScreenshot")?.addEventListener("click", () => {

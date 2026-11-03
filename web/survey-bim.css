@@ -1730,23 +1730,32 @@ body.theme-dark .subtab-btn.active {
   transition: transform 0.18s ease;
 }
 
+/* Right-Edge Inspector Collapse & Restore Tab (All Viewports: Desktop, Tablet & Mobile) */
+.gs-side-panel.gs-panel-minimized,
+#studioSidePanel.gs-panel-minimized {
+  transform: translateX(calc(100% + 28px)) !important;
+  opacity: 0 !important;
+  pointer-events: none !important;
+}
+
+#viewStudio:has(#studioSidePanel.active:not(.hidden).gs-panel-minimized) #studioInspectorEdgeTab {
+  display: inline-flex !important;
+}
+
+#studioEditingDock.gs-edit-dock-collapsed .gs-edit-dock-btn {
+  display: none !important;
+}
+
+#studioEditingDock:not(.gs-edit-dock-collapsed) #svgEditDockChevron {
+  transform: rotate(180deg);
+}
+
 @media (min-width: 768px) {
   #viewStudio:has(#studioSidePanel.active:not(.hidden):not(.gs-panel-minimized)) {
     --studio-inspector-w: 380px;
   }
 
-  /* Right-Edge Inspector Collapse & Restore Tab on Desktop */
-  #studioSidePanel.gs-panel-minimized {
-    transform: translateX(calc(100% + 28px)) !important;
-    opacity: 0 !important;
-    pointer-events: none !important;
-  }
-
-  #viewStudio:has(#studioSidePanel.active:not(.hidden).gs-panel-minimized) #studioInspectorEdgeTab {
-    display: inline-flex !important;
-  }
-
-  /* Right-Side Collapsible Editing Dock (#studioEditingDock) */
+  /* Right-Side Collapsible Editing Dock (#studioEditingDock) on Desktop/Tablet */
   .gs-studio-editing-dock,
   #studioEditingDock {
     left: auto !important;
@@ -1761,14 +1770,6 @@ body.theme-dark .subtab-btn.active {
     padding: 5px 6px !important;
     border-radius: 10px 0 0 10px !important;
     border-right: none !important;
-  }
-
-  #studioEditingDock.gs-edit-dock-collapsed .gs-edit-dock-btn {
-    display: none !important;
-  }
-
-  #studioEditingDock:not(.gs-edit-dock-collapsed) #svgEditDockChevron {
-    transform: rotate(180deg);
   }
 }
 
@@ -1794,8 +1795,115 @@ body.theme-dark .subtab-btn.active {
 }
 
 @media (max-width: 767px) {
-  #btnToggleEditDockCollapse {
+  /* Hide legacy left umbrella toggle; use unified right-edge #studioEditingDock & #btnToggleEditDockCollapse */
+  .gs-mobile-editing-umbrella-btn,
+  #btnMobileEditingUmbrella {
     display: none !important;
+  }
+
+  #studioEditingDock #btnToggleEditDockCollapse {
+    display: inline-flex !important;
+    height: 30px !important;
+    padding: 0 7px !important;
+    margin-bottom: 0 !important;
+    flex-shrink: 0 !important;
+    cursor: pointer !important;
+  }
+
+  .gs-studio-editing-dock.gs-edit-dock-collapsed,
+  #studioEditingDock.gs-edit-dock-collapsed {
+    display: flex !important;
+    top: auto !important;
+    bottom: 48px !important;
+    right: 0px !important;
+    left: auto !important;
+    width: auto !important;
+    transform: none !important;
+    flex-direction: row !important;
+    padding: 3px 6px !important;
+    border-radius: 10px 0 0 10px !important;
+    border-right: none !important;
+    z-index: 94 !important;
+  }
+
+  .gs-studio-editing-dock:not(.gs-edit-dock-collapsed),
+  #studioEditingDock:not(.gs-edit-dock-collapsed) {
+    display: flex !important;
+    top: auto !important;
+    bottom: 48px !important;
+    left: 6px !important;
+    right: 6px !important;
+    width: auto !important;
+    max-width: calc(100vw - 12px) !important;
+    transform: none !important;
+    flex-direction: row !important;
+    flex-wrap: nowrap !important;
+    align-items: center !important;
+    justify-content: space-between !important;
+    overflow-x: auto !important;
+    padding: 3px 5px !important;
+    gap: 3px !important;
+    border-radius: 10px !important;
+    z-index: 94 !important;
+  }
+
+  #studioInspectorEdgeTab {
+    top: 78px !important;
+    right: 0 !important;
+    padding: 6px 9px 6px 8px !important;
+    font-size: 11px !important;
+  }
+
+  .gs-side-panel,
+  #studioSidePanel {
+    bottom: 96px !important;
+  }
+
+  /* Keep North Arrow on bottom-left when edit dock is collapsed on right; shift to top-left when edit dock expands */
+  .gs-north-arrow-compass,
+  #gsNorthArrowCompass {
+    top: auto !important;
+    bottom: 48px !important;
+    left: 8px !important;
+    right: auto !important;
+  }
+
+  .gs-main:has(#studioEditingDock:not(.gs-edit-dock-collapsed)) #gsNorthArrowCompass {
+    top: 74px !important;
+    bottom: auto !important;
+    left: 8px !important;
+    right: auto !important;
+  }
+
+  /* Compact Split-Map + Library Drawer on Mobile (<= 767px) */
+  #viewMap.gs-library-mode-active #mapContainer {
+    flex: 0 0 34% !important;
+    height: 34% !important;
+  }
+
+  #viewMap.gs-library-mode-active #modelLibraryOverlay {
+    flex: 1 1 66% !important;
+    height: 66% !important;
+    padding: 10px 10px 12px 10px !important;
+  }
+
+  #viewMap.gs-library-mode-active .gs-map-card > div:nth-of-type(3) {
+    display: none !important;
+  }
+
+  #modelLibraryOverlay #librarySearchInput {
+    width: auto !important;
+    flex: 1 1 120px !important;
+    min-width: 0 !important;
+  }
+
+  #modelLibraryOverlay .gs-library-models-grid {
+    grid-template-columns: repeat(auto-fill, minmax(156px, 1fr)) !important;
+    gap: 8px !important;
+  }
+
+  #modelLibraryOverlay .gs-lib-card-thumb-wrap {
+    height: 96px !important;
   }
 }
 

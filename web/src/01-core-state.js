@@ -2432,18 +2432,25 @@
     }
 
     renderModelLibraryView();
+    const isMobileViewport = typeof window !== "undefined" && window.innerWidth <= 767;
     if (isDrawerOpen) {
       document.getElementById("clusterHoverPopover")?.classList.remove("active");
+      if (isMobileViewport && typeof closeSiteTimeline === "function") {
+        closeSiteTimeline();
+      }
       const pool = nextMode === "unassigned" ? getUnassignedScansList() : getLibraryScansList();
       const selFolder = STATE.selectedLibraryFolder || "ALL";
       const targetScan =
         (selFolder !== "ALL"
           ? pool.find((s) => String(s.project_group || "").toLowerCase() === String(selFolder).toLowerCase())
           : null) || pool[0];
-      if (targetScan && typeof openSiteTimeline === "function") {
+      if (!isMobileViewport && targetScan && typeof openSiteTimeline === "function") {
         openSiteTimeline(targetScan.project_group, targetScan.scan_id);
       }
     } else {
+      if (isMobileViewport && typeof closeSiteTimeline === "function") {
+        closeSiteTimeline();
+      }
       // Returning to Map Sites mode: if timeline is closed or currently displays a library/unassigned scan, restore Map Site & Scan
       const curScan = (STATE.scans || []).find((s) => s.scan_id === (STATE.selectedTimelineScanId || STATE.activeScanId));
       if (!STATE.siteTimelineOpen || !curScan || isLibraryScan(curScan)) {
@@ -2454,7 +2461,7 @@
           STATE.activeProjectGroup = mapTarget.projectGroup;
           populateProjectScanDropdowns(STATE.activeProjectGroup, STATE.activeScanId);
           if (typeof renderMapClusters === "function") renderMapClusters();
-          if (typeof openSiteTimeline === "function") {
+          if (!isMobileViewport && typeof openSiteTimeline === "function") {
             openSiteTimeline(STATE.activeProjectGroup, STATE.activeScanId);
           }
         }
@@ -2533,7 +2540,8 @@
         const fname = btn.getAttribute("data-folder") || "ALL";
         STATE.selectedLibraryFolder = fname;
         renderModelLibraryView();
-        if (fname !== "ALL") {
+        const isMob = typeof window !== "undefined" && window.innerWidth <= 767;
+        if (!isMob && fname !== "ALL") {
           const matchScan = activePool.find((s) => String(s.project_group || "").toLowerCase() === fname.toLowerCase());
           if (matchScan && typeof openSiteTimeline === "function") {
             openSiteTimeline(matchScan.project_group, matchScan.scan_id);
