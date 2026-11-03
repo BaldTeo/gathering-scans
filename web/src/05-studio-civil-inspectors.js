@@ -2956,12 +2956,12 @@
     } else {
       const readoutEl = document.getElementById("profileHoverReadout");
       if (readoutEl) {
-        readoutEl.innerHTML = `<span style="color:var(--ui-accent);font-weight:700;">⏳ ${tr("等待點選 2 個端點（剖面 A → B）...", "Waiting for 2 points (Section A → B) on 3D scan...")}</span><span>TWVD2001</span>`;
+        readoutEl.innerHTML = `<span style="color:var(--ui-accent);font-weight:700;">${tr("等待點選 2 個端點（剖面 A → B）...", "Waiting for 2 points (Section A → B) on 3D scan...")}</span><span>TWVD2001</span>`;
       }
       const mBox = document.getElementById("profileMetricsBox");
       if (mBox) {
         mBox.innerHTML = `<div style="grid-column:1 / -1;font-size:11.5px;color:var(--ui-text-secondary);background:var(--ui-bg-subtle);border:1px dashed var(--ui-border-strong);border-radius:8px;padding:10px 12px;text-align:center;">
-          📐 ${tr("請在 3D 掃描模型上點擊 <b>起點 A</b> 與 <b>終點 B</b> 建立縱橫斷面", "Click <b>Start Point A</b> and <b>End Point B</b> on the 3D scan to generate the cross-section profile")}
+          ${tr("請在 3D 掃描模型上點擊 <b>起點 A</b> 與 <b>終點 B</b> 建立縱橫斷面", "Click <b>Start Point A</b> and <b>End Point B</b> on the 3D scan to generate the cross-section profile")}
         </div>`;
       }
     }

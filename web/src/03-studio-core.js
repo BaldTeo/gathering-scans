@@ -3389,8 +3389,6 @@
         panelEl.classList.add("hidden");
         if (typeof window.syncSidePanelMinimizedState === "function") window.syncSidePanelMinimizedState(false);
       }
-      const editDockEl = document.getElementById("studioEditingDock");
-      if (editDockEl) editDockEl.style.display = "none";
       const mobileHudEl = document.getElementById("studioMobileToolHud");
       if (mobileHudEl) mobileHudEl.style.display = "none";
       document.getElementById("btnToggleFirstPerson")?.scrollIntoView?.({
