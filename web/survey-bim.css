@@ -1847,6 +1847,12 @@ body.theme-dark .subtab-btn.active {
     z-index: 94 !important;
   }
 
+  #viewStudio:has(#studioFirstPersonHud.active) #studioEditingDock,
+  #studioEditingDock[style*="display: none"],
+  #studioEditingDock[style*="display:none"] {
+    display: none !important;
+  }
+
   #studioInspectorEdgeTab {
     top: 78px !important;
     right: 0 !important;
@@ -1854,12 +1860,17 @@ body.theme-dark .subtab-btn.active {
     font-size: 11px !important;
   }
 
+  #viewStudio:has(#studioMobileToolHud[style*="display: flex"]) #studioInspectorEdgeTab,
+  #viewStudio:has(#studioMobileToolHud.active) #studioInspectorEdgeTab {
+    top: 122px !important;
+  }
+
   .gs-side-panel,
   #studioSidePanel {
     bottom: 96px !important;
   }
 
-  /* Keep North Arrow on bottom-left when edit dock is collapsed on right; shift to top-left when edit dock expands */
+  /* Keep North Arrow on bottom-left when edit dock is collapsed on right; shift below top bar / mobile HUD when edit dock expands */
   .gs-north-arrow-compass,
   #gsNorthArrowCompass {
     top: auto !important;
@@ -1873,6 +1884,10 @@ body.theme-dark .subtab-btn.active {
     bottom: auto !important;
     left: 8px !important;
     right: auto !important;
+  }
+
+  .gs-main:has(#studioEditingDock:not(.gs-edit-dock-collapsed)):has(#studioMobileToolHud[style*="display: flex"]) #gsNorthArrowCompass {
+    top: 118px !important;
   }
 
   /* Compact Split-Map + Library Drawer on Mobile (<= 767px) */

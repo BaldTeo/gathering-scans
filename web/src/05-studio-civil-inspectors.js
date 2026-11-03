@@ -238,11 +238,11 @@
     if (STATE.movingVertex) {
       hud.style.display = "flex";
       hud.innerHTML = `
-        <span class="gs-mobile-hud-label">🎯 ${tr(
-          `移動點位中 (${STATE.movingVertex.label || "Point"}) — 點擊新位置放置 · 按 ESC 取消`,
-          `Moving ${STATE.movingVertex.label || "Point"} — Click to place · ESC to cancel`
+        <span class="gs-mobile-hud-label">${tr(
+          `移動點位 (${STATE.movingVertex.label || "Point"})`,
+          `Move ${STATE.movingVertex.label || "Point"}`
         )}</span>
-        <button type="button" class="gs-mobile-hud-btn danger" data-mobile-hud="cancel_vertex_move">✕ ${tr("取消移動", "Cancel Move")}</button>
+        <button type="button" class="gs-mobile-hud-btn danger" data-mobile-hud="cancel_vertex_move">${tr("取消", "Cancel")}</button>
       `;
     } else if (tool === "crop_delete" || tool === "crop") {
       const isDel = tool === "crop_delete";
@@ -256,29 +256,29 @@
       hud.style.display = "flex";
       hud.innerHTML = `
         <button type="button" class="gs-mobile-hud-btn ${isOrbitSub ? "primary" : ""}" data-mobile-hud="toggle_lasso_orbit">
-          ${isOrbitSub ? tr("🔄 旋轉中 (點此套索)", "🔄 Orbiting (Tap to Lasso)") : tr("✏️ 套索標記 (點此旋轉)", "✏️ Lasso (Tap to Orbit)")}
+          ${isOrbitSub ? tr("套索", "Lasso") : tr("旋轉", "Orbit")}
         </button>
         ${
           STATE.lassoInputMethod === "polygon" && ptsCount >= 3
-            ? `<button type="button" class="gs-mobile-hud-btn primary" data-mobile-hud="lock_poly">✓ ${tr(`鎖定 (${ptsCount}點)`, `Lock (${ptsCount})`)}</button>`
+            ? `<button type="button" class="gs-mobile-hud-btn primary" data-mobile-hud="lock_poly">${tr("鎖定", "Lock")} (${ptsCount})</button>`
             : ""
         }
         ${
           pendingRegions > 0
-            ? `<button type="button" class="gs-mobile-hud-btn primary" data-mobile-hud="commit_lasso">✓ ${
-                isDel ? tr("執行刪除", "Delete") : tr("執行保留", "Keep")
+            ? `<button type="button" class="gs-mobile-hud-btn primary" data-mobile-hud="commit_lasso">${
+                isDel ? tr("刪除", "Delete") : tr("保留", "Keep")
               } (${pendingRegions})</button>`
             : ""
         }
         ${
           hasAnyMarks
-            ? `<button type="button" class="gs-mobile-hud-btn" data-mobile-hud="undo_lasso">↩ ${tr("復原", "Undo")}</button>`
+            ? `<button type="button" class="gs-mobile-hud-btn" data-mobile-hud="undo_lasso">${tr("復原", "Undo")}</button>`
             : ""
         }
         <button type="button" class="gs-mobile-hud-btn" data-mobile-hud="expand_cat_panel">${
-          STATE.sidePanelMinimized ? tr("▴ 面板", "▴ Panel") : tr("▾ 收合", "▾ Hide")
+          STATE.sidePanelMinimized ? tr("面板", "Panel") : tr("收合", "Hide")
         }</button>
-        <button type="button" class="gs-mobile-hud-btn danger" data-mobile-hud="exit_tool">✕ ${tr("離開", "Exit")}</button>
+        <button type="button" class="gs-mobile-hud-btn danger" data-mobile-hud="exit_tool">${tr("離開", "Exit")}</button>
       `;
     } else if (tool === "area" || tool === "volume" || tool === "contours" || tool === "flatness") {
       const toolLabel =
@@ -291,11 +291,11 @@
         }
         hud.style.display = "flex";
         hud.innerHTML = `
-          <span class="gs-mobile-hud-label">📐 ${toolLabel}${tr("：請點擊 3+ 點圍成範圍", ": Tap 3+ points")}</span>
+          <span class="gs-mobile-hud-label">${toolLabel}${tr("：點擊 3+ 點", ": Tap 3+ pts")}</span>
           ${
             hasPanelToggle
               ? `<button type="button" class="gs-mobile-hud-btn" data-mobile-hud="expand_cat_panel">${
-                  STATE.sidePanelMinimized ? tr("▴ 展開面板", "▴ Panel") : tr("▾ 收合面板", "▾ Hide")
+                  STATE.sidePanelMinimized ? tr("面板", "Panel") : tr("收合", "Hide")
                 }</button>`
               : ""
           }
@@ -303,18 +303,18 @@
       } else {
         hud.style.display = "flex";
         hud.innerHTML = `
-          <span class="gs-mobile-hud-label">📐 ${toolLabel}：${tr(`已標記 ${ptsCount} 點`, `${ptsCount} pts`)}</span>
+          <span class="gs-mobile-hud-label">${toolLabel}：${tr(`${ptsCount} 點`, `${ptsCount} pts`)}</span>
           ${
             ptsCount >= 3
-              ? `<button type="button" class="gs-mobile-hud-btn primary" data-mobile-hud="lock_poly">✓ ${tr("完成多邊形", "Lock Polygon")}</button>`
-              : `<span class="gs-mobile-hud-label" style="color:var(--ui-text-secondary);">${tr(`再點 ${3 - ptsCount} 點可閉合`, `${3 - ptsCount} more`)}</span>`
+              ? `<button type="button" class="gs-mobile-hud-btn primary" data-mobile-hud="lock_poly">${tr("完成", "Lock")}</button>`
+              : `<span class="gs-mobile-hud-label" style="color:var(--ui-text-secondary);">${tr(`再點 ${3 - ptsCount} 點`, `${3 - ptsCount} more`)}</span>`
           }
-          <button type="button" class="gs-mobile-hud-btn" data-mobile-hud="undo_pt">↩ ${tr("復原點", "Undo")}</button>
-          <button type="button" class="gs-mobile-hud-btn danger" data-mobile-hud="clear_pts">✕ ${tr("清除", "Clear")}</button>
+          <button type="button" class="gs-mobile-hud-btn" data-mobile-hud="undo_pt">${tr("復原", "Undo")}</button>
+          <button type="button" class="gs-mobile-hud-btn danger" data-mobile-hud="clear_pts">${tr("清除", "Clear")}</button>
           ${
             hasPanelToggle
               ? `<button type="button" class="gs-mobile-hud-btn" data-mobile-hud="expand_cat_panel">${
-                  STATE.sidePanelMinimized ? tr("▴ 面板", "▴ Panel") : tr("▾ 收合", "▾ Hide")
+                  STATE.sidePanelMinimized ? tr("面板", "Panel") : tr("收合", "Hide")
                 }</button>`
               : ""
           }
@@ -336,19 +336,19 @@
         }
         const promptText =
           tool === "distance"
-            ? tr("📏 距離：請點擊起點與終點 (0/2)", "📏 Distance: Tap start & end (0/2)")
+            ? tr("距離：點擊 2 點 (0/2)", "Distance: Tap 2 pts (0/2)")
             : tool === "angle"
-            ? tr("📐 角度：請點擊 3 點量測夾角 (0/3)", "📐 Angle: Tap 3 points (0/3)")
+            ? tr("角度：點擊 3 點 (0/3)", "Angle: Tap 3 pts (0/3)")
             : tool === "section"
-            ? tr("📦 剖面盒：請點擊 P1、P2 兩點 (0/2)", "📦 Section Box: Tap P1 & P2 (0/2)")
-            : tr("📈 斷面：請點擊 A、B 兩點 (0/2)", "📈 Profile: Tap A & B (0/2)");
+            ? tr("剖面盒：點擊 2 點 (0/2)", "Section: Tap 2 pts (0/2)")
+            : tr("斷面：點擊 2 點 (0/2)", "Profile: Tap 2 pts (0/2)");
         hud.style.display = "flex";
         hud.innerHTML = `
           <span class="gs-mobile-hud-label">${promptText}</span>
           ${
             tool === "profile" || tool === "section"
               ? `<button type="button" class="gs-mobile-hud-btn" data-mobile-hud="expand_cat_panel">${
-                  STATE.sidePanelMinimized ? tr("▴ 展開面板", "▴ Panel") : tr("▾ 收合面板", "▾ Hide")
+                  STATE.sidePanelMinimized ? tr("面板", "Panel") : tr("收合", "Hide")
                 }</button>`
               : ""
           }
@@ -356,13 +356,13 @@
       } else {
         hud.style.display = "flex";
         hud.innerHTML = `
-          <span class="gs-mobile-hud-label">📏 ${toolLabel}：${tr(`已標記 ${ptsCount} 點`, `${ptsCount} pts`)}</span>
-          <button type="button" class="gs-mobile-hud-btn" data-mobile-hud="undo_pt">↩ ${tr("復原點", "Undo")}</button>
-          <button type="button" class="gs-mobile-hud-btn danger" data-mobile-hud="clear_pts">✕ ${tr("取消", "Cancel")}</button>
+          <span class="gs-mobile-hud-label">${toolLabel}：${tr(`${ptsCount} 點`, `${ptsCount} pts`)}</span>
+          <button type="button" class="gs-mobile-hud-btn" data-mobile-hud="undo_pt">${tr("復原", "Undo")}</button>
+          <button type="button" class="gs-mobile-hud-btn danger" data-mobile-hud="clear_pts">${tr("取消", "Cancel")}</button>
           ${
             tool === "profile" || tool === "section"
               ? `<button type="button" class="gs-mobile-hud-btn" data-mobile-hud="expand_cat_panel">${
-                  STATE.sidePanelMinimized ? tr("▴ 面板", "▴ Panel") : tr("▾ 收合", "▾ Hide")
+                  STATE.sidePanelMinimized ? tr("面板", "Panel") : tr("收合", "Hide")
                 }</button>`
               : ""
           }
@@ -374,10 +374,10 @@
       hud.innerHTML = `
         <span class="gs-mobile-hud-label">${
           isPhoto
-            ? tr("📷 光達照片：點擊 3D 模型查詢實景照片", "📷 Photos: Tap 3D model to inspect photo")
-            : tr("💬 空間標註：點擊 3D 模型放置標註點", "💬 Comments: Tap 3D model to place pin")
+            ? tr("照片：點擊模型查詢", "Photos: Tap model")
+            : tr("標註：點擊模型放置", "Comments: Tap model")
         }</span>
-        <button type="button" class="gs-mobile-hud-btn" data-mobile-hud="expand_cat_panel">${tr("▴ 展開面板", "▴ Panel")}</button>
+        <button type="button" class="gs-mobile-hud-btn" data-mobile-hud="expand_cat_panel">${tr("面板", "Panel")}</button>
       `;
     } else if (tool === "categorize" && STATE.categorizeEditMode) {
       const mode = STATE.categorizeEditMode;

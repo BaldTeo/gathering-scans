@@ -2535,6 +2535,16 @@
         }
       });
     }
+    if (STATE.activeView === "map") {
+      if (window.innerWidth <= 767 && STATE.leftPaneMode === "library" && STATE.siteTimelineOpen && typeof closeSiteTimeline === "function") {
+        closeSiteTimeline();
+      } else if (window.innerWidth > 767 && !STATE.siteTimelineOpen && typeof openSiteTimeline === "function") {
+        openSiteTimeline(STATE.activeProjectGroup, STATE.selectedTimelineScanId || STATE.activeScanId, false);
+      }
+    }
+    if (STATE.activeView === "studio" && typeof window.syncSidePanelMinimizedState === "function") {
+      window.syncSidePanelMinimizedState();
+    }
   }
 
   window.addEventListener("resize", handleResize);

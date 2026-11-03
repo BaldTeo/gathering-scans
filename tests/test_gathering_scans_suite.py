@@ -4471,6 +4471,8 @@ vm.runInContext(fs.readFileSync('./web/src/12-public-utilities-gis.js', 'utf8'),
         self.assertIn("#studioEditingDock.gs-edit-dock-collapsed", bim_css)
         self.assertIn("#viewMap.gs-library-mode-active", bim_css)
         self.assertIn("#studioEditingDock #btnToggleEditDockCollapse", bim_css)
+        self.assertIn("#viewStudio:has(#studioFirstPersonHud.active) #studioEditingDock", bim_css)
+        self.assertIn('#viewStudio:has(#studioMobileToolHud[style*="display: flex"]) #studioInspectorEdgeTab', bim_css)
         self.assertNotIn("#btnToggleEditDockCollapse {\n    display: none !important;\n  }", bim_css)
 
         with open(os.path.join(BASE_DIR, "web", "src", "01-core-state.js"), "r", encoding="utf-8") as f:
@@ -4492,6 +4494,8 @@ vm.runInContext(fs.readFileSync('./web/src/12-public-utilities-gis.js', 'utf8'),
         self.assertIn("const showEdgeTab = isOpen && isMin;", js05)
         self.assertNotIn("lblCollapse.textContent =", js05)
         self.assertNotIn("lblCol.textContent =", js05)
+        self.assertNotIn("🔄 旋轉中", js05)
+        self.assertNotIn("📐 ", js05)
 
         with open(os.path.join(BASE_DIR, "web", "src", "06-studio-align-and-optimizer.js"), "r", encoding="utf-8") as f:
             js06 = f.read()
@@ -4502,6 +4506,7 @@ vm.runInContext(fs.readFileSync('./web/src/12-public-utilities-gis.js', 'utf8'),
         with open(os.path.join(BASE_DIR, "web", "app.js"), "r", encoding="utf-8") as f:
             app_js = f.read()
         self.assertIn('getElementById("btnExitExternalPreview")', app_js)
+        self.assertIn('window.innerWidth <= 767 && STATE.leftPaneMode === "library" && STATE.siteTimelineOpen', app_js)
         self.assertNotIn("lblCol.textContent =", app_js)
 
 
