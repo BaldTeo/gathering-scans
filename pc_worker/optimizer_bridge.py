@@ -2238,6 +2238,8 @@ class OptimizerBridge:
 
             for idx, (ly, sc) in enumerate(resolved_layers):
                 sid = sc["scan_id"]
+                ly_brightness = safe_float(ly.get("brightness"), 1.0) or 1.0
+                ly_brightness = max(0.1, min(4.0, ly_brightness))
                 total_images += int(sc.get("image_count") or 0)
 
                 # Locate .obj path (or convert primary / leaf .glb tiles if needed)
@@ -2870,6 +2872,7 @@ class OptimizerBridge:
                         {
                             "scan_idx": idx,
                             "scan_id": sid,
+                            "brightness": ly_brightness,
                             "v_local": v_local_merged,
                             "vt": vt_float32,
                             "f": f_arr,
@@ -2934,6 +2937,7 @@ class OptimizerBridge:
                                     "scan_id": str(sub_mf.get("scan_id") or ""),
                                     "derived_from_scan_id": str(sub_mf.get("derived_from_scan_id") or ""),
                                     "name": sub_mf.get("name") or sub_mf.get("scan_id") or sid,
+                                    "brightness": round(ly_brightness, 2),
                                     "position_three": [round(tx, 4), round(ty, 4), round(tz, 4)],
                                     "quaternion_three": [round(float(x), 6) for x in quat_three[:4]],
                                     "euler_deg_three": [round(rx_deg, 2), round(ry_deg, 2), round(rz_deg, 2)],
@@ -2949,6 +2953,7 @@ class OptimizerBridge:
                                 "scan_id": sid,
                                 "derived_from_scan_id": str(sc.get("derived_from_scan_id") or ""),
                                 "name": sc.get("name") or sid,
+                                "brightness": round(ly_brightness, 2),
                                 "position_three": [round(tx, 4), round(ty, 4), round(tz, 4)],
                                 "quaternion_three": [round(float(x), 6) for x in quat_three[:4]],
                                 "euler_deg_three": [round(rx_deg, 2), round(ry_deg, 2), round(rz_deg, 2)],
@@ -2982,6 +2987,9 @@ class OptimizerBridge:
 
             if has_comp:
                 applied_steps.append(f"Optimized ({raw_preset}, {target_tex_res}px/scan)")
+            bright_adjusted_count = sum(1 for p in merged_parts if abs(safe_float(p.get("brightness"), 1.0) - 1.0) > 0.01)
+            if bright_adjusted_count > 0:
+                applied_steps.append(f"Adjusted brightness on {bright_adjusted_count} scan{'s' if bright_adjusted_count > 1 else ''}")
 
             for p_idx, part in enumerate(merged_parts):
                 f_p = part["f"]
@@ -3013,8 +3021,10 @@ class OptimizerBridge:
                 raw_jb = part.get("raw_jpeg")
                 pil_im = part.get("pil_img")
                 exact_jpeg_for_glb: Optional[bytes] = None
+                p_brightness = safe_float(part.get("brightness"), 1.0) or 1.0
+                has_bright_adj = abs(p_brightness - 1.0) > 0.01
 
-                if not has_comp and raw_jb is not None and raw_jb[:2] == b"\xff\xd8":
+                if not has_comp and not has_bright_adj and raw_jb is not None and raw_jb[:2] == b"\xff\xd8":
                     # Zero-reencode pass-through: bit-identical 4096x4096 JPEG bytes!
                     with open(jpg_path, "wb") as jf:
                         jf.write(raw_jb)
@@ -3029,6 +3039,9 @@ class OptimizerBridge:
                         pil_im = Image.new("RGB", (64, 64), (160, 160, 160))
                     else:
                         pil_im = pil_im.convert("RGB")
+                    if has_bright_adj:
+                        from PIL import ImageEnhance
+                        pil_im = ImageEnhance.Brightness(pil_im).enhance(p_brightness)
                     if has_comp and max(pil_im.size) > target_tex_res:
                         pil_im = pil_im.copy()
                         pil_im.thumbnail((target_tex_res, target_tex_res), Image.Resampling.LANCZOS)

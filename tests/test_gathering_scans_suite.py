@@ -4469,6 +4469,7 @@ vm.runInContext(fs.readFileSync('./web/src/12-public-utilities-gis.js', 'utf8'),
             bim_css = f.read()
         self.assertIn("--studio-inspector-w:", bim_css)
         self.assertIn("#studioEditingDock.gs-edit-dock-collapsed", bim_css)
+        self.assertIn("writing-mode: vertical-rl", bim_css)
         self.assertIn("#viewMap.gs-library-mode-active", bim_css)
         self.assertIn("#studioEditingDock #btnToggleEditDockCollapse", bim_css)
         self.assertIn("#viewStudio:has(#studioFirstPersonHud.active) #studioEditingDock", bim_css)
@@ -4502,6 +4503,16 @@ vm.runInContext(fs.readFileSync('./web/src/12-public-utilities-gis.js', 'utf8'),
         self.assertIn('getElementById("btnToggleEditDockCollapse")', js06)
         self.assertIn('dock.classList.remove("gs-edit-dock-collapsed")', js06)
         self.assertIn("function _setEditDockCollapsedState(collapsed)", js06)
+        self.assertIn("align-brightness-slider", js06)
+        self.assertIn("align-brightness-num", js06)
+        self.assertIn("btn-align-reset-bright", js06)
+        self.assertIn("applyLayerBrightnessTo3D", js06)
+        self.assertIn("brightness: Number(Number(l.brightness ?? 1.0).toFixed(2))", js06)
+
+        with open(os.path.join(BASE_DIR, "pc_worker", "optimizer_bridge.py"), "r", encoding="utf-8") as f:
+            bridge_py = f.read()
+        self.assertIn("ImageEnhance.Brightness(pil_im).enhance(p_brightness)", bridge_py)
+        self.assertIn('"brightness": ly_brightness', bridge_py)
 
         with open(os.path.join(BASE_DIR, "web", "app.js"), "r", encoding="utf-8") as f:
             app_js = f.read()

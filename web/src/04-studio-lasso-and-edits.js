@@ -2185,6 +2185,7 @@
     const cnt = countStagedAdjustments();
     const badge = document.getElementById("lblStagedEditsBadge");
     const mobBadge = document.getElementById("lblMobileUmbrellaStagedBadge");
+    const colBadge = document.getElementById("lblCollapsedEditDockBadge");
     const btn = document.getElementById("btnDockGenerateScan");
     if (badge) {
       badge.textContent = String(cnt);
@@ -2193,6 +2194,10 @@
     if (mobBadge) {
       mobBadge.textContent = String(cnt);
       mobBadge.style.display = cnt > 0 ? "inline-block" : "none";
+    }
+    if (colBadge) {
+      colBadge.textContent = String(cnt);
+      colBadge.style.display = cnt > 0 ? "inline-block" : "none";
     }
     if (btn) btn.classList.toggle("has-staged", cnt > 0);
   }

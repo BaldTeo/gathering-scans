@@ -1750,6 +1750,51 @@ body.theme-dark .subtab-btn.active {
   transform: rotate(180deg);
 }
 
+/* Collapsed Edit Dock is strictly ON THE RIGHT and VERTICAL */
+.gs-studio-editing-dock.gs-edit-dock-collapsed,
+#studioEditingDock.gs-edit-dock-collapsed {
+  display: flex !important;
+  left: auto !important;
+  right: calc(0px + var(--studio-inspector-w, 0px)) !important;
+  top: 50% !important;
+  bottom: auto !important;
+  transform: translateY(-50%) !important;
+  flex-direction: column !important;
+  align-items: center !important;
+  justify-content: center !important;
+  padding: 8px 3px !important;
+  border-radius: 8px 0 0 8px !important;
+  border-right: none !important;
+  width: auto !important;
+  min-width: 0 !important;
+  box-shadow: -2px 4px 14px rgba(0, 0, 0, 0.22) !important;
+  z-index: 94 !important;
+}
+
+#studioEditingDock.gs-edit-dock-collapsed #btnToggleEditDockCollapse {
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: center !important;
+  justify-content: center !important;
+  gap: 4px !important;
+  padding: 6px 3px !important;
+  margin: 0 !important;
+  width: auto !important;
+  min-width: 0 !important;
+  cursor: pointer !important;
+  background: transparent !important;
+  border: none !important;
+}
+
+#studioEditingDock.gs-edit-dock-collapsed #btnToggleEditDockCollapse span {
+  writing-mode: vertical-rl !important;
+  text-orientation: mixed !important;
+  letter-spacing: 2px !important;
+  font-size: 10.5px !important;
+  font-weight: 800 !important;
+  line-height: 1 !important;
+}
+
 @media (min-width: 768px) {
   #viewStudio:has(#studioSidePanel.active:not(.hidden):not(.gs-panel-minimized)) {
     --studio-inspector-w: 380px;
@@ -1802,26 +1847,22 @@ body.theme-dark .subtab-btn.active {
   }
 
   #studioEditingDock #btnToggleEditDockCollapse {
-    display: inline-flex !important;
-    height: 30px !important;
-    padding: 0 7px !important;
-    margin-bottom: 0 !important;
-    flex-shrink: 0 !important;
+    display: flex !important;
     cursor: pointer !important;
   }
 
   .gs-studio-editing-dock.gs-edit-dock-collapsed,
   #studioEditingDock.gs-edit-dock-collapsed {
     display: flex !important;
-    top: auto !important;
-    bottom: 48px !important;
+    top: 50% !important;
+    bottom: auto !important;
     right: 0px !important;
     left: auto !important;
     width: auto !important;
-    transform: none !important;
-    flex-direction: row !important;
-    padding: 3px 6px !important;
-    border-radius: 10px 0 0 10px !important;
+    transform: translateY(-50%) !important;
+    flex-direction: column !important;
+    padding: 8px 3px !important;
+    border-radius: 8px 0 0 8px !important;
     border-right: none !important;
     z-index: 94 !important;
   }

@@ -220,6 +220,7 @@
       return {
         scan_id: l.scan_id,
         locked: forceLockAll ? true : Boolean(l.locked),
+        brightness: Number(Number(l.brightness ?? 1.0).toFixed(2)),
         tx: Number(l.tx) || 0,
         ty: Number(l.ty) || 0,
         tz: Number(l.tz) || 0,
@@ -2583,6 +2584,40 @@
     }
   }
 
+  function applyLayerBrightnessTo3D(layer) {
+    if (!layer || !studioThree) return;
+    const effB = STATE.scanBrightness * Number(layer.brightness ?? 1.0);
+    const tintKey = `${effB}_${layer.tintEnabled ? layer.color : "none"}`;
+    const applyToHierarchy = (root) => {
+      if (!root) return;
+      root.traverse((child) => {
+        if (child.isMesh && child.material) {
+          const mats = Array.isArray(child.material) ? child.material : [child.material];
+          mats.forEach((m) => {
+            if (!m) return;
+            if (m.metalness > 0) {
+              m.metalness = 0.0;
+              m.roughness = 1.0;
+              m.side = THREE.DoubleSide;
+              m.needsUpdate = true;
+            }
+            applyBrightnessToMaterial(m, effB);
+            if (layer.tintEnabled && m.color) {
+              const tintCol = new THREE.Color(layer.color);
+              m.color.lerp(tintCol, 0.35);
+            }
+            m.userData._lastAlignTint = tintKey;
+          });
+        }
+      });
+    };
+    if (layer.tilesRenderer?.group) applyToHierarchy(layer.tilesRenderer.group);
+    if (layer.zUpGroup) applyToHierarchy(layer.zUpGroup);
+    if (studioThree.renderer && studioThree.scene && studioThree.camera) {
+      studioThree.renderer.render(studioThree.scene, studioThree.camera);
+    }
+  }
+
   function updateMultiAlignLayersEachFrame() {
     if (!studioThree || !STATE.multiAlign.active) return;
     const showAlignBoxes = STATE.activeTool === "align_merge";
@@ -2593,7 +2628,8 @@
       if (!layer.visible) return;
       if (layer.tilesRenderer) {
         layer.tilesRenderer.update();
-        const tintKey = `${STATE.scanBrightness}_${layer.tintEnabled ? layer.color : "none"}`;
+        const effB = STATE.scanBrightness * Number(layer.brightness ?? 1.0);
+        const tintKey = `${effB}_${layer.tintEnabled ? layer.color : "none"}`;
         layer.tilesRenderer.group.traverse((child) => {
           if (child.isMesh && child.material) {
             const mats = Array.isArray(child.material) ? child.material : [child.material];
@@ -2606,7 +2642,7 @@
                 m.needsUpdate = true;
               }
               if (m.userData?._lastAlignTint !== tintKey) {
-                applyBrightnessToMaterial(m, STATE.scanBrightness);
+                applyBrightnessToMaterial(m, effB);
                 if (layer.tintEnabled && m.color) {
                   const tintCol = new THREE.Color(layer.color);
                   m.color.lerp(tintCol, 0.35);
@@ -2649,6 +2685,7 @@
       visible: true,
       locked: false,
       tintEnabled: Boolean(options.tintEnabled),
+      brightness: typeof options.brightness === "number" ? options.brightness : 1.0,
       tx: Number(options.tx) || 0,
       ty: Number(options.ty) || 0,
       tz: Number(options.tz) || 0,
@@ -2757,10 +2794,11 @@
       tr.addEventListener("load-model", (ev) => {
         if (layer.tilesRenderer !== tr) return;
         if (ev && ev.scene) {
+          const effB = STATE.scanBrightness * Number(layer.brightness ?? 1.0);
           ev.scene.traverse((c) => {
             if (c.isMesh && c.material) {
               const mats = Array.isArray(c.material) ? c.material : [c.material];
-              mats.forEach((m) => applyBrightnessToMaterial(m, STATE.scanBrightness));
+              mats.forEach((m) => applyBrightnessToMaterial(m, effB));
             }
           });
           studioThree.camera.updateMatrixWorld();
@@ -2815,10 +2853,11 @@
           if (sphere.radius > 0) {
             model.position.set(-sphere.center.x, -sphere.center.y, -sphere.center.z);
           }
+          const effB = STATE.scanBrightness * Number(layer.brightness ?? 1.0);
           model.traverse((c) => {
             if (c.isMesh && c.material) {
               const mats = Array.isArray(c.material) ? c.material : [c.material];
-              mats.forEach((m) => applyBrightnessToMaterial(m, STATE.scanBrightness));
+              mats.forEach((m) => applyBrightnessToMaterial(m, effB));
             }
           });
           zUpGroup.add(model);
@@ -3171,6 +3210,30 @@
                   <div>
                     <label style="display:block;color:#60a5fa;font-weight:600;margin-bottom:2px;">${tr("橫滾角 Rz °", "Roll Rz °")}</label>
                     <input type="number" step="0.5" class="gs-input align-num-input" data-scan-id="${l.scan_id}" data-field="rz_deg" value="${Number(l.rz_deg || 0).toFixed(1)}" ${disAttr} style="padding:3px 5px;font-size:11px;width:100%;" />
+                  </div>
+                </div>
+
+                <!-- Individual Scan Brightness (Slider + Manual Input) -->
+                <div style="margin-top:6px;padding:5px 7px;background:var(--ui-bg-surface, rgba(0,0,0,0.06));border-radius:6px;border:1px solid var(--ui-border);">
+                  <div style="display:flex;align-items:center;justify-content:space-between;gap:6px;margin-bottom:3px;">
+                    <label style="display:flex;align-items:center;gap:4px;font-size:10.5px;font-weight:700;color:var(--ui-text-primary);margin:0;">
+                      <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2">
+                        <circle cx="12" cy="12" r="5"/>
+                        <line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/>
+                        <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/>
+                        <line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/>
+                        <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>
+                      </svg>
+                      <span>${tr("掃描亮度", "Scan Brightness")}</span>
+                    </label>
+                    <div style="display:flex;align-items:center;gap:3px;">
+                      <input type="number" step="0.05" min="0.1" max="4.0" class="gs-input align-brightness-num" data-scan-id="${l.scan_id}" value="${Number(l.brightness ?? 1.0).toFixed(2)}" style="width:58px;height:22px;padding:1px 4px;font-size:11px;text-align:right;" title="${tr("手動輸入掃描亮度倍率 (0.1x – 4.0x)", "Manual brightness factor (0.1x – 4.0x)")}" />
+                      <span style="font-size:10px;color:var(--ui-text-muted);font-weight:600;">x</span>
+                      <button type="button" class="gs-top-btn btn-align-reset-bright" data-scan-id="${l.scan_id}" style="padding:1px 5px;font-size:9.5px;height:22px;" title="${tr("重設為預設亮度 1.0x", "Reset to 1.0x default brightness")}">1.0x</button>
+                    </div>
+                  </div>
+                  <div style="display:flex;align-items:center;gap:6px;">
+                    <input type="range" min="0.2" max="2.5" step="0.05" class="align-brightness-slider" data-scan-id="${l.scan_id}" value="${Number(l.brightness ?? 1.0).toFixed(2)}" style="flex:1;accent-color:var(--ui-accent);height:4px;cursor:pointer;" title="${tr("拖曳調整此掃描亮度", "Drag to adjust scan brightness")}" />
                   </div>
                 </div>
                 <div style="display:flex;justify-content:space-between;align-items:center;margin-top:6px;gap:4px;">
@@ -3595,6 +3658,50 @@
           STATE.multiAlign.selectedScanId = l.scan_id;
           applyLayerTransformTo3D(l);
         }
+      });
+    });
+
+    document.querySelectorAll(".align-brightness-slider").forEach((sl) => {
+      sl.addEventListener("input", () => {
+        const sid = sl.dataset.scanId;
+        const val = parseFloat(sl.value) || 1.0;
+        const l = STATE.multiAlign.layers.find((x) => x.scan_id === sid);
+        if (!l) return;
+        l.brightness = Number(val.toFixed(2));
+        const numInp = document.querySelector(`.align-brightness-num[data-scan-id="${sid}"]`);
+        if (numInp) numInp.value = l.brightness.toFixed(2);
+        applyLayerBrightnessTo3D(l);
+      });
+    });
+
+    document.querySelectorAll(".align-brightness-num").forEach((inp) => {
+      const handleNumChange = () => {
+        const sid = inp.dataset.scanId;
+        let val = parseFloat(inp.value);
+        if (!Number.isFinite(val)) val = 1.0;
+        val = Math.max(0.1, Math.min(4.0, val));
+        const l = STATE.multiAlign.layers.find((x) => x.scan_id === sid);
+        if (!l) return;
+        l.brightness = Number(val.toFixed(2));
+        const sl = document.querySelector(`.align-brightness-slider[data-scan-id="${sid}"]`);
+        if (sl) sl.value = Math.max(0.2, Math.min(2.5, val)).toFixed(2);
+        applyLayerBrightnessTo3D(l);
+      };
+      inp.addEventListener("change", handleNumChange);
+      inp.addEventListener("input", handleNumChange);
+    });
+
+    document.querySelectorAll(".btn-align-reset-bright").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const sid = btn.dataset.scanId;
+        const l = STATE.multiAlign.layers.find((x) => x.scan_id === sid);
+        if (!l) return;
+        l.brightness = 1.0;
+        const numInp = document.querySelector(`.align-brightness-num[data-scan-id="${sid}"]`);
+        if (numInp) numInp.value = "1.00";
+        const sl = document.querySelector(`.align-brightness-slider[data-scan-id="${sid}"]`);
+        if (sl) sl.value = "1.00";
+        applyLayerBrightnessTo3D(l);
       });
     });
 

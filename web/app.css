@@ -2285,7 +2285,8 @@ body.gs-auth-locked .gs-main { filter: blur(8px); pointer-events: none !importan
  * ============================================================================ */
 .gs-studio-editing-dock {
   position: absolute;
-  left: 16px;
+  left: auto;
+  right: calc(16px + var(--studio-inspector-w, 0px));
   top: 50%;
   transform: translateY(-50%);
   display: flex;
@@ -2670,7 +2671,7 @@ body.theme-light .gs-comment-pin-close-btn:hover { background: #ef4444; border-c
 .gs-studio-lasso-line { fill: none; stroke: #ffffff; stroke-width: 1.5; stroke-opacity: 0.75; }
 
 @media (min-width: 768px) and (max-width: 1024px) {
-  .gs-studio-editing-dock { left: 10px; top: 50%; bottom: auto; transform: translateY(-50%); flex-direction: column; padding: 5px 4px; gap: 3px; }
+  .gs-studio-editing-dock { left: auto; right: 10px; top: 50%; bottom: auto; transform: translateY(-50%); flex-direction: column; padding: 5px 4px; gap: 3px; }
   .gs-edit-dock-btn { min-width: 44px !important; height: 40px !important; padding: 2px 4px !important; }
 }
 
