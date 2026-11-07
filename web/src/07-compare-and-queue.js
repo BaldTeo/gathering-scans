@@ -166,7 +166,7 @@
         sameVerticalDatum = true;
       } else if (bothGeoref && dist2D < 2500) {
         sharedAnchor = (rInfo.radius <= lInfo.radius ? rInfo.twdCenter : lInfo.twdCenter).clone();
-        sameVerticalDatum = Math.abs(lInfo.twdCenter.z - rInfo.twdCenter.z) <= 25.0;
+        sameVerticalDatum = Math.abs(lInfo.twdCenter.z - rInfo.twdCenter.z) <= 120.0;
       }
     } else if (lInfo && (lInfo.crs === "TWD97" || lInfo.crs === "UTM51N")) {
       sharedAnchor = lInfo.twdCenter.clone();

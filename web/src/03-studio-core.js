@@ -1543,7 +1543,6 @@
 
     const hasValidPrevCenter =
       preserveCamera &&
-      prevScanId === scan.scan_id &&
       Array.isArray(studioThree.tilesCenter) &&
       Math.hypot(
         Number(studioThree.tilesCenter[0]) || 0,
@@ -1665,10 +1664,20 @@
           if (typeof scheduleScanGoogleMapCoverageUpdate === "function") {
             scheduleScanGoogleMapCoverageUpdate(studioThree, scan, 30);
           }
-          if (preserveCamera && prevCamPos && prevCamTarget) {
-            const dx = prevTilesCenter ? sphere.center.x - prevTilesCenter[0] : 0;
-            const dy = prevTilesCenter ? sphere.center.y - prevTilesCenter[1] : 0;
-            const dz = prevTilesCenter ? sphere.center.z - prevTilesCenter[2] : 0;
+          const canKeepCam =
+            preserveCamera &&
+            prevCamPos &&
+            prevCamTarget &&
+            prevTilesCenter &&
+            Math.hypot(
+              sphere.center.x - prevTilesCenter[0],
+              sphere.center.y - prevTilesCenter[1],
+              sphere.center.z - prevTilesCenter[2]
+            ) < 5000;
+          if (canKeepCam) {
+            const dx = sphere.center.x - prevTilesCenter[0];
+            const dy = sphere.center.y - prevTilesCenter[1];
+            const dz = sphere.center.z - prevTilesCenter[2];
             // modelPivot rotates -90 deg around X: Z-up delta (dx, dy, dz) -> world delta (dx, dz, -dy)
             studioThree.camera.position.set(prevCamPos.x - dx, prevCamPos.y - dz, prevCamPos.z + dy);
             studioThree.controls.target.set(prevCamTarget.x - dx, prevCamTarget.y - dz, prevCamTarget.z + dy);
@@ -1769,10 +1778,20 @@
           if (typeof updateScanGoogleMap3DLayer === "function") {
             updateScanGoogleMap3DLayer(studioThree, scan);
           }
-          if (preserveCamera && prevCamPos && prevCamTarget) {
-            const dx = prevTilesCenter ? sphere.center.x - prevTilesCenter[0] : 0;
-            const dy = prevTilesCenter ? sphere.center.y - prevTilesCenter[1] : 0;
-            const dz = prevTilesCenter ? sphere.center.z - prevTilesCenter[2] : 0;
+          const canKeepCam =
+            preserveCamera &&
+            prevCamPos &&
+            prevCamTarget &&
+            prevTilesCenter &&
+            Math.hypot(
+              sphere.center.x - prevTilesCenter[0],
+              sphere.center.y - prevTilesCenter[1],
+              sphere.center.z - prevTilesCenter[2]
+            ) < 5000;
+          if (canKeepCam) {
+            const dx = sphere.center.x - prevTilesCenter[0];
+            const dy = sphere.center.y - prevTilesCenter[1];
+            const dz = sphere.center.z - prevTilesCenter[2];
             // modelPivot rotates -90 deg around X: Z-up delta (dx, dy, dz) -> world delta (dx, dz, -dy)
             studioThree.camera.position.set(prevCamPos.x - dx, prevCamPos.y - dz, prevCamPos.z + dy);
             studioThree.controls.target.set(prevCamTarget.x - dx, prevCamTarget.y - dz, prevCamTarget.z + dy);
@@ -1973,7 +1992,8 @@
       let maxExtent = 35;
       STATE.multiAlign.layers.forEach((l) => {
         if (!l.visible) return;
-        const offsetDist = Math.hypot(Number(l.tx) || 0, Number(l.ty) || 0, Number(l.tz) || 0);
+        const pos = l.layerGroup?.position || { x: Number(l.tx) || 0, y: Number(l.ty) || 0, z: Number(l.tz) || 0 };
+        const offsetDist = Math.hypot(Number(pos.x) || 0, Number(pos.y) || 0, Number(pos.z) || 0);
         const lr = Number(l._sphereRadius) || 45;
         if (offsetDist + lr > maxExtent) maxExtent = offsetDist + lr;
       });
@@ -2025,16 +2045,18 @@
       const visLayers = STATE.multiAlign.layers.filter((l) => l && l.visible);
       if (visLayers.length > 0) {
         visLayers.forEach((l) => {
-          cx += Number(l.tx) || 0;
-          cy += Number(l.ty) || 0;
-          cz += Number(l.tz) || 0;
+          const pos = l.layerGroup?.position || { x: Number(l.tx) || 0, y: Number(l.ty) || 0, z: Number(l.tz) || 0 };
+          cx += Number(pos.x) || 0;
+          cy += Number(pos.y) || 0;
+          cz += Number(pos.z) || 0;
         });
         cx /= visLayers.length;
         cy /= visLayers.length;
         cz /= visLayers.length;
         let maxR = 35;
         visLayers.forEach((l) => {
-          const d = Math.hypot((Number(l.tx) || 0) - cx, (Number(l.ty) || 0) - cy, (Number(l.tz) || 0) - cz);
+          const pos = l.layerGroup?.position || { x: Number(l.tx) || 0, y: Number(l.ty) || 0, z: Number(l.tz) || 0 };
+          const d = Math.hypot((Number(pos.x) || 0) - cx, (Number(pos.y) || 0) - cy, (Number(pos.z) || 0) - cz);
           const lr = Math.min(140, Number(l._sphereRadius) || 48);
           if (d + lr > maxR) maxR = d + lr;
         });

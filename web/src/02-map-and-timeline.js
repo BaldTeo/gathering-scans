@@ -2115,7 +2115,7 @@
         if (outSphere.radius < 12) {
           outSphere._groundOffsetY = hz > 0 ? -(hz + 0.02) : -outSphere.radius * 0.85;
         } else {
-          outSphere._groundOffsetY = hz > 0 ? -Math.min(hz + 0.3, 24.0) : -Math.max(4.0, Math.min(20.0, outSphere.radius * 0.25));
+          outSphere._groundOffsetY = hz > 0 ? -(hz + 0.3) : -Math.max(4.0, Math.min(20.0, outSphere.radius * 0.25));
         }
       } else {
         outSphere._groundOffsetY = outSphere.radius < 12 ? -outSphere.radius * 0.85 : -Math.max(4.0, Math.min(20.0, outSphere.radius * 0.25));

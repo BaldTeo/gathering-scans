@@ -2282,7 +2282,14 @@
 
   document.getElementById("studioScanSelect")?.addEventListener("change", (e) => {
     if (e.target.value) {
-      loadScanIntoStudio(e.target.value);
+      const nextScan = STATE.scans.find((s) => s.scan_id === e.target.value);
+      const sameSite = Boolean(
+        nextScan &&
+          STATE.activeScan &&
+          nextScan.project_group &&
+          nextScan.project_group === STATE.activeScan.project_group
+      );
+      loadScanIntoStudio(e.target.value, { preserveCamera: sameSite });
     }
   });
 

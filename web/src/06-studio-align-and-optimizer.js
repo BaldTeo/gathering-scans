@@ -213,22 +213,27 @@
   function serializeMultiAlignLayersForMerge(forceLockAll = false) {
     return (STATE.multiAlign?.layers || []).map((l) => {
       applyLayerTransformTo3D(l);
-      const pos = l.layerGroup
-        ? l.layerGroup.position
-        : { x: Number(l.tx) || 0, y: Number(l.ty) || 0, z: Number(l.tz) || 0 };
+      const bx = Number(l.baseOffsetThree?.x) || 0;
+      const by = Number(l.baseOffsetThree?.y) || 0;
+      const bz = Number(l.baseOffsetThree?.z) || 0;
+      const utx = Number(l.tx) || 0;
+      const uty = Number(l.ty) || 0;
+      const utz = Number(l.tz) || 0;
       const quat = l.layerGroup ? l.layerGroup.quaternion : { x: 0, y: 0, z: 0, w: 1 };
       return {
         scan_id: l.scan_id,
         locked: forceLockAll ? true : Boolean(l.locked),
         brightness: Number(Number(l.brightness ?? 1.0).toFixed(2)),
-        tx: Number(l.tx) || 0,
-        ty: Number(l.ty) || 0,
-        tz: Number(l.tz) || 0,
+        tx: utx,
+        ty: uty,
+        tz: utz,
+        user_offset_three: [utx, uty, utz],
+        base_offset_three: [bx, by, bz],
         rx_deg: Number(l.rx_deg) || 0,
         ry_deg: Number(l.ry_deg) || 0,
         rz_deg: Number(l.rz_deg) || 0,
         raw_center_zup: l.rawCenter ? [Number(l.rawCenter.x), Number(l.rawCenter.y), Number(l.rawCenter.z)] : null,
-        position_three: [Number(pos.x) || 0, Number(pos.y) || 0, Number(pos.z) || 0],
+        position_three: [bx + utx, by + uty, bz + utz],
         quaternion_three: [Number(quat.x) || 0, Number(quat.y) || 0, Number(quat.z) || 0, Number(quat.w ?? 1)],
         euler_deg_three: [Number(l.rx_deg) || 0, Number(l.ry_deg) || 0, Number(l.rz_deg) || 0],
       };
@@ -668,10 +673,15 @@
         res = await apiPost("/api/optimizer/generate-scan", payload);
       }
 
+      const prevAlignRef =
+        isMulti && STATE.multiAlign?.refCenter
+          ? [Number(STATE.multiAlign.refCenter.x) || 0, Number(STATE.multiAlign.refCenter.y) || 0, Number(STATE.multiAlign.refCenter.z) || 0]
+          : null;
       clearLassoSelectionState();
       restoreOriginalStudioMeshIndices();
       if (isMulti) {
         exitMultiScanAlignMode(false);
+        if (prevAlignRef && studioThree) studioThree.tilesCenter = prevAlignRef;
       }
       setActiveStudioTool("orbit");
 
@@ -703,7 +713,7 @@
             createdObj._resolvedGroundH = prevResolvedGroundH;
           }
         }
-        loadScanIntoStudio(createdId);
+        loadScanIntoStudio(createdId, { preserveCamera: true });
       }
 
       const outMb = res.output_mb ?? res.glb_size_mb ?? 0;
@@ -2543,10 +2553,13 @@
 
   function applyLayerTransformTo3D(layer) {
     if (!layer || !layer.layerGroup) return;
+    const bx = Number(layer.baseOffsetThree?.x) || 0;
+    const by = Number(layer.baseOffsetThree?.y) || 0;
+    const bz = Number(layer.baseOffsetThree?.z) || 0;
     layer.layerGroup.position.set(
-      Number(layer.tx) || 0,
-      Number(layer.ty) || 0,
-      Number(layer.tz) || 0
+      bx + (Number(layer.tx) || 0),
+      by + (Number(layer.ty) || 0),
+      bz + (Number(layer.tz) || 0)
     );
     layer.layerGroup.rotation.set(
       THREE.MathUtils.degToRad(Number(layer.rx_deg) || 0),
@@ -2689,6 +2702,7 @@
       tx: Number(options.tx) || 0,
       ty: Number(options.ty) || 0,
       tz: Number(options.tz) || 0,
+      baseOffsetThree: { x: 0, y: 0, z: 0 },
       rx_deg: Number(options.rx_deg) || 0,
       ry_deg: Number(options.ry_deg) || 0,
       rz_deg: Number(options.rz_deg) || 0,
@@ -2705,26 +2719,46 @@
     STATE.multiAlign.selectedScanId = layer.scan_id;
 
     const syncLayerRelativeOffset = (targetLayer) => {
-      if (!targetLayer || !targetLayer.rawCenter || targetLayer._userMoved || !STATE.multiAlign.refCenter) return;
-      if (STATE.multiAlign.layers[0]?.scan_id === targetLayer.scan_id) return;
+      if (!targetLayer || !targetLayer.rawCenter || !STATE.multiAlign.refCenter) return;
+      if (STATE.multiAlign.layers[0]?.scan_id === targetLayer.scan_id) {
+        targetLayer.baseOffsetThree = { x: 0, y: 0, z: 0 };
+        applyLayerTransformTo3D(targetLayer);
+        syncAlignLayerInputsInDOM(targetLayer);
+        return;
+      }
       const ref = STATE.multiAlign.refCenter;
       const dx = targetLayer.rawCenter.x - ref.x;
       const dy = targetLayer.rawCenter.z - ref.z;
       const dz = -(targetLayer.rawCenter.y - ref.y);
       const dist3D = Math.hypot(dx, dy, dz);
-      if (dist3D > 0.3 && dist3D < 400) {
-        targetLayer.tx = Number(dx.toFixed(2));
-        targetLayer.ty = Number(dy.toFixed(2));
-        targetLayer.tz = Number(dz.toFixed(2));
-      } else if (dist3D >= 400) {
-        const myIdx = STATE.multiAlign.layers.indexOf(targetLayer);
-        targetLayer.tx = Number((Math.max(1, myIdx) * 14).toFixed(2));
-        targetLayer.ty = 0;
-        targetLayer.tz = 0;
+      const bothGeoref =
+        Math.hypot(targetLayer.rawCenter.x, targetLayer.rawCenter.y) >= 50000 &&
+        Math.hypot(ref.x, ref.y) >= 50000;
+      if (bothGeoref && dist3D < 25000) {
+        targetLayer.baseOffsetThree = { x: dx, y: dy, z: dz };
+        if (!targetLayer._userMoved) {
+          targetLayer.tx = 0;
+          targetLayer.ty = 0;
+          targetLayer.tz = 0;
+        }
       } else {
-        targetLayer.tx = 0;
-        targetLayer.ty = 0;
-        targetLayer.tz = 0;
+        targetLayer.baseOffsetThree = { x: 0, y: 0, z: 0 };
+        if (!targetLayer._userMoved) {
+          if (dist3D > 0.3 && dist3D < 400) {
+            targetLayer.tx = Number(dx.toFixed(2));
+            targetLayer.ty = Number(dy.toFixed(2));
+            targetLayer.tz = Number(dz.toFixed(2));
+          } else if (dist3D >= 400) {
+            const myIdx = STATE.multiAlign.layers.indexOf(targetLayer);
+            targetLayer.tx = Number((Math.max(1, myIdx) * 14).toFixed(2));
+            targetLayer.ty = 0;
+            targetLayer.tz = 0;
+          } else {
+            targetLayer.tx = 0;
+            targetLayer.ty = 0;
+            targetLayer.tz = 0;
+          }
+        }
       }
       applyLayerTransformTo3D(targetLayer);
       syncAlignLayerInputsInDOM(targetLayer);
@@ -2917,7 +2951,20 @@
       STATE.multiAlign.selectedScanId = STATE.multiAlign.layers[0]?.scan_id || null;
     }
     if (STATE.multiAlign.layers.length > 0 && STATE.multiAlign.layers[0].rawCenter) {
-      STATE.multiAlign.refCenter = { ...STATE.multiAlign.layers[0].rawCenter };
+      const ref = { ...STATE.multiAlign.layers[0].rawCenter };
+      STATE.multiAlign.refCenter = ref;
+      STATE.multiAlign.layers.forEach((other, oIdx) => {
+        if (oIdx === 0 || !other.rawCenter) {
+          other.baseOffsetThree = { x: 0, y: 0, z: 0 };
+        } else if (Math.hypot(other.rawCenter.x, other.rawCenter.y) >= 50000 && Math.hypot(ref.x, ref.y) >= 50000) {
+          other.baseOffsetThree = {
+            x: other.rawCenter.x - ref.x,
+            y: other.rawCenter.z - ref.z,
+            z: -(other.rawCenter.y - ref.y),
+          };
+        }
+        applyLayerTransformTo3D(other);
+      });
     }
     syncStagedEditsDockBadge();
     updateStudioTransformGizmo();
@@ -3831,9 +3878,13 @@
           project_group: mergedProject,
         };
 
+        const prevAlignRef = STATE.multiAlign?.refCenter
+          ? [Number(STATE.multiAlign.refCenter.x) || 0, Number(STATE.multiAlign.refCenter.y) || 0, Number(STATE.multiAlign.refCenter.z) || 0]
+          : null;
         await refreshScansCatalog();
         exitMultiScanAlignMode(false);
-        loadScanIntoStudio(res.scan_id);
+        if (prevAlignRef && studioThree) studioThree.tilesCenter = prevAlignRef;
+        loadScanIntoStudio(res.scan_id, { preserveCamera: true });
         renderAlignMergeInspectorContent();
 
         const finalBox = document.getElementById("alignMergeResultBox");

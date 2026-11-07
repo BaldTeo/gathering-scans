@@ -2840,7 +2840,27 @@ class OptimizerBridge:
                 else:
                     native_anchor_twd = scan_wmid
 
-                merged_anchor_twd = c_ref + d_zup
+                user_off = ly.get("user_offset_three")
+                if isinstance(user_off, list) and len(user_off) >= 3:
+                    utx, uty, utz = float(user_off[0]), float(user_off[1]), float(user_off[2])
+                    user_d_zup = np.array([utx, -utz, uty], dtype=np.float64)
+                    if float(np.max(np.abs(native_anchor_twd))) >= 50000.0:
+                        merged_anchor_twd = native_anchor_twd + user_d_zup
+                    else:
+                        merged_anchor_twd = c_ref + d_zup
+                elif float(np.max(np.abs(native_anchor_twd))) >= 50000.0 and float(np.max(np.abs(c_ref))) >= 50000.0:
+                    if float(np.linalg.norm(d_zup)) < 1e-6 and float(np.linalg.norm(native_anchor_twd - c_ref)) > 1.0:
+                        merged_anchor_twd = native_anchor_twd.copy()
+                    elif float(np.max(np.abs(d_zup - (native_anchor_twd - c_ref)))) <= 0.015:
+                        merged_anchor_twd = native_anchor_twd.copy()
+                    else:
+                        merged_anchor_twd = c_ref + d_zup
+                else:
+                    merged_anchor_twd = c_ref + d_zup
+                is_zero_shift_identity = (
+                    float(np.linalg.norm(merged_anchor_twd - native_anchor_twd)) < 1e-7
+                    and bool(np.allclose(r_zup, np.eye(3, dtype=np.float64), atol=1e-7))
+                )
                 scan_kept_any = False
 
                 for rp in scan_raw_parts:
@@ -2848,10 +2868,13 @@ class OptimizerBridge:
                     vt_arr = rp["vt"]
                     f_arr = rp["f"].copy()
                     off_v = rp["obj_offset"]
-                    if off_v is not None and float(np.max(np.abs(v_arr))) < 50000.0 and float(np.max(np.abs(native_anchor_twd))) >= 50000.0:
-                        v_centered = (v_arr + off_v) - native_anchor_twd
-                    else:
-                        v_centered = v_arr - native_anchor_twd
+                    has_local_off = (
+                        off_v is not None
+                        and float(np.max(np.abs(v_arr))) < 50000.0
+                        and float(np.max(np.abs(native_anchor_twd))) >= 50000.0
+                    )
+                    v_world = (v_arr + off_v) if has_local_off else v_arr
+                    v_centered = v_world - native_anchor_twd
 
                     if raw_deletions and len(f_arr) > 0:
                         f_v0_idx = np.clip(f_arr[:, [0, 2, 4]] - 1, 0, len(v_centered) - 1)
@@ -2864,7 +2887,7 @@ class OptimizerBridge:
                     if len(f_arr) == 0:
                         continue
 
-                    v_twd97 = merged_anchor_twd + (v_centered @ r_zup.T)
+                    v_twd97 = v_world.copy() if is_zero_shift_identity else (merged_anchor_twd + (v_centered @ r_zup.T))
                     v_local_merged = (v_twd97 - merged_offset).astype(np.float32)
                     vt_float32 = vt_arr.astype(np.float32)
 
