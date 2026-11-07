@@ -1746,16 +1746,20 @@ body.theme-dark .subtab-btn.active {
   display: none !important;
 }
 
-#studioEditingDock:not(.gs-edit-dock-collapsed) #svgEditDockChevron {
+#studioEditingDock.gs-edit-dock-collapsed #svgEditDockChevron {
   transform: rotate(180deg);
 }
 
-/* Collapsed Edit Dock is strictly ON THE RIGHT and VERTICAL */
+#studioEditingDock:not(.gs-edit-dock-collapsed) #svgEditDockChevron {
+  transform: rotate(0deg);
+}
+
+/* Collapsed Edit Dock is strictly ON THE LEFT OF THE SCREEN and VERTICAL */
 .gs-studio-editing-dock.gs-edit-dock-collapsed,
 #studioEditingDock.gs-edit-dock-collapsed {
   display: flex !important;
-  left: auto !important;
-  right: calc(0px + var(--studio-inspector-w, 0px)) !important;
+  left: 0px !important;
+  right: auto !important;
   top: 50% !important;
   bottom: auto !important;
   transform: translateY(-50%) !important;
@@ -1763,11 +1767,11 @@ body.theme-dark .subtab-btn.active {
   align-items: center !important;
   justify-content: center !important;
   padding: 8px 3px !important;
-  border-radius: 8px 0 0 8px !important;
-  border-right: none !important;
+  border-radius: 0 8px 8px 0 !important;
+  border-left: none !important;
   width: auto !important;
   min-width: 0 !important;
-  box-shadow: -2px 4px 14px rgba(0, 0, 0, 0.22) !important;
+  box-shadow: 2px 4px 14px rgba(0, 0, 0, 0.22) !important;
   z-index: 94 !important;
 }
 
@@ -1800,21 +1804,22 @@ body.theme-dark .subtab-btn.active {
     --studio-inspector-w: 380px;
   }
 
-  /* Right-Side Collapsible Editing Dock (#studioEditingDock) on Desktop/Tablet */
+  /* Left-Side Collapsible Editing Dock (#studioEditingDock) on Desktop/Tablet */
   .gs-studio-editing-dock,
   #studioEditingDock {
-    left: auto !important;
-    right: calc(16px + var(--studio-inspector-w, 0px)) !important;
+    left: 16px !important;
+    right: auto !important;
     top: 50%;
     transform: translateY(-50%);
-    transition: right 0.22s cubic-bezier(0.22, 1, 0.36, 1), padding 0.18s ease;
+    transition: left 0.22s cubic-bezier(0.22, 1, 0.36, 1), padding 0.18s ease;
   }
 
   #studioEditingDock.gs-edit-dock-collapsed {
-    right: calc(0px + var(--studio-inspector-w, 0px)) !important;
-    padding: 5px 6px !important;
-    border-radius: 10px 0 0 10px !important;
-    border-right: none !important;
+    left: 0px !important;
+    right: auto !important;
+    padding: 8px 3px !important;
+    border-radius: 0 8px 8px 0 !important;
+    border-left: none !important;
   }
 }
 
@@ -1856,14 +1861,14 @@ body.theme-dark .subtab-btn.active {
     display: flex !important;
     top: 50% !important;
     bottom: auto !important;
-    right: 0px !important;
-    left: auto !important;
+    left: 0px !important;
+    right: auto !important;
     width: auto !important;
     transform: translateY(-50%) !important;
     flex-direction: column !important;
     padding: 8px 3px !important;
-    border-radius: 8px 0 0 8px !important;
-    border-right: none !important;
+    border-radius: 0 8px 8px 0 !important;
+    border-left: none !important;
     z-index: 94 !important;
   }
 
