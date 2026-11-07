@@ -251,6 +251,17 @@ def compute_mesh_eigenvalue_features(
             "inv_voxel_idx": np.zeros(n_tris, dtype=np.int32),
         }
 
+    from pc_worker.surveying import rust_accel
+
+    rust_feats = rust_accel.compute_voxel_tensor_features(
+        centroids=centroids,
+        normals=normals,
+        area_3d=area_3d,
+        voxel_size=voxel_size,
+    )
+    if rust_feats is not None:
+        return rust_feats
+
     c_min = centroids.min(axis=0)
     ijk = np.floor((centroids - c_min) / voxel_size).astype(np.int64)
     # Pack 3D voxel coordinates into 64-bit hash keys

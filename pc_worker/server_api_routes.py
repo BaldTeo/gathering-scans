@@ -63,6 +63,12 @@ from pc_worker.server_cloud_and_tunnel import (
     _save_cloud_auth,
     _test_gdrive_service_account,
 )
+from pc_worker.surveying.rust_accel import (
+    HAS_RUST_CORE,
+    RUST_CORE_VERSION,
+    get_rust_status,
+)
+
 
 
 class ServerWriteRoutesMixin:

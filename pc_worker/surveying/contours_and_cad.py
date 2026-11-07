@@ -402,24 +402,40 @@ class ContoursAndCadMixin:
             stride = int(math.ceil(len(levels) / 80.0))
             levels = levels[::stride]
 
-        contours_out = []
-        for elev in levels:
-            is_major = abs((elev / major_interval) - round(elev / major_interval)) < 1e-3
-            raw_polylines_twd = self._extract_marching_squares_polylines_twd(
-                sub_grid, sub_hull, sub_e_min, sub_n_min, res, elev
-            )
-            for raw_twd in raw_polylines_twd:
-                clipped_parts = self._clip_polyline_to_polygon_2d(raw_twd, ce, cn, ch, poly_2d)
-                for sub_twd, sub_local in clipped_parts:
-                    contours_out.append(
-                        {
-                            "elevation_m": elev,
-                            "is_major": is_major,
-                            "layer": "C-TOPO-MAJR" if is_major else "C-TOPO-MINR",
-                            "points_local": sub_local,
-                            "points_twd97": sub_twd,
-                        }
-                    )
+        from pc_worker.surveying import rust_accel
+
+        contours_out = rust_accel.extract_and_clip_contours_parallel(
+            sub_grid=sub_grid,
+            sub_hull=sub_hull,
+            sub_e_min=sub_e_min,
+            sub_n_min=sub_n_min,
+            res=res,
+            levels=levels,
+            major_interval=major_interval,
+            ce=ce,
+            cn=cn,
+            ch=ch,
+            poly_2d=poly_2d,
+        )
+        if contours_out is None:
+            contours_out = []
+            for elev in levels:
+                is_major = abs((elev / major_interval) - round(elev / major_interval)) < 1e-3
+                raw_polylines_twd = self._extract_marching_squares_polylines_twd(
+                    sub_grid, sub_hull, sub_e_min, sub_n_min, res, elev
+                )
+                for raw_twd in raw_polylines_twd:
+                    clipped_parts = self._clip_polyline_to_polygon_2d(raw_twd, ce, cn, ch, poly_2d)
+                    for sub_twd, sub_local in clipped_parts:
+                        contours_out.append(
+                            {
+                                "elevation_m": elev,
+                                "is_major": is_major,
+                                "layer": "C-TOPO-MAJR" if is_major else "C-TOPO-MINR",
+                                "points_local": sub_local,
+                                "points_twd97": sub_twd,
+                            }
+                        )
 
         planar_area_m2, perimeter_m = polygon_area_and_perimeter_2d(poly_2d)
         scale_denom, fill_pct = self._compute_a3_zoom_to_fit_scale(span_e, span_n)

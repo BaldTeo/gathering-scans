@@ -1668,6 +1668,8 @@ class GatheringScansHandler(CloudAndTunnelHandlerMixin, ServerWriteRoutesMixin, 
 
         # 2. Health & Status API
         if path in ("/api/status", "/api/pc/health"):
+            from pc_worker.surveying.rust_accel import get_rust_status
+
             sync_scans_with_filesystem()
             scans = DB.list_scans()
             processing = [s for s in scans if s["status"] == "processing"]
@@ -1687,6 +1689,7 @@ class GatheringScansHandler(CloudAndTunnelHandlerMixin, ServerWriteRoutesMixin, 
                     "active_job": processing[0] if processing else None,
                     "queued_count": len(queued),
                     "total_scans": len(scans),
+                    **get_rust_status(),
                 }
             )
             return

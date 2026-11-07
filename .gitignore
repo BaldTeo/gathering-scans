@@ -29,3 +29,9 @@ Thumbs.db
 data/gchat_config.json
 data/gcp_service_account.json
 data/gdrive_cloud_auth.json
+
+# Rust build artifacts
+rust_core/target/
+rust_core/dist/
+*.whl
+

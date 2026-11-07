@@ -169,6 +169,8 @@ def set_pc_simulated_offline(offline: bool) -> Dict[str, Any]:
 
 
 def get_pc_daemon_status() -> Dict[str, Any]:
+    from pc_worker.surveying.rust_accel import get_rust_status
+
     st = load_pc_daemon_state()
     running = bool(st.get("daemon_running", True))
     is_win = os.name == "nt"
@@ -190,6 +192,7 @@ def get_pc_daemon_status() -> Dict[str, Any]:
         "active_job": processing[0] if processing else None,
         "queued_count": len(queued),
         "total_scans": len(scans),
+        **get_rust_status(),
     }
 
 
@@ -1842,6 +1845,8 @@ class CloudAndTunnelHandlerMixin:
         manifest = _load_cloud_manifest()
         cloud_scans = manifest.get("scans") or []
         if path in ("/api/status", "/api/pc/health"):
+            from pc_worker.surveying.rust_accel import get_rust_status
+
             self.send_json(
                 {
                     "status": "cloud_standby" if cloud_scans else "offline",
@@ -1856,6 +1861,7 @@ class CloudAndTunnelHandlerMixin:
                     "active_job": None,
                     "queued_count": 0,
                     "total_scans": len(cloud_scans),
+                    **get_rust_status(),
                 }
             )
             return True

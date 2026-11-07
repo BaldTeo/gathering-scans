@@ -54,6 +54,8 @@ from pc_worker.config import (
     TWD97_TWVD2001_SHORT,
 )
 from pc_worker.priority_queue import ScanQueueDB
+from pc_worker.surveying import rust_accel
+
 
 
 def safe_float(val: Any, default: Optional[float] = None) -> Optional[float]:
@@ -451,8 +453,12 @@ class DsmAndVolumeMixin:
 
     @staticmethod
     def _extract_glb_positions_from_bytes(raw_bytes: bytes) -> Optional[np.ndarray]:
-        """Fast pure-numpy/struct glTF 2.0 binary .glb POSITION reader with full 64-bit scene-graph TRS/matrix support."""
+        """Fast glTF 2.0 binary .glb POSITION reader (Rust native fast path with pure-numpy fallback)."""
         import struct
+
+        fast_rs = rust_accel.extract_glb_positions_fast(raw_bytes)
+        if fast_rs is not None and len(fast_rs) > 0:
+            return fast_rs
 
         try:
             if len(raw_bytes) < 28 or raw_bytes[:4] != b"glTF":
@@ -718,16 +724,21 @@ class DsmAndVolumeMixin:
                         obj_offset_xyz = (float(toks[0]), float(toks[1]), float(toks[2]))
                 except Exception:
                     pass
-            verts_list = []
-            with open(obj_path, "r", encoding="utf-8", errors="ignore") as f:
-                for line in f:
-                    if line.startswith("v "):
-                        parts = line.split()
-                        if len(parts) >= 4:
-                            verts_list.append((float(parts[1]), float(parts[2]), float(parts[3])))
-            if verts_list:
-                raw_verts = np.array(verts_list, dtype=np.float64)
+            rs_verts = rust_accel.parse_obj_vertices_fast(obj_path, (0.0, 0.0, 0.0))
+            if rs_verts is not None and len(rs_verts) > 0:
+                raw_verts = rs_verts
                 geom_source = "obj"
+            else:
+                verts_list = []
+                with open(obj_path, "r", encoding="utf-8", errors="ignore") as f:
+                    for line in f:
+                        if line.startswith("v "):
+                            parts = line.split()
+                            if len(parts) >= 4:
+                                verts_list.append((float(parts[1]), float(parts[2]), float(parts[3])))
+                if verts_list:
+                    raw_verts = np.array(verts_list, dtype=np.float64)
+                    geom_source = "obj"
 
         if raw_verts is None or len(raw_verts) == 0:
             if ts_path and os.path.isfile(ts_path) and ts_path.lower().endswith(".json"):
@@ -1184,13 +1195,14 @@ class DsmAndVolumeMixin:
         max_n = max(p[1] for p in poly_twd)
 
         # Sample densely along the polygon perimeter on the real DSM for boundary interpolation
+        perim_step = 0.10 if rust_accel.HAS_RUST_CORE else 0.25
         perim_samples: List[Tuple[float, float, float]] = []
         n_verts = len(poly_twd)
         for i in range(n_verts):
             ax, ay, _ = poly_twd[i]
             bx, by, _ = poly_twd[(i + 1) % n_verts]
             seg_len = math.hypot(bx - ax, by - ay)
-            n_sub = max(int(math.ceil(seg_len / 0.25)), 2)
+            n_sub = max(int(math.ceil(seg_len / perim_step)), 2)
             for k in range(n_sub):
                 t = k / n_sub
                 sx = ax + t * (bx - ax)
@@ -1251,88 +1263,120 @@ class DsmAndVolumeMixin:
             else 0.0
         )
 
-        # High-resolution integration grid inside bounding box (adaptive 28..64 cells per axis)
+        # High-resolution integration grid inside bounding box (adaptive up to 256x256 in Rust or 64x64 in Python)
         span_box_e = max(max_e - min_e, 0.25)
         span_box_n = max(max_n - min_n, 0.25)
-        nx_steps = min(64, max(28, int(math.ceil(span_box_e / max(dsm_curr["res"], 0.08)))))
-        ny_steps = min(64, max(28, int(math.ceil(span_box_n / max(dsm_curr["res"], 0.08)))))
-        dx_step = span_box_e / nx_steps
-        dy_step = span_box_n / ny_steps
-        cell_area = dx_step * dy_step
+        cmp_shift_val = self._resolve_vertical_datum_shift(compare_scan_id) if (base_mode == "epoch_diff" and dsm_cmp is not None) else 0.0
+        max_steps_req = int(safe_float(payload.get("max_grid_steps"), rust_accel.get_cut_fill_max_grid_steps()) or rust_accel.get_cut_fill_max_grid_steps())
 
-        fill_vol = 0.0
-        cut_vol = 0.0
-        surface_area = 0.0
-        max_dz = -1e9
-        min_dz = 1e9
-        inside_cells = 0
-        heatmap_cells = []
+        rust_grid_res = rust_accel.integrate_cut_fill_grid(
+            dsm_curr=dsm_curr,
+            v_shift=v_shift,
+            poly_2d=pts_2d,
+            perim_samples=perim_samples,
+            base_mode=base_mode,
+            datum_z=datum_z,
+            plane_params=(plane_a, plane_b, plane_c0, p_mean_e, p_mean_n),
+            origin_enh=(origin_e, origin_n, origin_h),
+            max_grid_steps=max_steps_req,
+            dsm_cmp=dsm_cmp,
+            cmp_shift=cmp_shift_val,
+        )
 
-        # Subsample stride for heatmap_cells so we return up to 2500 3D visualization cells covering 100% of the polygon
-        total_est_inside = max(1, int(nx_steps * ny_steps * 0.75))
-        vis_stride = max(1, total_est_inside // 2000)
+        if rust_grid_res is not None:
+            fill_vol = float(rust_grid_res["fill_vol"])
+            cut_vol = float(rust_grid_res["cut_vol"])
+            surface_area = float(rust_grid_res["surface_area"])
+            max_dz = float(rust_grid_res["max_dz"])
+            min_dz = float(rust_grid_res["min_dz"])
+            inside_cells = int(rust_grid_res["inside_cells"])
+            nx_steps = int(rust_grid_res["nx_steps"])
+            ny_steps = int(rust_grid_res["ny_steps"])
+            dx_step = span_box_e / max(nx_steps, 1)
+            dy_step = span_box_n / max(ny_steps, 1)
+            cell_area = float(rust_grid_res["cell_area"])
+            heatmap_cells = list(rust_grid_res["heatmap_cells"])
+            integration_engine = "rust_rayon_256"
+        else:
+            nx_steps = min(64, max(28, int(math.ceil(span_box_e / max(dsm_curr["res"], 0.08)))))
+            ny_steps = min(64, max(28, int(math.ceil(span_box_n / max(dsm_curr["res"], 0.08)))))
+            dx_step = span_box_e / nx_steps
+            dy_step = span_box_n / ny_steps
+            cell_area = dx_step * dy_step
 
-        for ix in range(nx_steps):
-            for iy in range(ny_steps):
-                gx = min_e + (ix + 0.5) * dx_step
-                gy = min_n + (iy + 0.5) * dy_step
-                if not point_in_polygon_2d(gx, gy, pts_2d):
-                    continue
-                inside_cells += 1
+            fill_vol = 0.0
+            cut_vol = 0.0
+            surface_area = 0.0
+            max_dz = -1e9
+            min_dz = 1e9
+            inside_cells = 0
+            heatmap_cells = []
+            integration_engine = "python_64"
 
-                # Real 3D scan surface elevation & slope gradients at (gx, gy)
-                z_surf_raw, dz_de, dz_dn, _ = self._sample_dsm_elevation(dsm_curr, gx, gy)
-                z_surf = z_surf_raw + v_shift
+            # Subsample stride for heatmap_cells so we return up to 2500 3D visualization cells covering 100% of the polygon
+            total_est_inside = max(1, int(nx_steps * ny_steps * 0.75))
+            vis_stride = max(1, total_est_inside // 2000)
 
-                if base_mode == "custom_plane":
-                    z_base = datum_z
-                elif base_mode == "lowest_point":
-                    z_base = min((p[2] for p in perim_samples), default=datum_z)
-                elif base_mode == "best_fit_plane":
-                    z_base = plane_a * (gx - p_mean_e) + plane_b * (gy - p_mean_n) + plane_c0
-                elif base_mode == "epoch_diff" and dsm_cmp is not None:
-                    cmp_shift = self._resolve_vertical_datum_shift(compare_scan_id)
-                    z_base_raw, _, _, _ = self._sample_dsm_elevation(dsm_cmp, gx, gy)
-                    z_base = z_base_raw + cmp_shift
-                else:
-                    # Inverse-distance weighted interpolation of dense perimeter DSM elevations
-                    w_sum = 0.0
-                    z_interp = 0.0
-                    for vx, vy, vz in perim_samples:
-                        d2 = (gx - vx) ** 2 + (gy - vy) ** 2 + 0.04
-                        w = 1.0 / d2
-                        w_sum += w
-                        z_interp += w * vz
-                    z_base = z_interp / max(w_sum, 1e-9)
+            for ix in range(nx_steps):
+                for iy in range(ny_steps):
+                    gx = min_e + (ix + 0.5) * dx_step
+                    gy = min_n + (iy + 0.5) * dy_step
+                    if not point_in_polygon_2d(gx, gy, pts_2d):
+                        continue
+                    inside_cells += 1
 
-                dz = z_surf - z_base
-                max_dz = max(max_dz, dz)
-                min_dz = min(min_dz, dz)
+                    # Real 3D scan surface elevation & slope gradients at (gx, gy)
+                    z_surf_raw, dz_de, dz_dn, _ = self._sample_dsm_elevation(dsm_curr, gx, gy)
+                    z_surf = z_surf_raw + v_shift
 
-                if dz >= 0:
-                    fill_vol += dz * cell_area
-                else:
-                    cut_vol += abs(dz) * cell_area
+                    if base_mode == "custom_plane":
+                        z_base = datum_z
+                    elif base_mode == "lowest_point":
+                        z_base = min((p[2] for p in perim_samples), default=datum_z)
+                    elif base_mode == "best_fit_plane":
+                        z_base = plane_a * (gx - p_mean_e) + plane_b * (gy - p_mean_n) + plane_c0
+                    elif base_mode == "epoch_diff" and dsm_cmp is not None:
+                        z_base_raw, _, _, _ = self._sample_dsm_elevation(dsm_cmp, gx, gy)
+                        z_base = z_base_raw + cmp_shift_val
+                    else:
+                        # Inverse-distance weighted interpolation of dense perimeter DSM elevations
+                        w_sum = 0.0
+                        z_interp = 0.0
+                        for vx, vy, vz in perim_samples:
+                            d2 = (gx - vx) ** 2 + (gy - vy) ** 2 + 0.04
+                            w = 1.0 / d2
+                            w_sum += w
+                            z_interp += w * vz
+                        z_base = z_interp / max(w_sum, 1e-9)
 
-                # True 3D sloped surface area element dA * sqrt(1 + (dz/de)^2 + (dz/dn)^2)
-                surface_area += cell_area * math.sqrt(1.0 + dz_de * dz_de + dz_dn * dz_dn)
+                    dz = z_surf - z_base
+                    max_dz = max(max_dz, dz)
+                    min_dz = min(min_dz, dz)
 
-                if (inside_cells - 1) % vis_stride == 0 and len(heatmap_cells) < 2500:
-                    heatmap_cells.append(
-                        {
-                            "e": round(gx, 2),
-                            "n": round(gy, 2),
-                            "z_surf": round(z_surf, 3),
-                            "z_base": round(z_base, 3),
-                            "dz": round(dz, 3),
-                            "lx": round(gx - origin_e, 3),
-                            "ly_surf": round(z_surf - origin_h, 3),
-                            "ly_base": round(z_base - origin_h, 3),
-                            "lz": round(origin_n - gy, 3),
-                            "step_x": round(dx_step, 4),
-                            "step_z": round(dy_step, 4),
-                        }
-                    )
+                    if dz >= 0:
+                        fill_vol += dz * cell_area
+                    else:
+                        cut_vol += abs(dz) * cell_area
+
+                    # True 3D sloped surface area element dA * sqrt(1 + (dz/de)^2 + (dz/dn)^2)
+                    surface_area += cell_area * math.sqrt(1.0 + dz_de * dz_de + dz_dn * dz_dn)
+
+                    if (inside_cells - 1) % vis_stride == 0 and len(heatmap_cells) < 2500:
+                        heatmap_cells.append(
+                            {
+                                "e": round(gx, 2),
+                                "n": round(gy, 2),
+                                "z_surf": round(z_surf, 3),
+                                "z_base": round(z_base, 3),
+                                "dz": round(dz, 3),
+                                "lx": round(gx - origin_e, 3),
+                                "ly_surf": round(z_surf - origin_h, 3),
+                                "ly_base": round(z_base - origin_h, 3),
+                                "lz": round(origin_n - gy, 3),
+                                "step_x": round(dx_step, 4),
+                                "step_z": round(dy_step, 4),
+                            }
+                        )
 
         # Normalize cell sum to exact Shoelace planar polygon area
         if inside_cells > 0:
@@ -1453,6 +1497,9 @@ class DsmAndVolumeMixin:
             "fill_volume_m3": round(fill_vol, 2),
             "cut_volume_m3": round(cut_vol, 2),
             "net_volume_m3": round(net_vol, 2),
+            "integration_engine": integration_engine,
+            "grid_cells_evaluated": inside_cells,
+            "grid_resolution_steps": [nx_steps, ny_steps],
             # Standardized Earthwork Mass Conservation Schedule (M1 Contract)
             "cut_volume_bcm": cut_vol_bcm,
             "fill_volume_bcm": fill_vol_bcm,
