@@ -14,7 +14,7 @@ services:
       tf.extractall('/tmp/gs_latest');
       shutil.copytree('/tmp/gs_latest/gathering-scans-main', '/app', dirs_exist_ok=True);
       [shutil.copytree('/tmp/gs_latest/gathering-scans-main/' + d, '/host_docker/gathering_scans/' + d, dirs_exist_ok=True) for d in ('pc_worker', 'rust_core', 'web', 'data/utilities_cache', 'data/categorization_cache') if os.path.isdir('/tmp/gs_latest/gathering-scans-main/' + d) and os.path.isdir('/host_docker/gathering_scans')];
-      shutil.copy2('/tmp/gs_latest/gathering-scans-main/server.py', '/host_docker/gathering_scans/server.py') if os.path.isdir('/host_docker/gathering_scans') else None;
+      [shutil.copy2('/tmp/gs_latest/gathering-scans-main/' + fn, '/host_docker/gathering_scans/' + fn) for fn in ('server.py', 'Dockerfile', 'docker-compose.yml') if os.path.isfile('/tmp/gs_latest/gathering-scans-main/' + fn) and os.path.isdir('/host_docker/gathering_scans')];
       print('[AutoSync] Synced latest /app and /host_docker/gathering_scans from GitHub!')\" && python server.py"
     environment:
       - GATHERING_SCANS_HOST=0.0.0.0
