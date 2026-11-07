@@ -309,6 +309,143 @@ class TestRustCoreParityAndPrecision(unittest.TestCase):
         self.assertEqual(res_py["integration_engine"], "python_64")
         self.assertEqual(res_rust["planar_area_m2"], res_py["planar_area_m2"])
 
+    def test_07_adversarial_edge_cases_cyclic_glb_nonconvex_polygon_collinear_and_nan(self):
+        # 1. Cyclic GLB node graph (node 0 -> child 1 -> child 0) + zero-count primitive must not hang or crash
+        pts = np.array([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0], [7.0, 8.0, 9.0]], dtype=np.float32)
+        bin_blob = pts.tobytes()
+        cyclic_gltf = {
+            "asset": {"version": "2.0"},
+            "scene": 0,
+            "scenes": [{"nodes": [0]}],
+            "nodes": [
+                {"mesh": 0, "children": [1]},
+                {"children": [0]},
+            ],
+            "meshes": [
+                {
+                    "primitives": [
+                        {"attributes": {"POSITION": 0}},
+                        {"attributes": {"POSITION": 1}},
+                    ]
+                }
+            ],
+            "accessors": [
+                {"bufferView": 0, "byteOffset": 0, "componentType": 5126, "count": 0, "type": "VEC3"},
+                {"bufferView": 0, "byteOffset": 0, "componentType": 5126, "count": 3, "type": "VEC3"},
+            ],
+            "bufferViews": [{"buffer": 0, "byteOffset": 0, "byteLength": len(bin_blob)}],
+            "buffers": [{"byteLength": len(bin_blob)}],
+        }
+        jb = json.dumps(cyclic_gltf).encode("utf-8")
+        while len(jb) % 4 != 0:
+            jb += b" "
+        glb_cyclic = (
+            struct.pack("<4sII", b"glTF", 2, 20 + len(jb) + 8 + len(bin_blob))
+            + struct.pack("<I4s", len(jb), b"JSON")
+            + jb
+            + struct.pack("<I4s", len(bin_blob), b"BIN\x00")
+            + bin_blob
+        )
+        rs_cyc = rust_accel.extract_glb_positions_fast(glb_cyclic)
+        self.assertIsNotNone(rs_cyc)
+        self.assertEqual(rs_cyc.shape, (3, 3))
+        with patch.object(rust_accel, "HAS_RUST_CORE", False):
+            py_cyc = DsmAndVolumeMixin._extract_glb_positions_from_bytes(glb_cyclic)
+        self.assertIsNotNone(py_cyc)
+        np.testing.assert_allclose(rs_cyc, py_cyc)
+
+        # 2. Narrow non-convex / L-shaped polygon on 256x256 grid must not starve heatmap_cells
+        nx, ny = 200, 200
+        res = 0.10
+        e_min, n_min = 302000.0, 2770000.0
+        dsm_raw = np.full((ny, nx), 25.0, dtype=np.float32)
+        dsm_curr = {
+            "e_min": e_min,
+            "n_min": n_min,
+            "res": res,
+            "dsm_raw": dsm_raw,
+        }
+        # Thin L-shaped trench covering ~6% of its 18m x 18m bounding box
+        l_poly = [
+            (e_min + 1.0, n_min + 1.0),
+            (e_min + 19.0, n_min + 1.0),
+            (e_min + 19.0, n_min + 1.6),
+            (e_min + 1.6, n_min + 1.6),
+            (e_min + 1.6, n_min + 19.0),
+            (e_min + 1.0, n_min + 19.0),
+        ]
+        perim = [(x, y, 20.0) for (x, y) in l_poly]
+        rs_l = rust_accel.integrate_cut_fill_grid(
+            dsm_curr=dsm_curr,
+            v_shift=0.0,
+            poly_2d=l_poly,
+            perim_samples=perim,
+            base_mode="custom_plane",
+            datum_z=20.0,
+            plane_params=(0.0, 0.0, 20.0, e_min + 10.0, n_min + 10.0),
+            origin_enh=(e_min + 10.0, n_min + 10.0, 20.0),
+            max_grid_steps=256,
+        )
+        self.assertIsNotNone(rs_l)
+        self.assertGreater(rs_l["inside_cells"], 2000)
+        # Previously this was starved to ~150 cells; now it must return >= 1500 heatmap cells
+        self.assertGreaterEqual(len(rs_l["heatmap_cells"]), 1500)
+        self.assertLessEqual(len(rs_l["heatmap_cells"]), 2500)
+
+        # 3. Degenerate collinear 1D triangle line & NaN/invalid voxel_size handling in compute_voxel_tensor_features
+        t_vals = np.linspace(0.0, 5.0, 60)
+        c_collinear = np.column_stack([t_vals, t_vals, t_vals]).astype(np.float64)
+        n_collinear = np.tile([0.0, 0.0, 1.0], (60, 1)).astype(np.float64)
+        a_tiny = np.full(60, 1e-6, dtype=np.float64)
+        rs_tiny = rust_accel.compute_voxel_tensor_features(c_collinear, n_collinear, a_tiny, voxel_size=0.25)
+        with patch.object(rust_accel, "HAS_RUST_CORE", False):
+            py_tiny = compute_mesh_eigenvalue_features(c_collinear, n_collinear, a_tiny, voxel_size=0.25)
+        self.assertIsNotNone(rs_tiny)
+        np.testing.assert_allclose(rs_tiny["tri_linearity"], py_tiny["tri_linearity"], atol=1e-5)
+
+        a_collinear = np.full(60, 0.05, dtype=np.float64)
+        rs_col = rust_accel.compute_voxel_tensor_features(c_collinear, n_collinear, a_collinear, voxel_size=0.25)
+        self.assertIsNotNone(rs_col)
+        # Collinear points along (1, 1, 1) must have high linearity (> 0.99) and zero NaNs
+        self.assertFalse(np.any(np.isnan(rs_col["tri_linearity"])))
+        self.assertGreater(float(np.mean(rs_col["tri_linearity"])), 0.99)
+
+        # Invalid voxel_size or NaN centroids must return None cleanly without panic
+        self.assertIsNone(rust_accel.compute_voxel_tensor_features(c_collinear, n_collinear, a_collinear, voxel_size=-1.0))
+        c_nan = c_collinear.copy()
+        c_nan[5, 0] = np.nan
+        self.assertIsNone(rust_accel.compute_voxel_tensor_features(c_nan, n_collinear, a_collinear, voxel_size=0.25))
+
+        # 4. Marching Squares with NaN grid cell inside hull_mask and self-intersecting polygon clipping
+        sub_grid = np.full((30, 30), 10.0, dtype=np.float32)
+        sub_grid[10:20, 10:20] = 14.0
+        sub_grid[12, 12] = np.nan
+        sub_hull = np.ones((30, 30), dtype=bool)
+        bowtie_poly = [
+            (e_min + 0.5, n_min + 0.5),
+            (e_min + 5.5, n_min + 5.5),
+            (e_min + 5.5, n_min + 0.5),
+            (e_min + 0.5, n_min + 5.5),
+        ]
+        rs_ms = rust_accel.extract_and_clip_contours_parallel(
+            sub_grid=sub_grid,
+            sub_hull=sub_hull,
+            sub_e_min=e_min,
+            sub_n_min=n_min,
+            res=0.20,
+            levels=[12.0],
+            major_interval=0.0,
+            ce=e_min + 3.0,
+            cn=n_min + 3.0,
+            ch=10.0,
+            poly_2d=bowtie_poly,
+        )
+        self.assertIsNotNone(rs_ms)
+        for c_item in rs_ms:
+            for pt in c_item["points_twd97"]:
+                self.assertTrue(all(math.isfinite(v) for v in pt))
+
 
 if __name__ == "__main__":
     unittest.main()
+

@@ -348,12 +348,15 @@ fn read_glb_mesh_positions(
         let pos_bv = &bv_list[bv_idx];
         let ctype = pos_acc.get("componentType").and_then(|v| v.as_u64()).unwrap_or(0);
         let cnt = pos_acc.get("count").and_then(|v| v.as_u64()).unwrap_or(0) as usize;
+        if cnt == 0 {
+            continue;
+        }
         let byte_offset = (pos_bv.get("byteOffset").and_then(|v| v.as_u64()).unwrap_or(0)
             + pos_acc.get("byteOffset").and_then(|v| v.as_u64()).unwrap_or(0)) as usize;
 
         if ctype == 5126 {
             let stride = pos_bv.get("byteStride").and_then(|v| v.as_u64()).unwrap_or(12) as usize;
-            if stride < 12 || byte_offset + cnt.saturating_sub(1) * stride + 12 > blob.len() {
+            if stride < 12 || byte_offset + (cnt - 1) * stride + 12 > blob.len() {
                 return None;
             }
             out_pts.reserve(cnt);
@@ -366,7 +369,7 @@ fn read_glb_mesh_positions(
             }
         } else if ctype == 5122 || ctype == 5123 {
             let stride = pos_bv.get("byteStride").and_then(|v| v.as_u64()).unwrap_or(6) as usize;
-            if stride < 6 || byte_offset + cnt.saturating_sub(1) * stride + 6 > blob.len() {
+            if stride < 6 || byte_offset + (cnt - 1) * stride + 6 > blob.len() {
                 return None;
             }
             let normalized = pos_acc.get("normalized").and_then(|v| v.as_bool()).unwrap_or(false);
@@ -486,10 +489,12 @@ fn extract_glb_positions_fast<'py>(
             })
             .collect();
 
+        let mut visited_nodes = vec![false; nodes_list.len()];
         while let Some((n_idx, m_parent)) = stack.pop() {
-            if n_idx >= nodes_list.len() {
+            if n_idx >= nodes_list.len() || visited_nodes[n_idx] {
                 continue;
             }
+            visited_nodes[n_idx] = true;
             let nd = &nodes_list[n_idx];
             let m_cur = mat4_mul(&m_parent, &node_to_mat4(nd));
             if let Some(m_idx) = nd.get("mesh").and_then(|v| v.as_u64()) {
@@ -510,7 +515,10 @@ fn extract_glb_positions_fast<'py>(
             if let Some(children) = nd.get("children").and_then(|v| v.as_array()) {
                 for ch_v in children.iter().rev() {
                     if let Some(ci) = ch_v.as_u64() {
-                        stack.push((ci as usize, m_cur));
+                        let c_idx = ci as usize;
+                        if c_idx < nodes_list.len() && !visited_nodes[c_idx] {
+                            stack.push((c_idx, m_cur));
+                        }
                     }
                 }
             }
@@ -712,8 +720,7 @@ fn integrate_cut_fill_grid<'py>(
     let mut max_dz = -1e9f64;
     let mut min_dz = 1e9f64;
 
-    let total_est_inside = ((nx_steps * ny_steps * 3) / 4).max(1).max(inside_cells);
-    let vis_stride = (total_est_inside / 2000).max(1);
+    let vis_stride = (inside_cells / 2000).max(1);
     let (origin_e, origin_n, origin_h) = origin_enh;
 
     let heatmap_list = PyList::empty_bound(py);
@@ -998,6 +1005,9 @@ fn extract_marching_squares_level(
             let val10 = grid[idx10] as f64;
             let val11 = grid[idx11] as f64;
             let val01 = grid[idx01] as f64;
+            if !val00.is_finite() || !val10.is_finite() || !val11.is_finite() || !val01.is_finite() {
+                continue;
+            }
 
             let mut code = 0u8;
             if val00 >= level {
@@ -1176,11 +1186,16 @@ fn extract_and_clip_contours_parallel<'py>(
         ));
     }
 
+    let safe_major = if major_interval.is_finite() && major_interval > 1e-6 {
+        major_interval
+    } else {
+        1.0
+    };
     let level_results: Vec<(f64, bool, Vec<(Vec<[f64; 3]>, Vec<[f64; 3]>)>)> = py.allow_threads(|| {
         levels
             .par_iter()
             .map(|&elev| {
-                let ratio = elev / major_interval;
+                let ratio = elev / safe_major;
                 let is_major = (ratio - ratio.round()).abs() < 1e-3;
                 let raw_polylines = extract_marching_squares_level(
                     &grid,
@@ -1232,7 +1247,7 @@ fn extract_and_clip_contours_parallel<'py>(
 // ============================================================================
 
 /// Solves a real symmetric 3x3 matrix for eigenvalues (l3 <= l2 <= l1) and the principal eigenvector e1 (for l1)
-/// using cyclic Jacobi rotations (converges to machine precision in <= 8 sweeps).
+/// using cyclic Jacobi rotations (converges to machine precision in <= 12 sweeps).
 fn sym3x3_eigen(
     a00: f64,
     a01: f64,
@@ -1244,14 +1259,14 @@ fn sym3x3_eigen(
     let mut m = [[a00, a01, a02], [a01, a11, a12], [a02, a12, a22]];
     let mut v = [[1.0f64, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]];
 
-    for _sweep in 0..8 {
+    for _sweep in 0..12 {
         let off = m[0][1].abs() + m[0][2].abs() + m[1][2].abs();
-        if off < 1e-13 {
+        if off < 1e-18 {
             break;
         }
         for &(p, q) in &[(0usize, 1usize), (0, 2), (1, 2)] {
             let apq = m[p][q];
-            if apq.abs() < 1e-14 {
+            if apq.abs() < 1e-20 {
                 continue;
             }
             let app = m[p][p];
@@ -1320,9 +1335,22 @@ fn compute_voxel_tensor_features<'py>(
         .map_err(|e| pyo3::exceptions::PyValueError::new_err(e))?;
 
     let n_tris = area_3d.len();
-    if centroids.len() != n_tris * 3 || normals.len() != n_tris * 3 || n_tris < 12 {
+    if centroids.len() != n_tris * 3
+        || normals.len() != n_tris * 3
+        || n_tris < 12
+        || !voxel_size.is_finite()
+        || voxel_size <= 1e-4
+    {
         return Err(pyo3::exceptions::PyValueError::new_err(
-            "Invalid triangle array lengths in compute_voxel_tensor_features",
+            "Invalid triangle array lengths or voxel_size in compute_voxel_tensor_features",
+        ));
+    }
+    if centroids.iter().any(|v| !v.is_finite())
+        || normals.iter().any(|v| !v.is_finite())
+        || area_3d.iter().any(|v| !v.is_finite())
+    {
+        return Err(pyo3::exceptions::PyValueError::new_err(
+            "Non-finite values in compute_voxel_tensor_features inputs",
         ));
     }
 
@@ -1359,9 +1387,9 @@ fn compute_voxel_tensor_features<'py>(
         let mut ijk = Vec::with_capacity(n_tris * 3);
         let mut max_ijk = [0i64; 3];
         for t in 0..n_tris {
-            let ix = ((centroids[t * 3] - c_min[0]) / voxel_size).floor() as i64;
-            let iy = ((centroids[t * 3 + 1] - c_min[1]) / voxel_size).floor() as i64;
-            let iz = ((centroids[t * 3 + 2] - c_min[2]) / voxel_size).floor() as i64;
+            let ix = ((centroids[t * 3] - c_min[0]) / voxel_size).floor().max(0.0) as i64;
+            let iy = ((centroids[t * 3 + 1] - c_min[1]) / voxel_size).floor().max(0.0) as i64;
+            let iz = ((centroids[t * 3 + 2] - c_min[2]) / voxel_size).floor().max(0.0) as i64;
             if ix > max_ijk[0] {
                 max_ijk[0] = ix;
             }
@@ -1376,14 +1404,16 @@ fn compute_voxel_tensor_features<'py>(
             ijk.push(iz);
         }
 
-        let span_x = max_ijk[0] + 2;
-        let span_y = max_ijk[1] + 2;
+        let span_x = max_ijk[0].saturating_add(2);
+        let span_y = max_ijk[1].saturating_add(2);
         let stride_y = span_x;
-        let stride_z = span_x * span_y;
+        let stride_z = span_x.saturating_mul(span_y);
 
         let mut v_keys = Vec::with_capacity(n_tris);
         for t in 0..n_tris {
-            let k = ijk[t * 3] + ijk[t * 3 + 1] * stride_y + ijk[t * 3 + 2] * stride_z;
+            let k = ijk[t * 3]
+                .saturating_add(ijk[t * 3 + 1].saturating_mul(stride_y))
+                .saturating_add(ijk[t * 3 + 2].saturating_mul(stride_z));
             v_keys.push(k);
         }
 

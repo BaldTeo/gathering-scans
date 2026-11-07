@@ -498,6 +498,8 @@ class DsmAndVolumeMixin:
                     ctype = pos_acc.get("componentType")
                     pos_bv = bv_list[pos_acc["bufferView"]]
                     cnt = int(pos_acc["count"])
+                    if cnt <= 0:
+                        continue
                     byte_offset = int(pos_bv.get("byteOffset", 0)) + int(pos_acc.get("byteOffset", 0))
                     if ctype == 5126:
                         byte_stride = int(pos_bv.get("byteStride") or 12)
@@ -554,11 +556,14 @@ class DsmAndVolumeMixin:
                     if (0 <= s_idx < len(scenes) and scenes[s_idx].get("nodes"))
                     else [0]
                 )
+                visited_nodes = set()
 
                 def _walk_node(n_idx: int, m_parent: np.ndarray) -> None:
-                    if not (0 <= int(n_idx) < len(nodes_list)):
+                    ni = int(n_idx)
+                    if not (0 <= ni < len(nodes_list)) or ni in visited_nodes:
                         return
-                    nd = nodes_list[int(n_idx)]
+                    visited_nodes.add(ni)
+                    nd = nodes_list[ni]
                     m_cur = m_parent @ _node_mat4(nd)
                     if "mesh" in nd and nd["mesh"] is not None:
                         mv = _read_mesh_pos(int(nd["mesh"]))
