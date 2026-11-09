@@ -1877,28 +1877,11 @@
             typeof isScanOrTilesetGaussianSplat === "function"
               ? isScanOrTilesetGaussianSplat(scan, tr)
               : Boolean(scan.is_gaussian_splat || tr.root?.extras?.is_gaussian_splat || tr.root?.parent?.extras?.is_gaussian_splat);
+          const hideForSplat = isGsplat || Boolean(studioThree.gsplatState);
           ev.scene.traverse((c) => {
             if (c.isMesh && c.material) {
               const mats = Array.isArray(c.material) ? c.material : [c.material];
-              mats.forEach((m) => {
-                if (!m) return;
-                if (isGsplat) {
-                  m.transparent = true;
-                  m.opacity = 0.0;
-                  m.depthWrite = false;
-                  m.colorWrite = false;
-                  m.needsUpdate = true;
-                  return;
-                }
-                if (typeof m.metalness === "number" && m.metalness > 0) {
-                  m.metalness = 0.0;
-                  m.roughness = 1.0;
-                }
-                if (m.side !== THREE.DoubleSide) {
-                  m.side = THREE.DoubleSide;
-                }
-                applyBrightnessToMaterial(m, STATE.scanBrightness);
-              });
+              mats.forEach((m) => prepareTileModelMaterial(m, hideForSplat));
             }
           });
           if (typeof applyStagedEditsToStudioMeshes === "function" && hasStagedMeshEditsForActiveScan()) {

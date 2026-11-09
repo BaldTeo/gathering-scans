@@ -1257,6 +1257,7 @@ class CloudAndTunnelHandlerMixin:
             start_b = int(toc_entry["offset"])
             len_b = int(toc_entry["size"])
 
+        expected_pkg_sz = int(pkg.get("size_bytes") or 0)
         data: Optional[bytes] = None
         for local_pkg_cand in (
             f"/host_docker/gathering_scans/data/stream_packages/{scan_id}.3tz",
@@ -1265,6 +1266,8 @@ class CloudAndTunnelHandlerMixin:
         ):
             if local_pkg_cand and os.path.isfile(local_pkg_cand):
                 try:
+                    if expected_pkg_sz > 0 and os.path.getsize(local_pkg_cand) != expected_pkg_sz:
+                        continue
                     with open(local_pkg_cand, "rb") as pf:
                         pf.seek(start_b)
                         buf = pf.read(len_b)
@@ -1301,6 +1304,10 @@ class CloudAndTunnelHandlerMixin:
                     return False
             elif inner_path.endswith(".png"):
                 if len(data) < 16 or data[:8] != b"\x89PNG\r\n\x1a\n":
+                    _GDRIVE_STALE_SCAN_BYPASS_UNTIL[scan_id] = time.time() + 300.0
+                    return False
+            elif inner_path.endswith(".gsplat"):
+                if len(data) < 16 or data[:4] not in (b"GSPL", b"SPLT"):
                     _GDRIVE_STALE_SCAN_BYPASS_UNTIL[scan_id] = time.time() + 300.0
                     return False
 

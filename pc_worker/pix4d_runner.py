@@ -1266,8 +1266,9 @@ def generate_pix4dmatic_gst_script(
                 settings.gaussianSplatsTemplate : GaussianSplatsTemplate.{gsplat_template}
                 settings.maskAware : false
                 settings.skyless : {skyless_str}
+                resources.useGpu : GpuUsage.Automatic
                 inputs : [CalibratedCameras{{ }},SparsePointCloud{{ }}{sky_token}{mesh_roi_token}]
-                outputs : [GaussianSplats{{ }}]
+                outputs : [GaussianSplats{{ }},DensePointCloud{{ }},ComputedDepthMaps{{ }}]
             }}"""
         gsplat_export_step = f"""
             ExportGaussianSplatsToPly {{

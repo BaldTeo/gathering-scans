@@ -983,6 +983,9 @@ class GatheringScansHandler(CloudAndTunnelHandlerMixin, ServerWriteRoutesMixin, 
                     root_tile_fp = os.path.join(tiles_sub, "root.glb")
                     if os.path.isfile(root_tile_fp):
                         max_tile_mt = max(max_tile_mt, os.path.getmtime(root_tile_fp))
+                    gsplat_tile_fp = os.path.join(tiles_sub, "splats.gsplat")
+                    if os.path.isfile(gsplat_tile_fp):
+                        max_tile_mt = max(max_tile_mt, os.path.getmtime(gsplat_tile_fp))
                 m_ts = int(max(max_tile_mt, float(s.get("tileset_version") or 0) / 1000.0) * 1000)
                 m_prev = int(
                     max(
@@ -1065,10 +1068,12 @@ class GatheringScansHandler(CloudAndTunnelHandlerMixin, ServerWriteRoutesMixin, 
         has_gsplat_layer = bool(s.get("has_gaussian_splat_layer") or is_gsplat)
         splat_cnt = int(s.get("splat_count") or 0)
         splat_origin = s.get("gaussian_splat_origin")
+        gs_mt_ms = int(s.get("tileset_version") or 0)
         if ts_path and os.path.isfile(ts_path):
             gs_cand = os.path.join(os.path.dirname(ts_path), "tiles", "splats.gsplat")
             if os.path.isfile(gs_cand):
                 has_gsplat_layer = True
+                gs_mt_ms = max(gs_mt_ms, int(os.path.getmtime(gs_cand) * 1000))
                 if splat_cnt <= 0:
                     splat_cnt = max(0, (os.path.getsize(gs_cand) - 16) // 32)
                 try:
@@ -1095,7 +1100,9 @@ class GatheringScansHandler(CloudAndTunnelHandlerMixin, ServerWriteRoutesMixin, 
         s["has_gaussian_splat_layer"] = has_gsplat_layer
         if has_gsplat_layer:
             s["splat_count"] = splat_cnt
-            s["splat_url"] = f"/stream/{sid}/tiles/splats.gsplat{thumb_q}"
+            gs_ver = f"gs_{gs_mt_ms}" if gs_mt_ms > 0 else ts_ver
+            gs_q = f"?v={gs_ver}&share={share_token}" if share_token else f"?v={gs_ver}"
+            s["splat_url"] = f"/stream/{sid}/tiles/splats.gsplat{gs_q}"
             if isinstance(splat_origin, list) and len(splat_origin) >= 3:
                 s["gaussian_splat_origin"] = splat_origin
             if is_gsplat and splat_cnt > 0:
