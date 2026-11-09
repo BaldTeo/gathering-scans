@@ -735,8 +735,8 @@ def sync_share_links_to_vps_manifest(auth_share: Any) -> bool:
         return False
 
 
-COMMENT_PHOTOS_DIR = os.path.join(BASE_DIR, "data", "comment_photos")
-GDRIVE_COMMENT_PHOTOS_FALLBACK_DIR = os.path.join(BASE_DIR, "data", "gdrive_comment_photos")
+COMMENT_PHOTOS_DIR = os.path.join(DATA_DIR, "comment_photos")
+GDRIVE_COMMENT_PHOTOS_FALLBACK_DIR = os.path.join(DATA_DIR, "gdrive_comment_photos")
 
 
 def save_and_sync_comment_photo_to_gdrive(

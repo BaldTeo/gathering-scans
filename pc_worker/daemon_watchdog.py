@@ -33,7 +33,10 @@ import webbrowser
 from typing import Any, Dict, Optional, Tuple
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-DATA_DIR = os.path.join(BASE_DIR, "data")
+if BASE_DIR not in sys.path:
+    sys.path.insert(0, BASE_DIR)
+from pc_worker.config import DATA_DIR
+
 LAUNCHER_SCRIPT = os.path.join(BASE_DIR, "start_gathering_scans.py")
 LOG_FILE = os.path.join(DATA_DIR, "daemon_watchdog.log")
 STDOUT_LOG_FILE = os.path.join(DATA_DIR, "daemon_stdout.log")

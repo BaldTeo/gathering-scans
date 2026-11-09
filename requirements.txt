@@ -1,0 +1,13 @@
+numpy
+scipy
+pillow
+trimesh
+shapely
+ezdxf
+pymeshlab
+psutil
+cryptography
+fast-simplification
+google-auth
+websocket-client
+websockets

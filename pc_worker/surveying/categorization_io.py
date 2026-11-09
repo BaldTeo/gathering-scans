@@ -42,6 +42,7 @@ except ImportError:
 
 from pc_worker.config import (
     BASE_DIR,
+    DATA_DIR,
     LOCAL_SCANS_ROOT as SCANS_ROOT_DIR,
     GC_SCAN_OPTIMIZER_DIR,
     REPORTS_DIR,
@@ -74,6 +75,8 @@ class CategorizationIoMixin:
         base_repo = BASE_DIR
         for env_path in (
             os.path.join(base_repo, ".env"),
+            os.path.join(SCANS_ROOT_DIR, "_app", ".env"),
+            os.path.join(SCANS_ROOT_DIR, ".env"),
             r"c:\Antigravity\GatheringScans\.env",
             os.path.expanduser("~/.env"),
         ):
@@ -2366,7 +2369,7 @@ class CategorizationIoMixin:
         """Returns cached true-nadir orthomosaic metadata and file paths if present on disk."""
         if not scan_id:
             return None
-        thumbs_dir = os.path.join(BASE_DIR, "data", "thumbnails")
+        thumbs_dir = os.path.join(DATA_DIR, "thumbnails")
         os.makedirs(thumbs_dir, exist_ok=True)
         png_path = os.path.join(thumbs_dir, f"{scan_id}_ortho.png")
         json_path = os.path.join(thumbs_dir, f"{scan_id}_ortho.json")
@@ -3040,7 +3043,7 @@ class CategorizationIoMixin:
                 west_lon = round(west_lon + d_lon, 8)
                 east_lon = round(east_lon + d_lon, 8)
 
-            thumbs_dir = os.path.join(BASE_DIR, "data", "thumbnails")
+            thumbs_dir = os.path.join(DATA_DIR, "thumbnails")
             os.makedirs(thumbs_dir, exist_ok=True)
             png_path = os.path.join(thumbs_dir, f"{scan_id}_ortho.png")
             json_path = os.path.join(thumbs_dir, f"{scan_id}_ortho.json")

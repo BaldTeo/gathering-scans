@@ -4526,15 +4526,20 @@ vm.runInContext(fs.readFileSync('./web/src/12-public-utilities-gis.js', 'utf8'),
         are consolidated inside the single C:\\GatheringScans master folder with zero external junctions
         or legacy C:\\Scans dependencies.
         """
-        from pc_worker.config import LOCAL_SCANS_ROOT, LEGACY_SCANS_ROOT, GC_SCAN_OPTIMIZER_DIR
+        import glob as _glob
+        from unittest.mock import patch
+        from pc_worker.config import DATA_DIR, LOCAL_SCANS_ROOT, LEGACY_SCANS_ROOT, GC_SCAN_OPTIMIZER_DIR
         from pc_worker.surveying.dsm_and_volume import GLTFPACK_EXE
 
         self.assertEqual(LEGACY_SCANS_ROOT, LOCAL_SCANS_ROOT)
         if os.name == "nt" and os.path.isdir(LOCAL_SCANS_ROOT):
+            self.assertEqual(os.path.normcase(DATA_DIR), os.path.normcase(os.path.join(LOCAL_SCANS_ROOT, "_app", "data")))
             self.assertEqual(os.path.normcase(GC_SCAN_OPTIMIZER_DIR), os.path.normcase(os.path.join(LOCAL_SCANS_ROOT, "_optimizer")))
             self.assertTrue(os.path.isfile(GLTFPACK_EXE), f"Missing gltfpack.exe at {GLTFPACK_EXE}")
             self.assertTrue(os.path.isfile(os.path.join(LOCAL_SCANS_ROOT, "_ssh", "id_gathering_vps")))
             self.assertTrue(os.path.isfile(os.path.join(LOCAL_SCANS_ROOT, "_app", "server.py")))
+            self.assertTrue(os.path.isfile(os.path.join(LOCAL_SCANS_ROOT, "_app", "requirements.txt")))
+            self.assertTrue(len(_glob.glob(os.path.join(LOCAL_SCANS_ROOT, "_app", "rust_core", "dist", "gathering_scans_rs-*.whl"))) >= 1)
             self.assertTrue(os.path.isfile(os.path.join(LOCAL_SCANS_ROOT, "Setup_New_Workstation.ps1")))
             self.assertTrue(os.path.isfile(os.path.join(LOCAL_SCANS_ROOT, "Start_GatheringScans.cmd")))
             self.assertFalse(os.path.exists(r"C:\Scans"), "Legacy C:\\Scans folder should no longer exist")
@@ -4546,6 +4551,27 @@ vm.runInContext(fs.readFileSync('./web/src/12-public-utilities-gis.js', 'utf8'),
                     val = str(sc.get(col) or "")
                     self.assertNotIn(r"c:\scans", val.lower(), f"Scan {sid} {col} still references C:\\Scans: {val}")
                     self.assertNotIn("gc_scanoptimizer", val.lower(), f"Scan {sid} {col} still references GC_ScanOptimizer: {val}")
+
+            # Verify rebuilding multi-part QuChi camera catalog directly from root.p4m preserves all 4,805 cameras
+            qc_scan = main_db.get_scan("quchi_20261005_merged")
+            if qc_scan:
+                orig_isfile = os.path.isfile
+                self.survey._camera_mem_cache.pop("__test_p4m_rebuild__", None)
+                tmp_cam_cache = os.path.join(DATA_DIR, "cameras_cache", "__test_p4m_rebuild___cameras_v7.json")
+                try:
+                    with patch(
+                        "os.path.isfile",
+                        side_effect=lambda p: False if ("_cameras_cache_v7.json" in str(p) or "_cameras_v7.json" in str(p)) else orig_isfile(p),
+                    ):
+                        rebuilt_cams = self.survey._load_or_build_camera_catalog(dict(qc_scan, scan_id="__test_p4m_rebuild__", project_dir=""))
+                    self.assertEqual(len(rebuilt_cams), 4805)
+                    self.assertTrue(os.path.isfile(rebuilt_cams[0]["abs_path"]))
+                finally:
+                    if os.path.exists(tmp_cam_cache):
+                        try:
+                            os.remove(tmp_cam_cache)
+                        except OSError:
+                            pass
 
 
 if __name__ == "__main__":

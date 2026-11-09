@@ -77,9 +77,9 @@ from pc_worker.auth_and_sharing import (
     is_link_preview_bot,
     parse_user_agent,
 )
+from pc_worker.config import DATA_DIR
 from pc_worker.gchat_notifier import GoogleChatNotifier
 
-DATA_DIR = os.path.join(BASE_DIR, "data")
 WEB_DIR = os.path.join(BASE_DIR, "web")
 THUMBS_DIR = os.path.join(DATA_DIR, "thumbnails")
 GLB_CACHE_DIR = os.path.join(DATA_DIR, "glb_cache")
@@ -276,7 +276,7 @@ def _run_fs_sync_worker(force: bool = False) -> None:
                     _LAST_FS_FINGERPRINT = fp
                     if "SURVEY" in globals():
                         try:
-                            util_cache_dir = os.path.join(BASE_DIR, "data", "utilities_cache")
+                            util_cache_dir = os.path.join(DATA_DIR, "utilities_cache")
                             for _sid, _smeta in list((DB.get("scans") or {}).items()):
                                 if not isinstance(_smeta, dict) or _smeta.get("deleted") or _smeta.get("status") != "completed":
                                     continue

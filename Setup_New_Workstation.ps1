@@ -2,8 +2,8 @@
 # Run this script after copying C:\GatheringScans to your new Windows workstation.
 # It performs:
 # 1. Installs VPS SSH keys from C:\GatheringScans\_ssh\id_gathering_vps into %USERPROFILE%\.ssh\ with strict owner-only ACLs
-# 2. Verifies Python 3.11+ and installs required Python packages (numpy, scipy, pillow, trimesh, shapely, pymeshlab, ezdxf)
-# 3. Registers Windows Startup launcher and Desktop shortcuts for GatheringScans
+# 2. Verifies Python 3.11+ and installs all required Python packages (requirements.txt) + prebuilt gathering_scans_rs native Rust wheel
+# 3. Registers Windows Startup shortcut, Desktop shortcut, and GatheringScans_Daemon Scheduled Task
 # 4. Starts the GatheringScans System Tray Controller & Reverse Tunnel Daemon (port 8095 -> scans.gatheren.cloud)
 
 $ErrorActionPreference = "Continue"
@@ -32,7 +32,7 @@ if (Test-Path "$SshSrcDir\id_gathering_vps") {
     Write-Host "`n[1/4] Checking SSH Key at $UserSshDir\id_gathering_vps..." -ForegroundColor Yellow
 }
 
-# 2. Check Python & Install Required Python Dependencies
+# 2. Check Python & Install Required Python Dependencies + Native Rust Wheel
 Write-Host "`n[2/4] Verifying Python environment & surveying/mesh dependencies..." -ForegroundColor Yellow
 $py = (Get-Command python.exe -ErrorAction SilentlyContinue).Source
 if (-not $py) {
@@ -42,14 +42,24 @@ if (-not $py) {
 if ($py) {
     Write-Host "  -> Found Python: $py" -ForegroundColor Green
     & $py -m pip install --upgrade pip --quiet
-    & $py -m pip install numpy scipy pillow trimesh shapely ezdxf pymeshlab --quiet
+    $reqFile = Join-Path $AppDir "requirements.txt"
+    if (Test-Path $reqFile) {
+        & $py -m pip install -r $reqFile --quiet
+    } else {
+        & $py -m pip install numpy scipy pillow trimesh shapely ezdxf pymeshlab psutil cryptography fast-simplification google-auth websocket-client websockets --quiet
+    }
+    $whlFiles = Get-ChildItem -Path (Join-Path $AppDir "rust_core\dist") -Filter "gathering_scans_rs-*.whl" -ErrorAction SilentlyContinue
+    if ($whlFiles) {
+        & $py -m pip install $whlFiles[0].FullName --force-reinstall --no-deps --quiet
+        Write-Host "  -> Installed native Rust wheel: $($whlFiles[0].Name)" -ForegroundColor Green
+    }
     Write-Host "  -> Python packages verified." -ForegroundColor Green
 } else {
     Write-Host "  [!] Python 3.12 not found in PATH! Please install Python 3.12 (Add to PATH) and re-run." -ForegroundColor Red
 }
 
-# 3. Register Windows Startup Shortcut & Desktop Shortcut
-Write-Host "`n[3/4] Registering Windows Startup & Desktop shortcuts..." -ForegroundColor Yellow
+# 3. Register Windows Startup Shortcut, Desktop Shortcut & GatheringScans_Daemon Scheduled Task
+Write-Host "`n[3/4] Registering Windows Startup, Desktop shortcuts & Scheduled Task..." -ForegroundColor Yellow
 try {
     $WshShell = New-Object -ComObject WScript.Shell
     $StartupDir = [Environment]::GetFolderPath("Startup")
@@ -67,7 +77,15 @@ try {
     $DesktopLnk.WorkingDirectory = $AppDir
     $DesktopLnk.Description = "Launch GatheringScans Workstation Controller"
     $DesktopLnk.Save()
-    Write-Host "  -> Created Startup & Desktop shortcuts." -ForegroundColor Green
+
+    $EnsurePs1 = Join-Path $AppDir "ensure_daemon_running.ps1"
+    if (Test-Path $EnsurePs1) {
+        $action = New-ScheduledTaskAction -Execute "powershell.exe" -Argument "-NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File `"$EnsurePs1`"" -WorkingDirectory $AppDir
+        $trigLogon = New-ScheduledTaskTrigger -AtLogOn
+        $settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -StartWhenAvailable
+        Register-ScheduledTask -TaskName "GatheringScans_Daemon" -Action $action -Trigger $trigLogon -Settings $settings -Force -ErrorAction SilentlyContinue | Out-Null
+    }
+    Write-Host "  -> Created Startup, Desktop shortcuts & GatheringScans_Daemon task." -ForegroundColor Green
 } catch {
     Write-Host "  -> Shortcut note: $_" -ForegroundColor DarkYellow
 }

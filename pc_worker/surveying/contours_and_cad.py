@@ -43,6 +43,7 @@ except ImportError:
 
 from pc_worker.config import (
     BASE_DIR,
+    DATA_DIR,
     LOCAL_SCANS_ROOT as SCANS_ROOT_DIR,
     GC_SCAN_OPTIMIZER_DIR,
     REPORTS_DIR,
@@ -53,7 +54,7 @@ from pc_worker.config import (
     TWD97_TWVD2001_SHORT,
 )
 
-CAMERAS_CACHE_DIR = os.path.join(BASE_DIR, "data", "cameras_cache")
+CAMERAS_CACHE_DIR = os.path.join(DATA_DIR, "cameras_cache")
 os.makedirs(CAMERAS_CACHE_DIR, exist_ok=True)
 from pc_worker.priority_queue import ScanQueueDB
 
@@ -1829,7 +1830,17 @@ class ContoursAndCadMixin:
             (r"C:\Scans\QuChi\QuChi_20261005\inputs", os.path.join(SCANS_ROOT_DIR, "QuChi_20261005_Compressed", "inputs")),
             (r"C:\Scans\2026-09-17-13-40-52", os.path.join(SCANS_ROOT_DIR, "RosePark_260917", "inputs")),
             (r"C:\Scans\RosePark\RosePark 0916", os.path.join(SCANS_ROOT_DIR, "RosePark_Merged2", "inputs")),
+            (r"C:\GatheringScans\catch_QihuPark_20261028\inputs", os.path.join(SCANS_ROOT_DIR, "catch_QihuPark_20261028_HQ", "inputs")),
         )
+
+        def _rewrite_legacy_cam_path(ap_raw: str) -> str:
+            ap_norm = os.path.normpath(ap_raw)
+            ap_low = ap_norm.lower()
+            for old_p, new_p in _LEGACY_CAM_REWRITES:
+                old_norm = os.path.normpath(old_p)
+                if ap_low.startswith(old_norm.lower()):
+                    return os.path.normpath(new_p + ap_norm[len(old_norm) :])
+            return ap_norm
 
         for cache_cand in (proj_cache, portable_cache):
             if cache_cand and os.path.isfile(cache_cand):
@@ -1839,11 +1850,7 @@ class ContoursAndCadMixin:
                     if isinstance(cams, list) and len(cams) > 0:
                         for c_item in cams:
                             if isinstance(c_item, dict) and c_item.get("abs_path"):
-                                ap = str(c_item["abs_path"])
-                                for old_p, new_p in _LEGACY_CAM_REWRITES:
-                                    if old_p in ap:
-                                        c_item["abs_path"] = ap.replace(old_p, new_p)
-                                        break
+                                c_item["abs_path"] = _rewrite_legacy_cam_path(str(c_item["abs_path"]))
                         self._camera_mem_cache[scan_id] = cams
                         return cams
                 except Exception:
@@ -2061,6 +2068,9 @@ class ContoursAndCadMixin:
                     continue
                 for jp in glob.glob(os.path.join(sdir, "**", "*.jp*g"), recursive=True):
                     bname = os.path.basename(jp)
+                    p2_key = f"{os.path.basename(os.path.dirname(os.path.dirname(jp)))}/{bname}"
+                    if p2_key not in local_jpg_map:
+                        local_jpg_map[p2_key] = os.path.normpath(jp)
                     if bname not in local_jpg_map:
                         local_jpg_map[bname] = os.path.normpath(jp)
 
@@ -2167,9 +2177,13 @@ class ContoursAndCadMixin:
                         parent_2 = os.path.basename(os.path.dirname(os.path.dirname(norm_raw_img)))
                         has_multipart_sub = ("of" in parent_2.lower()) and (parent_2.lower() not in ("inputs", "images", "opf_files", src_tag.lower()))
                         rel_fname = f"{parent_2}/{fname}" if has_multipart_sub else fname
-                        abs_img = os.path.normpath(raw_img_str)
-                        if not os.path.isfile(abs_img) and fname in local_jpg_map:
-                            abs_img = local_jpg_map[fname]
+                        abs_img = _rewrite_legacy_cam_path(raw_img_str)
+                        if not os.path.isfile(abs_img):
+                            p2_lookup = f"{parent_2}/{fname}"
+                            if p2_lookup in local_jpg_map:
+                                abs_img = local_jpg_map[p2_lookup]
+                            elif fname in local_jpg_map:
+                                abs_img = local_jpg_map[fname]
                         dedup_key = f"{src_tag}:{rel_fname}" if src_tag else os.path.normcase(abs_img)
                         if dedup_key in seen_source_keys:
                             continue

@@ -11,14 +11,44 @@ Enforces:
 import os
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-DATA_DIR = os.path.join(BASE_DIR, "data")
+LOCAL_SCANS_ROOT = os.environ.get("LOCAL_SCANS_ROOT", r"C:\GatheringScans")
+
+# Automatically load .env from C:\GatheringScans\_app\.env or BASE_DIR\.env into os.environ
+for _env_cand in (
+    os.path.join(LOCAL_SCANS_ROOT, "_app", ".env"),
+    os.path.join(LOCAL_SCANS_ROOT, ".env"),
+    os.path.join(BASE_DIR, ".env"),
+):
+    if os.path.isfile(_env_cand):
+        try:
+            with open(_env_cand, "r", encoding="utf-8", errors="ignore") as _ef:
+                for _line in _ef:
+                    _ls = _line.strip()
+                    if not _ls or _ls.startswith("#") or "=" not in _ls:
+                        continue
+                    _k, _v = _ls.split("=", 1)
+                    _k = _k.strip()
+                    _v = _v.strip().strip('"').strip("'")
+                    if _k and _v and _k not in os.environ:
+                        os.environ[_k] = _v
+        except Exception:
+            pass
+
+LOCAL_SCANS_ROOT = os.environ.get("LOCAL_SCANS_ROOT", r"C:\GatheringScans")
+_MASTER_DATA_DIR = os.path.join(LOCAL_SCANS_ROOT, "_app", "data")
+DATA_DIR = os.environ.get(
+    "GATHERING_SCANS_DATA_DIR",
+    _MASTER_DATA_DIR if (os.name == "nt" and os.path.isdir(_MASTER_DATA_DIR)) else os.path.join(BASE_DIR, "data"),
+)
 os.makedirs(DATA_DIR, exist_ok=True)
 
 # 1. Google Drive Inbox & Local Scan Vault Paths (Strictly Jailed to 3. GatheringScans & C:\GatheringScans)
-GDRIVE_INBOX_DIR = os.environ.get("GDRIVE_INBOX_DIR", r"G:\Shared drives\6.軟體\3. GatheringScans")
+_GDRIVE_ROOT = os.environ.get("GDRIVE_ROOT", r"G:\\").strip()
+if len(_GDRIVE_ROOT) == 2 and _GDRIVE_ROOT.endswith(":"):
+    _GDRIVE_ROOT += "\\"
+GDRIVE_INBOX_DIR = os.environ.get("GDRIVE_INBOX_DIR", os.path.join(_GDRIVE_ROOT, "Shared drives", "6.軟體", "3. GatheringScans"))
 GDRIVE_INPUTS_DIR = os.environ.get("GDRIVE_INPUTS_DIR", os.path.join(GDRIVE_INBOX_DIR, "INPUTS"))
-LEGACY_GDRIVE_INBOX_DIR = os.environ.get("LEGACY_GDRIVE_INBOX_DIR", r"G:\My Drive\SCANS TEST")
-LOCAL_SCANS_ROOT = os.environ.get("LOCAL_SCANS_ROOT", r"C:\GatheringScans")
+LEGACY_GDRIVE_INBOX_DIR = os.environ.get("LEGACY_GDRIVE_INBOX_DIR", os.path.join(_GDRIVE_ROOT, "My Drive", "SCANS TEST"))
 LEGACY_SCANS_ROOT = os.environ.get("LEGACY_SCANS_ROOT", LOCAL_SCANS_ROOT)
 _DEFAULT_OPTIMIZER_DIR = os.path.join(LOCAL_SCANS_ROOT, "_optimizer")
 if not os.path.isdir(_DEFAULT_OPTIMIZER_DIR) and os.path.isdir(r"C:\Antigravity\GC_ScanOptimizer"):

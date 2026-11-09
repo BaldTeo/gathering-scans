@@ -270,7 +270,7 @@ class DsmAndVolumeMixin:
         if scan:
             return scan
         base_repo = BASE_DIR
-        main_db_path = os.path.join(base_repo, "data", "gathering_scans.db")
+        main_db_path = os.path.join(DATA_DIR, "gathering_scans.db")
         if os.path.isfile(main_db_path) and getattr(self.db, "db_path", None) != main_db_path:
             try:
                 fallback_scan = ScanQueueDB(main_db_path).get_scan(clean_id)
@@ -279,6 +279,7 @@ class DsmAndVolumeMixin:
             except Exception:
                 pass
         for mp in (
+            os.path.join(DATA_DIR, "gdrive_cloud_manifest.json"),
             os.path.join(base_repo, "data", "gdrive_cloud_manifest.json"),
             "/host_docker/gathering_scans/data/gdrive_cloud_manifest.json",
         ):
