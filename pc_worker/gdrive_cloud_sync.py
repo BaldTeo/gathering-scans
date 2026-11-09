@@ -427,7 +427,21 @@ def build_scan_3tz_package(
         if os.path.isfile(gsplat_fp):
             try:
                 with open(gsplat_fp, "rb") as gsf:
-                    files_to_pack["tiles/splats.gsplat"] = gsf.read()
+                    raw_gsplat = gsf.read()
+                files_to_pack["tiles/splats.gsplat"] = raw_gsplat
+                gsplat_gz_fp = gsplat_fp + ".gz"
+                if os.path.isfile(gsplat_gz_fp) and os.path.getmtime(gsplat_gz_fp) >= os.path.getmtime(gsplat_fp) - 1.0:
+                    with open(gsplat_gz_fp, "rb") as gsgzf:
+                        files_to_pack["tiles/splats.gsplat.gz"] = gsgzf.read()
+                else:
+                    import gzip
+                    gz_gsplat = gzip.compress(raw_gsplat, compresslevel=1)
+                    files_to_pack["tiles/splats.gsplat.gz"] = gz_gsplat
+                    try:
+                        with open(gsplat_gz_fp, "wb") as wf_gz:
+                            wf_gz.write(gz_gsplat)
+                    except Exception:
+                        pass
             except Exception:
                 pass
 
@@ -638,6 +652,7 @@ def _sync_all_scans_to_gdrive_and_vps_locked(db: Any, auth_share: Any = None, fo
     payload_bytes = json.dumps({"manifest": manifest, "auth": auth_data}, ensure_ascii=False).encode("utf-8")
     vps_synced = False
     missing_vps_pkgs: List[str] = []
+    missing_vps_gsplats: List[str] = []
     try:
         req = urllib.request.Request(
             f"http://{VPS_HOST}:8095/api/cloud-manifest/sync",
@@ -653,6 +668,7 @@ def _sync_all_scans_to_gdrive_and_vps_locked(db: Any, auth_share: Any = None, fo
             try:
                 rj = json.loads(resp.read().decode("utf-8"))
                 missing_vps_pkgs = rj.get("missing_vps_packages") or []
+                missing_vps_gsplats = rj.get("missing_vps_gsplats") or []
                 if auth_share and hasattr(auth_share, "merge_share_sessions") and isinstance(rj.get("vps_share_sessions"), list):
                     auth_share.merge_share_sessions(rj["vps_share_sessions"])
             except Exception:
@@ -680,6 +696,32 @@ def _sync_all_scans_to_gdrive_and_vps_locked(db: Any, auth_share: Any = None, fo
                     pass
             except Exception as ue:
                 print(f"[GDriveCloudSync] VPS .3tz mirror note for {m_sid}: {ue}")
+
+    for g_sid in missing_vps_gsplats[:8]:
+        p_info = packages.get(g_sid) or {}
+        p_file = p_info.get("pkg_path") or ""
+        gs_toc = (p_info.get("toc") or {}).get("tiles/splats.gsplat") or {}
+        gz_off = gs_toc.get("gz_offset")
+        gz_sz = gs_toc.get("gz_size")
+        if p_file and os.path.isfile(p_file) and gz_off is not None and gz_sz and int(gz_sz) <= 32 * 1024 * 1024:
+            try:
+                with open(p_file, "rb") as pf:
+                    pf.seek(int(gz_off))
+                    raw_gz = pf.read(int(gz_sz))
+                if len(raw_gz) == int(gz_sz):
+                    greq = urllib.request.Request(
+                        f"http://{VPS_HOST}:8095/api/cloud-manifest/upload-3tz?scan_id={urllib.parse.quote(g_sid)}&kind=gsplat_gz",
+                        data=raw_gz,
+                        headers={
+                            "Content-Type": "application/octet-stream",
+                            "X-Tunnel-Key": TUNNEL_SHARED_KEY,
+                        },
+                        method="POST",
+                    )
+                    with urllib.request.urlopen(greq, timeout=60) as gresp:
+                        pass
+            except Exception as ge:
+                print(f"[GDriveCloudSync] VPS gsplat_gz mirror note for {g_sid}: {ge}")
 
     manifest["vps_synced"] = vps_synced
     return manifest

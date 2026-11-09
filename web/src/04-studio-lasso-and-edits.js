@@ -1313,6 +1313,7 @@
 
 
   function isMeshVisibleUnderRoot(mesh, rootStop) {
+    if (mesh?.userData?.isGaussianSplatMesh) return false;
     let cur = mesh;
     while (cur) {
       if (!cur.visible) return false;
@@ -2208,7 +2209,7 @@
     const restoreUnder = (root) => {
       if (!root) return;
       root.traverse((m) => {
-        if (m && m.isMesh && m.geometry && m.userData && m.userData._origIndexSaved) {
+        if (m && m.isMesh && !m.userData?.isGaussianSplatMesh && m.geometry && m.userData && m.userData._origIndexSaved) {
           if (m.userData._origHadIndex) {
             m.geometry.setIndex(new THREE.BufferAttribute(m.userData._origIndexArray.slice(), 1));
           } else {
@@ -2224,6 +2225,7 @@
     };
     restoreUnder(studioThree.modelPivot);
     restoreUnder(studioThree.multiAlignGroup);
+    if (typeof window.syncStudioGaussianSplatStagedEdits === "function") window.syncStudioGaussianSplatStagedEdits(null);
     studioThree._laserSpatialIndex = null;
     if (typeof scheduleScanGoogleMapCoverageUpdate === "function") scheduleScanGoogleMapCoverageUpdate(studioThree, STATE.activeScan, 35);
     if (studioThree.renderer && studioThree.scene && studioThree.camera) studioThree.renderer.render(studioThree.scene, studioThree.camera);
@@ -2267,7 +2269,7 @@
 
     let totalHiddenTris = 0;
     const applyOnMesh = (m, meshDelPolys, meshInv, meshTc) => {
-      if (!m || !m.isMesh || m.userData?.isAlignBoxHelper || !m.geometry?.attributes?.position) return;
+      if (!m || !m.isMesh || m.userData?.isAlignBoxHelper || m.userData?.isGaussianSplatMesh || !m.geometry?.attributes?.position) return;
       if (!forceRecompute && m.userData._appliedStagedRev === st.rev && m.userData._appliedEditSig === editSig) return;
       m.updateMatrixWorld(true);
 
@@ -2347,7 +2349,9 @@
         }
       });
     }
-
+    if (typeof window.syncStudioGaussianSplatStagedEdits === "function") {
+      window.syncStudioGaussianSplatStagedEdits({ prepDelStrokes, prepDelPolys, hasKeep, prepKeepStrokes, prepKeepPolys, editSig });
+    }
     if (typeof scheduleScanGoogleMapCoverageUpdate === "function") {
       scheduleScanGoogleMapCoverageUpdate(studioThree, STATE.activeScan, 35);
     }
@@ -2356,6 +2360,7 @@
     }
     return totalHiddenTris;
   }
+  window.reapplyStudioGaussianSplatStagedEdits = () => applyStagedEditsToStudioMeshes(true);
 
   // Live rubberband preview for Area, Cut/Fill Volume & Cross-Section Profile placement
   function renderPolygonRubberband(hoverPt) {

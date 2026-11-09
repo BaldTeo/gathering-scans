@@ -1805,8 +1805,9 @@
             typeof isScanOrTilesetGaussianSplat === "function"
               ? isScanOrTilesetGaussianSplat(scan, tr)
               : Boolean(scan.is_gaussian_splat || tr.root?.extras?.is_gaussian_splat || tr.root?.parent?.extras?.is_gaussian_splat);
-          if (isGsplat && typeof loadGaussianSplatIntoContext === "function") {
-            scan.is_gaussian_splat = true;
+          const hasGsplatLayer = isGsplat || (typeof hasScanOrTilesetGaussianSplatLayer === "function" && hasScanOrTilesetGaussianSplatLayer(scan, tr));
+          if ((isGsplat || (STATE.studioGaussianSplatMode && hasGsplatLayer)) && typeof loadGaussianSplatIntoContext === "function") {
+            if (isGsplat) scan.is_gaussian_splat = true;
             if (!preserveCamera) frameStudioCamera();
             loadGaussianSplatIntoContext(studioThree, scan, "studio", () => {
               finishScanLoader(studioThree, "studio", tr("100% · 3D 高斯潑濺已就緒", "100% · 3D Gaussian Splat Ready"));

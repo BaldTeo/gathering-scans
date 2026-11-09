@@ -818,10 +818,11 @@ def _fetch_gdrive_byte_slice(file_ids: list, start_byte: int, length: int) -> Op
         )
         got_slice = False
         attempted_network = True
+        slice_timeout = 20 if length > 4 * 1024 * 1024 else 5
         for url, hdrs in urls_to_try:
             try:
                 req = urllib.request.Request(url, headers=hdrs, method="GET")
-                with urllib.request.urlopen(req, timeout=4) as r:
+                with urllib.request.urlopen(req, timeout=slice_timeout) as r:
                     ctype = (r.headers.get("Content-Type") or "").lower()
                     if ctype.startswith("text/html"):
                         continue
@@ -833,8 +834,8 @@ def _fetch_gdrive_byte_slice(file_ids: list, start_byte: int, length: int) -> Op
                 continue
         if not got_slice:
             _GDRIVE_NEGATIVE_FID_CACHE[neg_key] = now
-    if attempted_network:
-        _GDRIVE_GLOBAL_BYPASS_UNTIL = now + 600.0
+    if attempted_network and length <= 4 * 1024 * 1024:
+        _GDRIVE_GLOBAL_BYPASS_UNTIL = now + 180.0
     return None
 
 
@@ -1259,23 +1260,46 @@ class CloudAndTunnelHandlerMixin:
 
         expected_pkg_sz = int(pkg.get("size_bytes") or 0)
         data: Optional[bytes] = None
-        for local_pkg_cand in (
-            f"/host_docker/gathering_scans/data/stream_packages/{scan_id}.3tz",
-            os.path.join(DATA_DIR, "stream_packages", f"{scan_id}.3tz"),
-            pkg.get("pkg_path") or "",
-        ):
-            if local_pkg_cand and os.path.isfile(local_pkg_cand):
-                try:
-                    if expected_pkg_sz > 0 and os.path.getsize(local_pkg_cand) != expected_pkg_sz:
-                        continue
-                    with open(local_pkg_cand, "rb") as pf:
-                        pf.seek(start_b)
-                        buf = pf.read(len_b)
-                        if len(buf) == len_b:
-                            data = buf
-                            break
-                except Exception:
-                    pass
+        if inner_path == "tiles/splats.gsplat" and not range_hdr:
+            expected_gz_sz = int(toc_entry.get("gz_size") or 0)
+            for local_gs_cand in (
+                f"/host_docker/gathering_scans/data/stream_packages/{scan_id}_splats.gsplat.gz",
+                os.path.join(DATA_DIR, "stream_packages", f"{scan_id}_splats.gsplat.gz"),
+            ):
+                if local_gs_cand and os.path.isfile(local_gs_cand):
+                    try:
+                        if expected_gz_sz > 0 and os.path.getsize(local_gs_cand) != expected_gz_sz:
+                            continue
+                        with open(local_gs_cand, "rb") as gsf:
+                            raw_gz = gsf.read()
+                        if "gzip" in accept_enc:
+                            data = raw_gz
+                            use_gzip = True
+                        else:
+                            data = gzip.decompress(raw_gz)
+                            use_gzip = False
+                        break
+                    except Exception:
+                        pass
+
+        if data is None:
+            for local_pkg_cand in (
+                f"/host_docker/gathering_scans/data/stream_packages/{scan_id}.3tz",
+                os.path.join(DATA_DIR, "stream_packages", f"{scan_id}.3tz"),
+                pkg.get("pkg_path") or "",
+            ):
+                if local_pkg_cand and os.path.isfile(local_pkg_cand):
+                    try:
+                        if expected_pkg_sz > 0 and os.path.getsize(local_pkg_cand) != expected_pkg_sz:
+                            continue
+                        with open(local_pkg_cand, "rb") as pf:
+                            pf.seek(start_b)
+                            buf = pf.read(len_b)
+                            if len(buf) == len_b:
+                                data = buf
+                                break
+                    except Exception:
+                        pass
 
         if data is None:
             if time.time() < _GDRIVE_STALE_SCAN_BYPASS_UNTIL.get(scan_id, 0.0):

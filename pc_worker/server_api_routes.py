@@ -113,24 +113,26 @@ class ServerWriteRoutesMixin:
                 self.send_json({"error": "Invalid X-Tunnel-Key"}, status=403)
                 return
             scan_id = re.sub(r"[^a-zA-Z0-9_\-]", "", (query.get("scan_id") or [""])[0].strip())
+            kind = (query.get("kind") or ["3tz"])[0].strip().lower()
             if not scan_id or not body:
                 self.send_json({"error": "scan_id and binary body required"}, status=400)
                 return
             target_dirs = [os.path.join(DATA_DIR, "stream_packages")]
             if os.path.isdir("/host_docker/gathering_scans/data"):
                 target_dirs.insert(0, "/host_docker/gathering_scans/data/stream_packages")
+            suffix_fn = f"{scan_id}_splats.gsplat.gz" if kind == "gsplat_gz" else f"{scan_id}.3tz"
             saved_paths = []
             for td in target_dirs:
                 try:
                     os.makedirs(td, exist_ok=True)
-                    dst = os.path.join(td, f"{scan_id}.3tz")
+                    dst = os.path.join(td, suffix_fn)
                     with open(dst, "wb") as f:
                         f.write(body)
                     saved_paths.append(dst)
                 except Exception:
                     pass
             _VPS_RAM_FALLBACK_CACHE.clear()
-            self.send_json({"status": "ok", "scan_id": scan_id, "bytes": len(body), "saved": saved_paths})
+            self.send_json({"status": "ok", "scan_id": scan_id, "kind": kind, "bytes": len(body), "saved": saved_paths})
             return
 
         try:
@@ -220,6 +222,7 @@ class ServerWriteRoutesMixin:
                 pkg_dirs = [os.path.join(DATA_DIR, "stream_packages")]
                 if os.path.isdir("/host_docker/gathering_scans/data"):
                     pkg_dirs.insert(0, "/host_docker/gathering_scans/data/stream_packages")
+                missing_vps_gsplats: List[str] = []
                 for pd in pkg_dirs:
                     if os.path.isdir(pd):
                         for fn in os.listdir(pd):
@@ -230,17 +233,34 @@ class ServerWriteRoutesMixin:
                                         os.remove(os.path.join(pd, fn))
                                     except OSError:
                                         pass
+                            elif fn.endswith("_splats.gsplat.gz"):
+                                sid_f = fn[: -len("_splats.gsplat.gz")]
+                                if sid_f not in pkgs_in and sid_f not in trashed_keep:
+                                    try:
+                                        os.remove(os.path.join(pd, fn))
+                                    except OSError:
+                                        pass
                 primary_pd = pkg_dirs[0]
                 os.makedirs(primary_pd, exist_ok=True)
                 for sid_k, p_info in pkgs_in.items():
                     expected_sz = int((p_info or {}).get("size_bytes") or 0)
                     cand_f = os.path.join(primary_pd, f"{sid_k}.3tz")
-                    if not os.path.isfile(cand_f) or (expected_sz > 0 and os.path.getsize(cand_f) != expected_sz):
+                    has_full_pkg = os.path.isfile(cand_f) and (expected_sz <= 0 or os.path.getsize(cand_f) == expected_sz)
+                    if not has_full_pkg:
                         missing_vps_pkgs.append(sid_k)
+                    gs_toc = ((p_info or {}).get("toc") or {}).get("tiles/splats.gsplat") or {}
+                    expected_gz_sz = int(gs_toc.get("gz_size") or 0)
+                    if expected_gz_sz > 0 and not has_full_pkg:
+                        cand_gs = os.path.join(primary_pd, f"{sid_k}_splats.gsplat.gz")
+                        if not os.path.isfile(cand_gs) or os.path.getsize(cand_gs) != expected_gz_sz:
+                            missing_vps_gsplats.append(sid_k)
+            else:
+                missing_vps_gsplats = []
             if isinstance(payload.get("auth"), dict) and payload["auth"]:
                 _save_cloud_auth(payload["auth"])
             st_resp = self._build_cloud_manifest_status()
             st_resp["missing_vps_packages"] = missing_vps_pkgs
+            st_resp["missing_vps_gsplats"] = missing_vps_gsplats
             if os.name != "nt":
                 st_resp["vps_share_sessions"] = AUTH_SHARE.export_recent_share_sessions(limit=400)
             self.send_json(st_resp)

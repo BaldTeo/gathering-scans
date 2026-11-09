@@ -876,8 +876,32 @@ class GatheringScansHandler(CloudAndTunnelHandlerMixin, ServerWriteRoutesMixin, 
             except Exception:
                 pass
 
-        # Gzip-compress .json, .glb, .js, .css files for fast reverse-tunnel streaming
-        if ext in (".json", ".glb", ".js", ".css") and not range_header and not download_name and "gzip" in accept_enc and 1024 < file_size <= 32 * 1024 * 1024:
+        # Serve pre-compressed .gz sidecar (e.g. splats.gsplat.gz) with zero CPU overhead
+        gz_sidecar = file_path + ".gz"
+        if not range_header and not download_name and "gzip" in accept_enc and os.path.isfile(gz_sidecar):
+            try:
+                if os.path.getmtime(gz_sidecar) >= os.path.getmtime(file_path) - 1.0:
+                    gz_size = os.path.getsize(gz_sidecar)
+                    self.send_response(200)
+                    self.send_header("Content-Type", ctype)
+                    self.send_header("Content-Encoding", "gzip")
+                    self.send_header("Content-Length", str(gz_size))
+                    self.send_header("Cache-Control", "public, max-age=3600")
+                    self.end_headers()
+                    with open(gz_sidecar, "rb") as gzf:
+                        while True:
+                            chunk = gzf.read(256 * 1024)
+                            if not chunk:
+                                break
+                            self.wfile.write(chunk)
+                    return
+            except (BrokenPipeError, ConnectionResetError):
+                return
+            except Exception:
+                pass
+
+        # Gzip-compress .json, .glb, .gsplat, .js, .css files for fast reverse-tunnel streaming
+        if ext in (".json", ".glb", ".gsplat", ".js", ".css") and not range_header and not download_name and "gzip" in accept_enc and 1024 < file_size <= 68 * 1024 * 1024:
             try:
                 mtime = os.path.getmtime(file_path)
                 cached = self._GZIP_FILE_CACHE.get(file_path)
@@ -887,7 +911,7 @@ class GatheringScansHandler(CloudAndTunnelHandlerMixin, ServerWriteRoutesMixin, 
                     with open(file_path, "rb") as f:
                         raw_bytes = f.read()
                     gz_bytes = gzip.compress(raw_bytes, compresslevel=1)
-                    if len(self._GZIP_FILE_CACHE) < 256:
+                    if len(self._GZIP_FILE_CACHE) < 256 and len(gz_bytes) <= 20 * 1024 * 1024:
                         self._GZIP_FILE_CACHE[file_path] = (mtime, gz_bytes)
                 self.send_response(200)
                 self.send_header("Content-Type", ctype)

@@ -4574,6 +4574,113 @@ vm.runInContext(fs.readFileSync('./web/src/12-public-utilities-gis.js', 'utf8'),
                             pass
 
 
+    def test_56_gaussian_splat_hybrid_loader_and_spatial_cutting(self):
+        """
+        Verify:
+        1. Hybrid 3DGS loader in 01-core-state.js has no mutual recursion between isScanOrTilesetGaussianSplat
+           and loadGaussianSplatIntoContext, and always clears _gsplatLoading / finishes the Studio scan loader.
+        2. Live Studio staged edits (Lasso/Polygon deletion and Crop Keep) filter Gaussian Splats via hiddenMask
+           without corrupting the InstancedBufferGeometry index buffer.
+        3. slice_gsplat_for_tileset_cut accurately slices tiles/splats.gsplat and writes tiles/splats.gsplat.gz
+           for both delete_inside and keep_inside modes.
+        """
+        import json
+        import struct
+        import tempfile
+        import numpy as np
+        from pc_worker.gaussian_splat_builder import (
+            GSPLAT_REC_DTYPE,
+            _write_gsplat_gz_sidecar,
+            read_gsplat_records_and_origin,
+            slice_gsplat_for_tileset_cut,
+        )
+
+        with open(os.path.join(BASE_DIR, "web", "src", "01-core-state.js"), "r", encoding="utf-8") as f:
+            js01 = f.read()
+        with open(os.path.join(BASE_DIR, "web", "src", "04-studio-lasso-and-edits.js"), "r", encoding="utf-8") as f:
+            js04 = f.read()
+
+        # Verify isScanOrTilesetGaussianSplat does not call loadGaussianSplatIntoContext recursively
+        fn_start = js01.index("function isScanOrTilesetGaussianSplat(")
+        fn_end = js01.index("async function toggleStudioGaussianSplatMode(", fn_start)
+        fn_body = js01[fn_start:fn_end]
+        self.assertNotIn("loadGaussianSplatIntoContext(", fn_body)
+        self.assertIn("window.syncStudioGaussianSplatStagedEdits = syncStudioGaussianSplatStagedEdits;", js01)
+        self.assertIn("if (mesh?.userData?.isGaussianSplatMesh) return false;", js04)
+
+        # Build a synthetic tileset with 100 Gaussian Splats from x=-50..+49, y=0, z=10 around origin (1000, 2000, 10)
+        with tempfile.TemporaryDirectory() as tmp_root:
+            in_ts = os.path.join(tmp_root, "in_tileset")
+            out_del = os.path.join(tmp_root, "out_del")
+            out_keep = os.path.join(tmp_root, "out_keep")
+            os.makedirs(os.path.join(in_ts, "tiles"), exist_ok=True)
+            os.makedirs(os.path.join(out_del, "tiles"), exist_ok=True)
+            os.makedirs(os.path.join(out_keep, "tiles"), exist_ok=True)
+
+            recs = np.zeros(100, dtype=GSPLAT_REC_DTYPE)
+            recs["pos"][:, 0] = np.arange(-50, 50, dtype=np.float32)
+            recs["pos"][:, 1] = 0.0
+            recs["pos"][:, 2] = 0.0
+            recs["scale"][:] = 0.05
+            recs["rgba"][:] = [200, 180, 160, 255]
+            recs["quat"][:] = [128, 128, 128, 255]
+
+            raw_blob = struct.pack("<4sIII", b"GSPL", 1, 100, 1) + recs.tobytes()
+            gs_in_path = os.path.join(in_ts, "tiles", "splats.gsplat")
+            with open(gs_in_path, "wb") as wf:
+                wf.write(raw_blob)
+            _write_gsplat_gz_sidecar(gs_in_path, raw_blob)
+            self.assertTrue(os.path.isfile(gs_in_path + ".gz"))
+
+            ts_doc = {
+                "asset": {"version": "1.1", "gltfUpAxis": "Z"},
+                "extras": {
+                    "has_gaussian_splat_layer": True,
+                    "gaussian_splat_uri": "tiles/splats.gsplat",
+                    "gaussian_splat_origin": [1000.0, 2000.0, 10.0],
+                    "splat_count": 100,
+                },
+                "root": {
+                    "boundingVolume": {"box": [1000.0, 2000.0, 10.0, 50.0, 0, 0, 0, 50.0, 0, 0, 0, 10.0]},
+                    "geometricError": 10.0,
+                    "refine": "REPLACE",
+                },
+            }
+            for d in (in_ts, out_del, out_keep):
+                with open(os.path.join(d, "tileset.json"), "w", encoding="utf-8") as tf:
+                    json.dump(ts_doc, tf)
+
+            from shapely.geometry import Polygon
+
+            class _DummyCutter:
+                def __init__(self, mode, poly):
+                    self.mode = mode
+                    self.frustum_strokes = []
+                    self.clip_polygons = [poly]
+                    self.polygon_section_boxes = [None]
+                    self.clip_polygon = None
+                    self.min_elev = None
+                    self.max_elev = None
+                    self.up_axis = "z"
+
+            # Delete splats with Easting in [990, 1009.5] (20 splats: dx from -10 to +9)
+            poly_box = Polygon([(989.5, 1990.0), (1009.5, 1990.0), (1009.5, 2010.0), (989.5, 2010.0)])
+            res_del = slice_gsplat_for_tileset_cut(in_ts, out_del, _DummyCutter("delete_inside", poly_box))
+            self.assertIsNotNone(res_del)
+            self.assertEqual(res_del["splats_kept"], 80)
+            self.assertEqual(res_del["splats_deleted"], 20)
+            self.assertTrue(os.path.isfile(os.path.join(out_del, "tiles", "splats.gsplat.gz")))
+
+            # Keep only splats with Easting in [989.5, 1009.5] (20 splats)
+            res_keep = slice_gsplat_for_tileset_cut(in_ts, out_keep, _DummyCutter("keep_inside", poly_box))
+            self.assertIsNotNone(res_keep)
+            self.assertEqual(res_keep["splats_kept"], 20)
+            self.assertEqual(res_keep["splats_deleted"], 80)
+            loaded_keep = read_gsplat_records_and_origin(out_keep)
+            self.assertIsNotNone(loaded_keep)
+            self.assertEqual(len(loaded_keep[0]), 20)
+
+
 if __name__ == "__main__":
     unittest.main()
 

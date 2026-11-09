@@ -18,6 +18,7 @@ import json
 import math
 import os
 import struct
+import sys
 import time
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -755,9 +756,10 @@ def build_gaussian_splat_tileset(
     recs["quat"] = np.clip(np.round((quat_xyzw * 0.5 + 0.5) * 255.0), 0, 255).astype(np.uint8)
 
     header_bytes = struct.pack("<4sIII", b"GSPL", 1, n_total, 1 if has_georef_offset else 0)
+    raw_gsplat_blob = header_bytes + recs.tobytes()
     with open(gsplat_bin_path, "wb") as gf:
-        gf.write(header_bytes)
-        gf.write(recs.tobytes())
+        gf.write(raw_gsplat_blob)
+    _write_gsplat_gz_sidecar(gsplat_bin_path, raw_gsplat_blob)
 
     # Write `tiles/root.glb` and `preview_low/tiles/root.glb`
     glb_bytes = _build_surfel_glb_bytes(xyz_zup, scale, rgba, quat_zup, world_origin, max_surfels=24000)
@@ -850,12 +852,735 @@ def build_gaussian_splat_tileset(
     return ts_json_path
 
 
+GSPLAT_REC_DTYPE = np.dtype(
+    [
+        ("pos", "<f4", (3,)),
+        ("scale", "<f4", (3,)),
+        ("rgba", "<u1", (4,)),
+        ("quat", "<u1", (4,)),
+    ]
+)
+
+
+def _write_gsplat_gz_sidecar(gsplat_bin_path: str, raw_blob: Optional[bytes] = None) -> Optional[str]:
+    """Writes a pre-compressed `splats.gsplat.gz` sidecar next to `splats.gsplat` for <5ms HTTP & VPS streaming."""
+    import gzip
+
+    try:
+        if raw_blob is None:
+            if not os.path.isfile(gsplat_bin_path):
+                return None
+            with open(gsplat_bin_path, "rb") as rf:
+                raw_blob = rf.read()
+        gz_path = gsplat_bin_path + ".gz"
+        gz_bytes = gzip.compress(raw_blob, compresslevel=5)
+        with open(gz_path, "wb") as wf:
+            wf.write(gz_bytes)
+        return gz_path
+    except Exception as e:
+        print(f"[GaussianSplatBuilder] Note writing .gsplat.gz sidecar: {e}")
+        return None
+
+
+def _sync_tileset_and_meta_gsplat_fields(
+    tileset_dir: str,
+    folder_path: Optional[str],
+    splat_uri_rel: str,
+    splat_origin_list: List[float],
+    n_total: int,
+    splat_size_mb: float,
+    also_update_backup: bool = False,
+) -> None:
+    """Updates `extras` in `tileset.json`, `preview_tileset.json`, and `scan_meta.json` with current 3DGS metadata."""
+    ts_targets = [
+        os.path.join(tileset_dir, "tileset.json"),
+        os.path.join(tileset_dir, "preview_tileset.json"),
+    ]
+    if also_update_backup and folder_path:
+        ts_targets.append(os.path.join(folder_path, "tileset_backup", "tileset.json"))
+
+    has_layer = bool(n_total > 0)
+    for target_ts in ts_targets:
+        if os.path.isfile(target_ts):
+            try:
+                with open(target_ts, "r", encoding="utf-8") as f_in:
+                    doc = json.load(f_in)
+                if isinstance(doc, dict):
+                    ext = doc.setdefault("extras", {})
+                    ext["has_gaussian_splat_layer"] = has_layer
+                    ext["gaussian_splat_uri"] = splat_uri_rel
+                    ext["gaussian_splat_origin"] = splat_origin_list
+                    ext["splat_count"] = int(n_total)
+                    ext["splat_size_mb"] = splat_size_mb
+                    if isinstance(doc.get("root"), dict):
+                        r_ext = doc["root"].setdefault("extras", {})
+                        r_ext["has_gaussian_splat_layer"] = has_layer
+                        r_ext["gaussian_splat_uri"] = splat_uri_rel
+                        r_ext["gaussian_splat_origin"] = splat_origin_list
+                        r_ext["splat_count"] = int(n_total)
+                        r_ext["splat_size_mb"] = splat_size_mb
+                    with open(target_ts, "w", encoding="utf-8") as f_out:
+                        json.dump(doc, f_out, indent=2)
+            except Exception as te:
+                print(f"[GaussianSplatBuilder] Warning updating tileset metadata in {target_ts}: {te}")
+
+    proj_dir = folder_path or os.path.dirname(os.path.abspath(tileset_dir))
+    meta_fp = os.path.join(proj_dir, "scan_meta.json")
+    if os.path.isfile(meta_fp):
+        try:
+            with open(meta_fp, "r", encoding="utf-8") as mf:
+                m_obj = json.load(mf)
+            if isinstance(m_obj, dict):
+                m_obj["has_gaussian_splat_layer"] = has_layer
+                m_obj["gaussian_splat_uri"] = splat_uri_rel
+                m_obj["gaussian_splat_origin"] = splat_origin_list
+                m_obj["splat_count"] = int(n_total)
+                m_obj["splat_size_mb"] = splat_size_mb
+                with open(meta_fp, "w", encoding="utf-8") as mf:
+                    json.dump(m_obj, mf, ensure_ascii=False, indent=2)
+        except Exception:
+            pass
+
+
+GSPLAT_REC_DTYPE = np.dtype(
+    [
+        ("pos", "<f4", (3,)),
+        ("scale", "<f4", (3,)),
+        ("rgba", "<u1", (4,)),
+        ("quat", "<u1", (4,)),
+    ]
+)
+
+
+def read_gsplat_records_and_origin(tileset_dir: str) -> Optional[Tuple[np.ndarray, np.ndarray, int]]:
+    """
+    Reads `tiles/splats.gsplat` and `gaussian_splat_origin` from `tileset_dir`.
+    Returns `(recs, origin_xyz_f64, flags)` or `None` if no valid `.gsplat` exists.
+    """
+    gs_path = os.path.join(tileset_dir, "tiles", "splats.gsplat")
+    ts_path = os.path.join(tileset_dir, "tileset.json")
+    origin_xyz = np.zeros(3, dtype=np.float64)
+    if os.path.isfile(ts_path):
+        try:
+            with open(ts_path, "r", encoding="utf-8") as tf:
+                ts_doc = json.load(tf)
+            ext = ts_doc.get("extras") or (ts_doc.get("root") or {}).get("extras") or {}
+            rel_uri = str(ext.get("gaussian_splat_uri") or "").split("?")[0].strip()
+            if rel_uri:
+                cand_gs = os.path.join(tileset_dir, rel_uri.replace("/", os.sep))
+                if os.path.isfile(cand_gs):
+                    gs_path = cand_gs
+            g_orig = ext.get("gaussian_splat_origin")
+            if isinstance(g_orig, list) and len(g_orig) >= 3:
+                origin_xyz = np.array([float(g_orig[0]), float(g_orig[1]), float(g_orig[2])], dtype=np.float64)
+            else:
+                r_box = ((ts_doc.get("root") or {}).get("boundingVolume") or {}).get("box")
+                if isinstance(r_box, list) and len(r_box) >= 3:
+                    origin_xyz = np.array([float(r_box[0]), float(r_box[1]), float(r_box[2])], dtype=np.float64)
+        except Exception:
+            pass
+
+    if not os.path.isfile(gs_path) or os.path.getsize(gs_path) < 48:
+        return None
+    try:
+        with open(gs_path, "rb") as gf:
+            raw = gf.read()
+        magic, _ver, total_cnt, flags = struct.unpack_from("<4sIII", raw, 0)
+        if magic not in (b"GSPL", b"SPLT"):
+            return None
+        n = min(int(total_cnt), (len(raw) - 16) // 32)
+        if n <= 0:
+            return None
+        recs = np.frombuffer(raw, dtype=GSPLAT_REC_DTYPE, count=n, offset=16).copy()
+        return recs, origin_xyz, int(flags)
+    except Exception:
+        return None
+
+
+def _points_in_shapely_poly(poly: Any, xs: np.ndarray, ys: np.ndarray) -> np.ndarray:
+    if len(xs) == 0:
+        return np.zeros(0, dtype=bool)
+    try:
+        import shapely
+
+        if hasattr(shapely, "contains_xy"):
+            return np.asarray(shapely.contains_xy(poly, xs, ys), dtype=bool)
+        from shapely.geometry import Point
+        from shapely.prepared import prep
+
+        prep_poly = prep(poly)
+        return np.array([prep_poly.contains(Point(float(x), float(y))) for x, y in zip(xs, ys)], dtype=bool)
+    except Exception:
+        return np.zeros(len(xs), dtype=bool)
+
+
+def evaluate_points_in_cutter(
+    cutter: Any, pts_ts: np.ndarray, radii: Optional[np.ndarray] = None
+) -> np.ndarray:
+    """
+    Evaluates `(N, 3)` float64 points `pts_ts` in Tileset native coordinates (`[Easting, Northing, Elevation]` when `up_axis=='z'`)
+    against a `SpatialCutter`'s `frustum_strokes` and 2D `poly` + `[min_elev, max_elev]`.
+    Returns boolean array `selected` (length N) indicating which points fall INSIDE the selection region.
+    """
+    n_pts = len(pts_ts)
+    if n_pts == 0:
+        return np.zeros(0, dtype=bool)
+
+    selected = np.zeros(n_pts, dtype=bool)
+    v_idx = int(getattr(cutter, "v_idx", None) if getattr(cutter, "v_idx", None) is not None else 2)
+    h0_idx = int(getattr(cutter, "h0_idx", None) if getattr(cutter, "h0_idx", None) is not None else 0)
+    h1_idx = int(getattr(cutter, "h1_idx", None) if getattr(cutter, "h1_idx", None) is not None else 1)
+    raw_min_e = getattr(cutter, "min_elev", None)
+    raw_max_e = getattr(cutter, "max_elev", None)
+    min_elev = float(raw_min_e) if raw_min_e is not None else -1e9
+    max_elev = float(raw_max_e) if raw_max_e is not None else 1e9
+
+    if getattr(cutter, "use_frustum", False):
+        for st in getattr(cutter, "frustum_strokes", []) or []:
+            elev_vals = pts_ts[:, v_idx]
+            elev_ok = (elev_vals >= min_elev) & (elev_vals <= max_elev)
+            if not np.any(elev_ok):
+                continue
+
+            C = st["tiles_center"]
+            piv = st["pivot_matrix"]
+            R_p, t_p = piv[:3, :3], piv[:3, 3]
+            w = (pts_ts - C) @ R_p.T + t_p
+
+            vp = st["view_proj_matrix"]
+            VP_3, VP_t = vp[:, :3], vp[:, 3]
+            cc = w @ VP_3.T + VP_t
+            cwc = cc[:, 3]
+
+            front_ok = elev_ok & (cwc > 0.05)
+            sb = st.get("section_box")
+            if sb is not None:
+                dy = np.abs(w[:, 1] - sb["cy"]) <= (sb["hy"] + 1e-4)
+                dx = w[:, 0] - sb["cx"]
+                dz = w[:, 2] - sb["cz"]
+                lx = np.abs(dx * sb["cos_y"] - dz * sb["sin_y"]) <= (sb["hx"] + 1e-4)
+                lz = np.abs(dx * sb["sin_y"] + dz * sb["cos_y"]) <= (sb["hz"] + 1e-4)
+                front_ok = front_ok & dy & lx & lz
+
+            cand_idx = np.where(front_ok)[0]
+            if len(cand_idx) == 0:
+                continue
+
+            nxc = cc[cand_idx, 0] / cwc[cand_idx]
+            nyc = cc[cand_idx, 1] / cwc[cand_idx]
+            b_min_x, b_min_y, b_max_x, b_max_y = st["bounds"]
+            bbox_ok = (nxc >= b_min_x) & (nxc <= b_max_x) & (nyc >= b_min_y) & (nyc <= b_max_y)
+            sub_cand = np.where(bbox_ok)[0]
+            if len(sub_cand) == 0:
+                continue
+
+            real_idx = cand_idx[sub_cand]
+            poly_hit = _points_in_shapely_poly(st["poly"], nxc[sub_cand], nyc[sub_cand])
+
+            if st.get("visible_only") and st.get("depth_grid") is not None:
+                dg = st["depth_grid"]
+                G = int(st["depth_grid_size"])
+                gx = np.clip(((nxc[sub_cand] * 0.5 + 0.5) * G).astype(np.int32), 0, G - 1)
+                gy = np.clip(((nyc[sub_cand] * 0.5 + 0.5) * G).astype(np.int32), 0, G - 1)
+                cell_front_w = dg[gy, gx]
+                eff_front_w = np.where(cell_front_w > 0.0, cell_front_w, float(st.get("max_valid_w") or 0.0))
+                r_sub = radii[real_idx] if radii is not None else 0.0
+                tol = np.maximum(float(st.get("depth_tolerance_m") or 0.85), 0.03 * eff_front_w) + np.clip(r_sub, 0.0, 2.0)
+                depth_ok = (cwc[real_idx] - r_sub) <= (eff_front_w + tol)
+                poly_hit = poly_hit & depth_ok
+
+            hit_indices = real_idx[poly_hit]
+            if st.get("op") == "sub":
+                selected[hit_indices] = False
+            else:
+                selected[hit_indices] = True
+
+    poly_candidates = []
+    if getattr(cutter, "poly", None) is not None:
+        poly_candidates.append(cutter.poly)
+    elif getattr(cutter, "clip_polygon", None) is not None:
+        poly_candidates.append(cutter.clip_polygon)
+    for cp in getattr(cutter, "clip_polygons", None) or []:
+        if cp is not None and cp not in poly_candidates:
+            poly_candidates.append(cp)
+
+    if poly_candidates:
+        v_vals = pts_ts[:, v_idx]
+        h0_vals = pts_ts[:, h0_idx]
+        h1_vals = pts_ts[:, h1_idx]
+        h_mask = (v_vals >= min_elev) & (v_vals <= max_elev)
+        valid_indices = np.where(h_mask)[0]
+        if len(valid_indices) > 0:
+            for p_geom in poly_candidates:
+                poly_mask = _points_in_shapely_poly(p_geom, h0_vals[valid_indices], h1_vals[valid_indices])
+                selected[valid_indices[poly_mask]] = True
+
+    return selected
+
+
+def slice_gsplat_for_tileset_cut(
+    input_tileset_dir: str,
+    output_tileset_dir: str,
+    cutter: Any,
+    max_splats: int = 500_000,
+) -> Optional[Dict[str, Any]]:
+    """
+    Slices `input_tileset_dir/tiles/splats.gsplat` using the exact same `SpatialCutter`
+    `frustum_strokes` and `polygons_list` (`delete_inside` or `keep_inside` mode),
+    re-centers splats around `output_tileset_dir/tileset.json`'s root bounding box center,
+    and writes `output_tileset_dir/tiles/splats.gsplat` (+ `.gz`).
+    """
+    loaded = read_gsplat_records_and_origin(input_tileset_dir)
+    if loaded is None:
+        return None
+    recs, old_origin, flags = loaded
+
+    pts_ts = recs["pos"].astype(np.float64) + old_origin
+    radii = np.max(recs["scale"], axis=1).astype(np.float64)
+    inside_mask = evaluate_points_in_cutter(cutter, pts_ts, radii)
+    mode = str(getattr(cutter, "mode", "keep_inside")).lower().strip()
+    keep_mask = (~inside_mask) if mode == "delete_inside" else inside_mask
+
+    kept_recs = recs[keep_mask].copy()
+    kept_pts_ts = pts_ts[keep_mask]
+    deleted_cnt = int(len(recs) - len(kept_recs))
+
+    if max_splats and max_splats > 0 and len(kept_recs) > max_splats:
+        kept_recs = kept_recs[: int(max_splats)].copy()
+        kept_pts_ts = kept_pts_ts[: int(max_splats)]
+
+    new_origin = old_origin.copy()
+    out_ts_path = os.path.join(output_tileset_dir, "tileset.json")
+    if os.path.isfile(out_ts_path):
+        try:
+            with open(out_ts_path, "r", encoding="utf-8") as tf:
+                out_ts = json.load(tf)
+            r_box = ((out_ts.get("root") or {}).get("boundingVolume") or {}).get("box")
+            if isinstance(r_box, list) and len(r_box) >= 3:
+                cand_o = np.array([float(r_box[0]), float(r_box[1]), float(r_box[2])], dtype=np.float64)
+                if np.linalg.norm(cand_o - old_origin) < 10000.0:
+                    new_origin = cand_o
+        except Exception:
+            pass
+
+    n_kept = len(kept_recs)
+    if n_kept > 0:
+        kept_recs["pos"] = (kept_pts_ts - new_origin).astype(np.float32)
+
+    out_tiles_dir = os.path.join(output_tileset_dir, "tiles")
+    os.makedirs(out_tiles_dir, exist_ok=True)
+    out_gs_path = os.path.join(out_tiles_dir, "splats.gsplat")
+
+    header_bytes = struct.pack("<4sIII", b"GSPL", 1, n_kept, flags)
+    raw_blob = header_bytes + kept_recs.tobytes()
+    with open(out_gs_path, "wb") as wf:
+        wf.write(raw_blob)
+    _write_gsplat_gz_sidecar(out_gs_path, raw_blob)
+
+    gs_mtime = int(os.path.getmtime(out_gs_path))
+    splat_size_mb = round(len(raw_blob) / (1024.0 * 1024.0), 2)
+    splat_uri_rel = f"tiles/splats.gsplat?v={gs_mtime}"
+    splat_origin_list = [round(float(new_origin[0]), 4), round(float(new_origin[1]), 4), round(float(new_origin[2]), 4)]
+
+    _sync_tileset_and_meta_gsplat_fields(
+        output_tileset_dir,
+        None,
+        splat_uri_rel,
+        splat_origin_list,
+        n_kept,
+        splat_size_mb,
+        also_update_backup=False,
+    )
+    return {
+        "splats_kept": int(n_kept),
+        "splats_deleted": int(deleted_cnt),
+        "splat_size_mb": splat_size_mb,
+        "gaussian_splat_uri": splat_uri_rel,
+        "gaussian_splat_origin": splat_origin_list,
+    }
+
+
+def _extract_surviving_mesh_sample_points_zup(tileset_dir: str) -> Optional[np.ndarray]:
+    """
+    Extracts dense 3D surface sample points (vertices + triangle centroids + edge midpoints) in
+    Tileset Z-up coordinates (`[Easting, Northing, Elevation]`) from the surviving `.glb` tiles in `tileset_dir`.
+    """
+    from concurrent.futures import ThreadPoolExecutor
+    import tempfile
+    import subprocess
+    from .config import GC_SCAN_OPTIMIZER_DIR
+
+    ts_path = os.path.join(tileset_dir, "tileset.json")
+    if not os.path.isfile(ts_path):
+        return None
+    try:
+        with open(ts_path, "r", encoding="utf-8") as tf:
+            ts_doc = json.load(tf)
+    except Exception:
+        return None
+
+    gltf_up = str((ts_doc.get("asset") or {}).get("gltfUpAxis") or "").upper().strip()
+    leaf_items: List[Tuple[str, np.ndarray]] = []
+
+    def _walk_leaves(nd: Dict[str, Any], p_tf: np.ndarray) -> None:
+        c_tf = p_tf
+        ntf = nd.get("transform")
+        if isinstance(ntf, list) and len(ntf) == 16:
+            c_tf = p_tf @ np.array(ntf, dtype=np.float64).reshape((4, 4), order="F")
+        chs = [c for c in (nd.get("children") or []) if isinstance(c, dict)]
+        if chs:
+            for ch in chs:
+                _walk_leaves(ch, c_tf)
+        else:
+            u = str((nd.get("content") or {}).get("uri") or (nd.get("content") or {}).get("url") or "").split("?")[0].strip()
+            if u and "{level}" not in u:
+                fp = os.path.normpath(os.path.join(tileset_dir, u.replace("/", os.sep)))
+                if os.path.isfile(fp):
+                    leaf_items.append((fp, c_tf))
+
+    if isinstance(ts_doc.get("root"), dict):
+        _walk_leaves(ts_doc["root"], np.eye(4, dtype=np.float64))
+
+    if not leaf_items:
+        return None
+
+    if GC_SCAN_OPTIMIZER_DIR not in sys.path:
+        sys.path.insert(0, GC_SCAN_OPTIMIZER_DIR)
+    from optimizer.geometry_optimizer import (
+        find_gltfpack_binary,
+        parse_glb_chunks,
+        extract_glb_64bit_origin_to_local,
+    )
+    from cutter.spatial_cutter import SpatialCutter, _build_gltf_mesh_transforms
+
+    gltfpack = find_gltfpack_binary()
+    win_no_window = getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000) if os.name == "nt" else 0
+
+    def _decode_one_tile(item: Tuple[str, np.ndarray]) -> Optional[np.ndarray]:
+        fp, node_tf = item
+        t1, t2 = None, None
+        try:
+            with open(fp, "rb") as gf:
+                loc_b, orig64 = extract_glb_64bit_origin_to_local(gf.read())
+            j_p, _ = parse_glb_chunks(loc_b)
+            exts = set(j_p.get("extensionsUsed") or [])
+            if ("EXT_meshopt_compression" in exts or "KHR_mesh_quantization" in exts) and gltfpack:
+                fd1, t1 = tempfile.mkstemp(suffix=".glb")
+                with os.fdopen(fd1, "wb") as f1:
+                    f1.write(loc_b)
+                fd2, t2 = tempfile.mkstemp(suffix=".glb")
+                os.close(fd2)
+                subprocess.run(
+                    [gltfpack, "-i", t1, "-o", t2, "-noq"],
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    check=True,
+                    creationflags=win_no_window,
+                )
+                with open(t2, "rb") as f2:
+                    j_u, b_u = parse_glb_chunks(f2.read())
+            else:
+                j_u, b_u = parse_glb_chunks(loc_b)
+
+            m_tf = _build_gltf_mesh_transforms(j_u)
+            orig_vec = np.array(orig64, dtype=np.float64)
+            tile_pts = []
+            for mi, m_obj in enumerate(j_u.get("meshes") or []):
+                mat = m_tf.get(mi, np.eye(4, dtype=np.float64))
+                for prim in m_obj.get("primitives") or []:
+                    attrs = prim.get("attributes") or {}
+                    if "POSITION" not in attrs:
+                        continue
+                    pr, _, acc = SpatialCutter._read_accessor_raw_rows(j_u, b_u, int(attrs["POSITION"]))
+                    if int(acc.get("componentType", 0)) != 5126:
+                        continue
+                    v = np.frombuffer(pr.tobytes(), dtype=np.float32).reshape(-1, 3).astype(np.float64)
+                    vg = v @ mat[:3, :3].T + mat[:3, 3] + orig_vec
+                    if gltf_up != "Z":
+                        vg = np.column_stack([vg[:, 0], -vg[:, 2], vg[:, 1]])
+                    if not np.allclose(node_tf, np.eye(4, dtype=np.float64)):
+                        vg = vg @ node_tf[:3, :3].T + node_tf[:3, 3]
+                    tile_pts.append(vg)
+                    if "indices" in prim:
+                        idx = SpatialCutter._read_indices_u32(j_u, b_u, int(prim["indices"])).reshape(-1, 3)
+                        v0, v1, v2 = vg[idx[:, 0]], vg[idx[:, 1]], vg[idx[:, 2]]
+                        tile_pts.append((v0 + v1 + v2) * (1.0 / 3.0))
+                        tile_pts.append((v0 + v1) * 0.5)
+                        tile_pts.append((v1 + v2) * 0.5)
+                        tile_pts.append((v2 + v0) * 0.5)
+            return np.vstack(tile_pts) if tile_pts else None
+        except Exception:
+            return None
+        finally:
+            for tf_rm in (t1, t2):
+                if tf_rm and os.path.exists(tf_rm):
+                    try:
+                        os.remove(tf_rm)
+                    except OSError:
+                        pass
+
+    with ThreadPoolExecutor(max_workers=min(12, max(2, len(leaf_items)))) as ex:
+        results = [r for r in ex.map(_decode_one_tile, leaf_items) if r is not None and len(r) > 0]
+
+    if not results:
+        return None
+    all_pts = np.vstack(results)
+    # Quantize to 2cm grid so cKDTree build & query on 100M+ points runs in <0.5s
+    if len(all_pts) > 1_500_000:
+        vq = np.round(all_pts * 50.0).astype(np.int64)
+        _, u_idx = np.unique(vq, axis=0, return_index=True)
+        all_pts = all_pts[u_idx]
+    return all_pts
+
+
+def filter_gsplat_to_surviving_mesh(
+    tileset_dir: str,
+    folder_path: Optional[str] = None,
+    max_dist_m: float = 0.22,
+    max_splats: int = 500_000,
+) -> Optional[Dict[str, Any]]:
+    """
+    Prunes any Gaussian Splats in `tileset_dir/tiles/splats.gsplat` that do not correspond to
+    surviving mesh geometry in `tileset_dir` (e.g., regions erased via 3D Lasso or cropped out),
+    re-centers around the tileset's root boundingVolume box center, and caps at `max_splats`.
+    """
+    from scipy.spatial import cKDTree
+
+    loaded = read_gsplat_records_and_origin(tileset_dir)
+    if loaded is None:
+        return None
+    recs, old_origin, flags = loaded
+    mesh_pts = _extract_surviving_mesh_sample_points_zup(tileset_dir)
+    if mesh_pts is None or len(mesh_pts) < 16:
+        return None
+
+    pts_ts = recs["pos"].astype(np.float64) + old_origin
+    radii = np.clip(np.max(recs["scale"], axis=1).astype(np.float64), 0.0, 0.35)
+
+    m_min = mesh_pts.min(axis=0) - (max_dist_m + 0.35)
+    m_max = mesh_pts.max(axis=0) + (max_dist_m + 0.35)
+    in_bbox = (
+        (pts_ts[:, 0] >= m_min[0]) & (pts_ts[:, 0] <= m_max[0])
+        & (pts_ts[:, 1] >= m_min[1]) & (pts_ts[:, 1] <= m_max[1])
+        & (pts_ts[:, 2] >= m_min[2]) & (pts_ts[:, 2] <= m_max[2])
+    )
+    cand_indices = np.where(in_bbox)[0]
+    if len(cand_indices) == 0:
+        return None
+
+    tree = cKDTree(mesh_pts)
+    dists, _ = tree.query(pts_ts[cand_indices], k=1, workers=-1)
+    near_ok = dists <= (max_dist_m + 0.5 * radii[cand_indices])
+    keep_indices = cand_indices[near_ok]
+    if len(keep_indices) < 16:
+        return None
+
+    if max_splats and max_splats > 0 and len(keep_indices) > max_splats:
+        keep_indices = keep_indices[: int(max_splats)]
+
+    kept_recs = recs[keep_indices].copy()
+    kept_pts_ts = pts_ts[keep_indices]
+
+    new_origin = old_origin.copy()
+    ts_path = os.path.join(tileset_dir, "tileset.json")
+    if os.path.isfile(ts_path):
+        try:
+            with open(ts_path, "r", encoding="utf-8") as tf:
+                ts_doc = json.load(tf)
+            r_box = ((ts_doc.get("root") or {}).get("boundingVolume") or {}).get("box")
+            if isinstance(r_box, list) and len(r_box) >= 3:
+                cand_o = np.array([float(r_box[0]), float(r_box[1]), float(r_box[2])], dtype=np.float64)
+                if np.linalg.norm(cand_o - old_origin) < 10000.0:
+                    new_origin = cand_o
+        except Exception:
+            pass
+
+    kept_recs["pos"] = (kept_pts_ts - new_origin).astype(np.float32)
+    n_kept = len(kept_recs)
+    gs_path = os.path.join(tileset_dir, "tiles", "splats.gsplat")
+    header_bytes = struct.pack("<4sIII", b"GSPL", 1, n_kept, flags)
+    raw_blob = header_bytes + kept_recs.tobytes()
+    with open(gs_path, "wb") as wf:
+        wf.write(raw_blob)
+    _write_gsplat_gz_sidecar(gs_path, raw_blob)
+
+    gs_mtime = int(os.path.getmtime(gs_path))
+    splat_size_mb = round(len(raw_blob) / (1024.0 * 1024.0), 2)
+    splat_uri_rel = f"tiles/splats.gsplat?v={gs_mtime}"
+    splat_origin_list = [round(float(new_origin[0]), 4), round(float(new_origin[1]), 4), round(float(new_origin[2]), 4)]
+
+    _sync_tileset_and_meta_gsplat_fields(
+        tileset_dir,
+        folder_path,
+        splat_uri_rel,
+        splat_origin_list,
+        n_kept,
+        splat_size_mb,
+        also_update_backup=False,
+    )
+    print(
+        f"[GaussianSplatBuilder] Filtered .gsplat to surviving mesh in {tileset_dir}: "
+        f"kept {n_kept:,} / {len(recs):,} splats ({splat_size_mb} MB)"
+    )
+    return {
+        "splats_kept": int(n_kept),
+        "splats_deleted": int(len(recs) - n_kept),
+        "splat_size_mb": splat_size_mb,
+        "gaussian_splat_uri": splat_uri_rel,
+        "gaussian_splat_origin": splat_origin_list,
+    }
+
+
+def restore_gsplat_region_from_backup(
+    ts_dir: str,
+    proj_dir: str,
+    scan: Dict[str, Any],
+    cutter_eval: Any,
+    db: Any = None,
+    max_splats: int = 500_000,
+) -> int:
+    """
+    Restores missing Gaussian Splats inside `cutter_eval` from `tileset_backup`, `tileset_prev`,
+    or `derived_from_scan_id` into `ts_dir/tiles/splats.gsplat`.
+    """
+    from scipy.spatial import cKDTree
+    from .config import LOCAL_SCANS_ROOT
+
+    cur_loaded = read_gsplat_records_and_origin(ts_dir)
+    if cur_loaded is None:
+        return 0
+    cur_recs, cur_origin, cur_flags = cur_loaded
+
+    cand_bkp_dirs = [
+        os.path.join(proj_dir, "tileset_backup"),
+        os.path.join(proj_dir, "tileset_prev"),
+    ]
+    cur_sid = str(scan.get("derived_from_scan_id") or "").strip()
+    visited = set()
+    for _ in range(6):
+        if not cur_sid or cur_sid in visited:
+            break
+        visited.add(cur_sid)
+        cand_bkp_dirs.append(os.path.join(LOCAL_SCANS_ROOT, cur_sid, "tileset"))
+        if db is not None and hasattr(db, "get_scan"):
+            p_sc = db.get_scan(cur_sid) or {}
+            if p_sc.get("project_dir"):
+                cand_bkp_dirs.append(os.path.join(str(p_sc["project_dir"]), "tileset"))
+            cur_sid = str(p_sc.get("derived_from_scan_id") or "").strip()
+        else:
+            break
+
+    bkp_loaded = None
+    for b_dir in cand_bkp_dirs:
+        if os.path.isdir(b_dir) and os.path.abspath(b_dir) != os.path.abspath(ts_dir):
+            bkp_loaded = read_gsplat_records_and_origin(b_dir)
+            if bkp_loaded is not None:
+                break
+    if bkp_loaded is None:
+        return 0
+
+    bkp_recs, bkp_origin, _ = bkp_loaded
+    bkp_pts_ts = bkp_recs["pos"].astype(np.float64) + bkp_origin
+    bkp_radii = np.max(bkp_recs["scale"], axis=1).astype(np.float64)
+    in_mask = evaluate_points_in_cutter(cutter_eval, bkp_pts_ts, bkp_radii)
+    cand_idx = np.where(in_mask)[0]
+    if len(cand_idx) == 0:
+        return 0
+
+    cur_pts_ts = cur_recs["pos"].astype(np.float64) + cur_origin
+    if len(cur_pts_ts) > 0:
+        tree_cur = cKDTree(cur_pts_ts)
+        dists, _ = tree_cur.query(bkp_pts_ts[cand_idx], k=1, workers=-1)
+        cand_idx = cand_idx[dists > 0.015]
+    if len(cand_idx) == 0:
+        return 0
+
+    add_recs = bkp_recs[cand_idx].copy()
+    add_recs["pos"] = (bkp_pts_ts[cand_idx] - cur_origin).astype(np.float32)
+    merged_recs = np.concatenate([cur_recs, add_recs])
+
+    # Re-sort by visual importance descending and cap at max_splats
+    sc_m = merged_recs["scale"]
+    max_s = np.maximum(np.maximum(sc_m[:, 0], sc_m[:, 1]), sc_m[:, 2])
+    imp = (merged_recs["rgba"][:, 3].astype(np.float32) / 255.0) * (np.maximum(max_s, 1e-5) ** 1.35)
+    order = np.argsort(-imp)
+    if max_splats and max_splats > 0 and len(order) > max_splats:
+        order = order[: int(max_splats)]
+    merged_recs = merged_recs[order].copy()
+
+    n_total = len(merged_recs)
+    gs_path = os.path.join(ts_dir, "tiles", "splats.gsplat")
+    header_bytes = struct.pack("<4sIII", b"GSPL", 1, n_total, cur_flags)
+    raw_blob = header_bytes + merged_recs.tobytes()
+    with open(gs_path, "wb") as wf:
+        wf.write(raw_blob)
+    _write_gsplat_gz_sidecar(gs_path, raw_blob)
+
+    gs_mtime = int(os.path.getmtime(gs_path))
+    splat_size_mb = round(len(raw_blob) / (1024.0 * 1024.0), 2)
+    splat_uri_rel = f"tiles/splats.gsplat?v={gs_mtime}"
+    splat_origin_list = [round(float(cur_origin[0]), 4), round(float(cur_origin[1]), 4), round(float(cur_origin[2]), 4)]
+    _sync_tileset_and_meta_gsplat_fields(ts_dir, proj_dir, splat_uri_rel, splat_origin_list, n_total, splat_size_mb)
+    return int(len(cand_idx))
+
+
+def transform_gsplat_crs_in_place(
+    ts_dir: str,
+    off_x: float,
+    off_y: float,
+    off_z: float,
+    J_2x2: Optional[np.ndarray] = None,
+    pivot_xy: Optional[Tuple[float, float]] = None,
+) -> None:
+    """Updates `gaussian_splat_origin` (and local splat positions if `J_2x2` is non-identity) when CRS is shifted."""
+    loaded = read_gsplat_records_and_origin(ts_dir)
+    if loaded is None:
+        return
+    recs, old_origin, flags = loaded
+    pts_ts = recs["pos"].astype(np.float64) + old_origin
+
+    if J_2x2 is not None and pivot_xy is not None:
+        px, py = float(pivot_xy[0]), float(pivot_xy[1])
+        dxy = pts_ts[:, :2] - np.array([px, py], dtype=np.float64)
+        pts_ts[:, :2] = np.array([px, py], dtype=np.float64) + (dxy @ J_2x2.T)
+
+    pts_ts[:, 0] += float(off_x)
+    pts_ts[:, 1] += float(off_y)
+    pts_ts[:, 2] += float(off_z)
+
+    new_origin = old_origin + np.array([float(off_x), float(off_y), float(off_z)], dtype=np.float64)
+    ts_path = os.path.join(ts_dir, "tileset.json")
+    if os.path.isfile(ts_path):
+        try:
+            with open(ts_path, "r", encoding="utf-8") as tf:
+                ts_doc = json.load(tf)
+            r_box = ((ts_doc.get("root") or {}).get("boundingVolume") or {}).get("box")
+            if isinstance(r_box, list) and len(r_box) >= 3:
+                new_origin = np.array([float(r_box[0]), float(r_box[1]), float(r_box[2])], dtype=np.float64)
+        except Exception:
+            pass
+
+    recs["pos"] = (pts_ts - new_origin).astype(np.float32)
+    gs_path = os.path.join(ts_dir, "tiles", "splats.gsplat")
+    header_bytes = struct.pack("<4sIII", b"GSPL", 1, len(recs), flags)
+    raw_blob = header_bytes + recs.tobytes()
+    with open(gs_path, "wb") as wf:
+        wf.write(raw_blob)
+    _write_gsplat_gz_sidecar(gs_path, raw_blob)
+
+    gs_mtime = int(os.path.getmtime(gs_path))
+    splat_size_mb = round(len(raw_blob) / (1024.0 * 1024.0), 2)
+    splat_uri_rel = f"tiles/splats.gsplat?v={gs_mtime}"
+    splat_origin_list = [round(float(new_origin[0]), 4), round(float(new_origin[1]), 4), round(float(new_origin[2]), 4)]
+    _sync_tileset_and_meta_gsplat_fields(ts_dir, os.path.dirname(os.path.abspath(ts_dir)), splat_uri_rel, splat_origin_list, len(recs), splat_size_mb)
+
+
 def attach_gaussian_splat_layer_to_tileset(
     scan_id: str,
     folder_path: str,
     ply_path: str,
     tileset_json_path: Optional[str] = None,
-    max_splats: int = 2_000_000,
+    max_splats: int = 500_000,
     cleanup_raw_ply: bool = True,
 ) -> Optional[Dict[str, Any]]:
     """
@@ -975,12 +1700,25 @@ def attach_gaussian_splat_layer_to_tileset(
     xyz_zup = (xyz_twd - np.array([origin_x, origin_y, origin_z], dtype=np.float64)).astype(np.float32)
     quat_zup = quat.astype(np.float32)
 
-    # Sort splats by visual importance descending and cap at max_splats
+    # Sort splats by visual importance descending
     max_s = np.maximum(np.maximum(scale[:, 0], scale[:, 1]), scale[:, 2])
     importance = rgba[:, 3] * (max_s ** 1.35)
     imp_order = np.argsort(-importance)
-    if max_splats and max_splats > 0 and len(imp_order) > max_splats:
-        imp_order = imp_order[: int(max_splats)]
+
+    # Check if this scan has trimmed/edited mesh geometry so we keep more candidates before mesh-proximity filtering
+    meta_fp = os.path.join(folder_path, "scan_meta.json")
+    is_edited_scan = str(scan_id or "").startswith("edited_")
+    if not is_edited_scan and os.path.isfile(meta_fp):
+        try:
+            with open(meta_fp, "r", encoding="utf-8") as mf:
+                m_chk = json.load(mf)
+            is_edited_scan = bool(m_chk.get("applied_adjustments") or m_chk.get("derived_from_scan_id"))
+        except Exception:
+            pass
+
+    initial_cap = max(int(max_splats or 500_000), 2_000_000) if is_edited_scan else int(max_splats or 500_000)
+    if initial_cap > 0 and len(imp_order) > initial_cap:
+        imp_order = imp_order[:initial_cap]
 
     xyz_zup = xyz_zup[imp_order]
     scale = scale[imp_order]
@@ -988,15 +1726,7 @@ def attach_gaussian_splat_layer_to_tileset(
     quat_zup = quat_zup[imp_order]
     n_total = len(xyz_zup)
 
-    rec_dtype = np.dtype(
-        [
-            ("pos", "<f4", (3,)),
-            ("scale", "<f4", (3,)),
-            ("rgba", "<u1", (4,)),
-            ("quat", "<u1", (4,)),
-        ]
-    )
-    recs = np.empty(n_total, dtype=rec_dtype)
+    recs = np.empty(n_total, dtype=GSPLAT_REC_DTYPE)
     recs["pos"] = xyz_zup
     recs["scale"] = scale
     recs["rgba"] = np.clip(np.round(rgba * 255.0), 0, 255).astype(np.uint8)
@@ -1004,68 +1734,48 @@ def attach_gaussian_splat_layer_to_tileset(
     recs["quat"] = np.clip(np.round((quat_xyzw * 0.5 + 0.5) * 255.0), 0, 255).astype(np.uint8)
 
     header_bytes = struct.pack("<4sIII", b"GSPL", 1, n_total, 1 if has_georef else 0)
+    raw_blob = header_bytes + recs.tobytes()
     with open(gsplat_bin_path, "wb") as gf:
-        gf.write(header_bytes)
-        gf.write(recs.tobytes())
+        gf.write(raw_blob)
+    _write_gsplat_gz_sidecar(gsplat_bin_path, raw_blob)
 
     gsplat_mtime = int(os.path.getmtime(gsplat_bin_path))
     splat_size_mb = round(os.path.getsize(gsplat_bin_path) / (1024.0 * 1024.0), 2)
     splat_uri_rel = f"tiles/splats.gsplat?v={gsplat_mtime}"
     splat_origin_list = [round(origin_x, 4), round(origin_y, 4), round(origin_z, 4)]
 
-    # Inject hybrid 3DGS metadata into tileset.json and preview_tileset.json (preserving mesh root)
-    for target_ts in (
-        ts_path,
-        os.path.join(tileset_dir, "preview_tileset.json"),
-        os.path.join(folder_path, "tileset_backup", "tileset.json"),
-    ):
-        if os.path.isfile(target_ts):
-            try:
-                with open(target_ts, "r", encoding="utf-8") as f_in:
-                    doc = json.load(f_in)
-                if isinstance(doc, dict):
-                    ext = doc.setdefault("extras", {})
-                    ext["has_gaussian_splat_layer"] = True
-                    ext["gaussian_splat_uri"] = splat_uri_rel
-                    ext["gaussian_splat_origin"] = splat_origin_list
-                    ext["splat_count"] = int(n_total)
-                    ext["splat_size_mb"] = splat_size_mb
-                    if isinstance(doc.get("root"), dict):
-                        r_ext = doc["root"].setdefault("extras", {})
-                        r_ext["has_gaussian_splat_layer"] = True
-                        r_ext["gaussian_splat_uri"] = splat_uri_rel
-                        r_ext["gaussian_splat_origin"] = splat_origin_list
-                        r_ext["splat_count"] = int(n_total)
-                        r_ext["splat_size_mb"] = splat_size_mb
-                    with open(target_ts, "w", encoding="utf-8") as f_out:
-                        json.dump(doc, f_out, indent=2)
-            except Exception as te:
-                print(f"[GaussianSplatBuilder] Warning updating hybrid tileset metadata in {target_ts}: {te}")
+    _sync_tileset_and_meta_gsplat_fields(
+        tileset_dir,
+        folder_path,
+        splat_uri_rel,
+        splat_origin_list,
+        n_total,
+        splat_size_mb,
+        also_update_backup=True,
+    )
 
     # Copy splats.gsplat into tileset_backup/tiles/ if backup exists
     backup_tiles_dir = os.path.join(folder_path, "tileset_backup", "tiles")
     if os.path.isdir(backup_tiles_dir):
         try:
             shutil.copy2(gsplat_bin_path, os.path.join(backup_tiles_dir, "splats.gsplat"))
+            if os.path.isfile(gsplat_bin_path + ".gz"):
+                shutil.copy2(gsplat_bin_path + ".gz", os.path.join(backup_tiles_dir, "splats.gsplat.gz"))
         except Exception:
             pass
 
-    # Persist metadata into scan_meta.json
-    meta_fp = os.path.join(folder_path, "scan_meta.json")
-    if os.path.isfile(meta_fp):
+    if is_edited_scan:
         try:
-            with open(meta_fp, "r", encoding="utf-8") as mf:
-                m_obj = json.load(mf)
-            if isinstance(m_obj, dict):
-                m_obj["has_gaussian_splat_layer"] = True
-                m_obj["gaussian_splat_uri"] = splat_uri_rel
-                m_obj["gaussian_splat_origin"] = splat_origin_list
-                m_obj["splat_count"] = int(n_total)
-                m_obj["splat_size_mb"] = splat_size_mb
-                with open(meta_fp, "w", encoding="utf-8") as mf:
-                    json.dump(m_obj, mf, ensure_ascii=False, indent=2)
-        except Exception:
-            pass
+            filt_res = filter_gsplat_to_surviving_mesh(
+                tileset_dir, folder_path=folder_path, max_dist_m=0.22, max_splats=int(max_splats or 500_000)
+            )
+            if isinstance(filt_res, dict):
+                n_total = int(filt_res["splats_kept"])
+                splat_size_mb = float(filt_res["splat_size_mb"])
+                splat_uri_rel = str(filt_res["gaussian_splat_uri"])
+                splat_origin_list = list(filt_res["gaussian_splat_origin"])
+        except Exception as fe:
+            print(f"[GaussianSplatBuilder] Note filtering edited scan splats for {scan_id}: {fe}")
 
     if cleanup_raw_ply and os.path.isfile(gsplat_bin_path) and os.path.getsize(gsplat_bin_path) > 64:
         try:
@@ -1087,3 +1797,4 @@ def attach_gaussian_splat_layer_to_tileset(
         "splat_count": int(n_total),
         "splat_size_mb": splat_size_mb,
     }
+

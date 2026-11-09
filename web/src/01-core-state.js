@@ -1798,22 +1798,8 @@
         }
       }
     }
-    const hasLayer = isStandalone || hasScanOrTilesetGaussianSplatLayer(scan, tr);
     if (typeof studioThree !== "undefined" && studioThree && (!tr || tr === studioThree.tilesRenderer)) {
       syncStudio3dgsToggleButton(scan, tr);
-      if (
-        hasLayer &&
-        !isStandalone &&
-        STATE.studioGaussianSplatMode &&
-        tr &&
-        tr === studioThree.tilesRenderer &&
-        !studioThree.gsplatState &&
-        !studioThree._gsplatLoading
-      ) {
-        loadGaussianSplatIntoContext(studioThree, scan, "studio", () => {
-          syncStudio3dgsToggleButton(scan, tr);
-        });
-      }
     }
     return isStandalone;
   }
@@ -1842,6 +1828,9 @@
     if (nextState) {
       const loadedMesh = await loadGaussianSplatIntoContext(studioThree, scan, "studio", () => {
         syncStudio3dgsToggleButton(scan, tr);
+        if (typeof finishScanLoader === "function") {
+          finishScanLoader(studioThree, "studio", window.tr ? window.tr("100% · 3D 高斯潑濺已就緒", "100% · 3D Gaussian Splat Ready") : "100% · 3D Gaussian Splat Ready");
+        }
         showToast(
           window.tr
             ? window.tr("已切換至 3DGS 高斯潑濺檢視（保留 1mm 網格雷射量測）", "Switched to 3D Gaussian Splat view (1mm mesh raycasting active)")
@@ -1851,6 +1840,7 @@
       if (!loadedMesh && STATE.activeScanId === scan?.scan_id) {
         STATE.studioGaussianSplatMode = false;
         syncStudio3dgsToggleButton(scan, tr);
+        if (typeof finishScanLoader === "function") finishScanLoader(studioThree, "studio");
       }
     } else {
       deactivateGaussianSplatInContext(studioThree);
@@ -1876,17 +1866,21 @@
   });
 
   async function loadGaussianSplatIntoContext(ctx, scan, prefix = "studio", onReady = null) {
+    if (!ctx || !scan) return null;
+    if (ctx._gsplatLoading) return null;
     const isStandalone = isScanOrTilesetGaussianSplat(scan, ctx?.tilesRenderer);
     const hasLayer = isStandalone || hasScanOrTilesetGaussianSplatLayer(scan, ctx?.tilesRenderer);
-    if (!ctx || !scan || !hasLayer) return null;
+    if (!hasLayer) return null;
     if (isStandalone) scan.is_gaussian_splat = true;
     const THREE = window.THREE;
     if (!THREE || !ctx.modelPivot) return null;
 
+    const verParam = scan.tileset_version ? `v=${encodeURIComponent(scan.tileset_version)}` : "";
+    const shareParam = STATE.shareToken ? `share=${encodeURIComponent(STATE.shareToken)}` : "";
+    const qs = [verParam, shareParam].filter(Boolean).join("&");
     const splatUrl =
       scan.splat_url ||
-      `/stream/${encodeURIComponent(scan.scan_id)}/tiles/splats.gsplat` +
-        (STATE.shareToken ? `?share=${encodeURIComponent(STATE.shareToken)}` : "");
+      `/stream/${encodeURIComponent(scan.scan_id)}/tiles/splats.gsplat` + (qs ? `?${qs}` : "");
 
     const expectedScanId = scan.scan_id;
 
@@ -1909,9 +1903,14 @@
         _syncGaussianSplatMeshTransform(ctx, scan);
         _hideRaycastSurfelMeshes(ctx.tilesRenderer.group);
       }
-      updateGaussianSplatForContext(ctx, prefix, true);
+      if (prefix === "studio" && typeof window.reapplyStudioGaussianSplatStagedEdits === "function") {
+        window.reapplyStudioGaussianSplatStagedEdits();
+      } else {
+        updateGaussianSplatForContext(ctx, prefix, true);
+      }
       if (prefix === "studio") {
         syncStudio3dgsToggleButton(scan, ctx.tilesRenderer);
+        if (typeof finishScanLoader === "function") finishScanLoader(ctx, "studio");
       }
       if (ctx.renderer && ctx.scene && ctx.camera) {
         ctx.renderer.render(ctx.scene, ctx.camera);
@@ -1983,6 +1982,10 @@
         _GSPLAT_BUFFER_CACHE.set(splatUrl, parsed);
       } catch (err) {
         ctx._gsplatLoading = false;
+        if (prefix === "studio") {
+          syncStudio3dgsToggleButton(scan, ctx.tilesRenderer);
+          if (typeof finishScanLoader === "function") finishScanLoader(ctx, "studio");
+        }
         console.warn("[GaussianSplat] Failed loading .gsplat stream:", err);
         return null;
       }
@@ -1993,6 +1996,7 @@
       (prefix === "preview" && ctx.currentScanId && ctx.currentScanId !== expectedScanId)
     ) {
       ctx._gsplatLoading = false;
+      if (prefix === "studio") syncStudio3dgsToggleButton(STATE.activeScan, ctx.tilesRenderer);
       return null;
     }
 
@@ -2161,6 +2165,8 @@
       sortCounts: new Uint32Array(65536),
       sortKeys: new Uint16Array(totalSplats),
       sortIndices: new Uint32Array(totalSplats),
+      hiddenMask: null,
+      appliedEditSig: "",
     };
 
     // Check if user toggled back to Mesh mode while .gsplat was downloading
@@ -2169,6 +2175,7 @@
       ctx._warmGsplatState = newState;
       ctx._gsplatLoading = false;
       syncStudio3dgsToggleButton(scan, ctx.tilesRenderer);
+      if (typeof finishScanLoader === "function") finishScanLoader(ctx, "studio");
       return null;
     }
 
@@ -2180,9 +2187,14 @@
     }
 
     ctx._gsplatLoading = false;
-    updateGaussianSplatForContext(ctx, prefix, true);
+    if (prefix === "studio" && typeof window.reapplyStudioGaussianSplatStagedEdits === "function") {
+      window.reapplyStudioGaussianSplatStagedEdits();
+    } else {
+      updateGaussianSplatForContext(ctx, prefix, true);
+    }
     if (prefix === "studio") {
       syncStudio3dgsToggleButton(scan, ctx.tilesRenderer);
+      if (typeof finishScanLoader === "function") finishScanLoader(ctx, "studio");
     }
     if (ctx.renderer && ctx.scene && ctx.camera) {
       ctx.renderer.render(ctx.scene, ctx.camera);
@@ -2234,15 +2246,21 @@
     const srcScale = st.src.scale;
     const srcQuat = st.src.quat;
     const srcCol = st.src.col;
+    const hiddenMask = st.hiddenMask;
 
     // 16-bit counting sort from farthest to nearest (back-to-front alpha compositing)
     let minD = Infinity;
     let maxD = -Infinity;
     for (let i = 0; i < activeCount; i++) {
+      if (hiddenMask && hiddenMask[i]) continue;
       const i3 = i * 3;
       const d = srcPos[i3] * vx + srcPos[i3 + 1] * vy + srcPos[i3 + 2] * vz;
       if (d < minD) minD = d;
       if (d > maxD) maxD = d;
+    }
+    if (!Number.isFinite(minD)) {
+      st.geom.instanceCount = 0;
+      return;
     }
     const span = Math.max(1e-5, maxD - minD);
     const invSpan = 65535.0 / span;
@@ -2251,13 +2269,16 @@
     const indices = st.sortIndices;
     counts.fill(0);
 
+    let visibleCount = 0;
     for (let i = 0; i < activeCount; i++) {
+      if (hiddenMask && hiddenMask[i]) continue;
       const i3 = i * 3;
       const d = srcPos[i3] * vx + srcPos[i3 + 1] * vy + srcPos[i3 + 2] * vz;
       // Farthest (larger d along view forward vector) -> smaller bucket index 0..65535
       const k = Math.max(0, Math.min(65535, ((maxD - d) * invSpan) | 0));
       keys[i] = k;
       counts[k]++;
+      visibleCount++;
     }
     let sum = 0;
     for (let b = 0; b < 65536; b++) {
@@ -2266,6 +2287,7 @@
       sum += c;
     }
     for (let i = 0; i < activeCount; i++) {
+      if (hiddenMask && hiddenMask[i]) continue;
       const k = keys[i];
       indices[counts[k]++] = i;
     }
@@ -2275,7 +2297,7 @@
     const dstQuat = st.attrQuat.array;
     const dstCol = st.attrColor.array;
 
-    for (let outIdx = 0; outIdx < activeCount; outIdx++) {
+    for (let outIdx = 0; outIdx < visibleCount; outIdx++) {
       const srcIdx = indices[outIdx];
       const s3 = srcIdx * 3;
       const s4 = srcIdx * 4;
@@ -2301,12 +2323,148 @@
       dstCol[d4 + 3] = srcCol[s4 + 3];
     }
 
-    st.geom.instanceCount = activeCount;
+    st.geom.instanceCount = visibleCount;
     st.attrCenter.needsUpdate = true;
     st.attrScale.needsUpdate = true;
     st.attrQuat.needsUpdate = true;
     st.attrColor.needsUpdate = true;
   }
+  window.updateGaussianSplatForContext = updateGaussianSplatForContext;
+
+  function _gsPointInPoly2D(px, py, poly) {
+    let inside = false;
+    for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+      const xi = poly[i][0], yi = poly[i][1];
+      const xj = poly[j][0], yj = poly[j][1];
+      if (yi > py !== yj > py && px < ((xj - xi) * (py - yi)) / (yj - yi + 1e-12) + xi) {
+        inside = !inside;
+      }
+    }
+    return inside;
+  }
+
+  function _gsPointInSectionBox(wx, wy, wz, sb) {
+    if (!sb) return true;
+    const dx = wx - sb.cx, dy = wy - sb.cy, dz = wz - sb.cz;
+    if (Math.abs(dy) > sb.hy) return false;
+    const lx = dx * sb.cosY + dz * sb.sinY;
+    const lz = -dx * sb.sinY + dz * sb.cosY;
+    return Math.abs(lx) <= sb.hx && Math.abs(lz) <= sb.hz;
+  }
+
+  function _evaluateGaussianSplatsMask(st, mesh, preparedStrokes, preparedPolys, tc) {
+    const THREE = window.THREE;
+    const n = st.src.count;
+    const pos = st.src.pos;
+    const flags = new Uint8Array(n);
+    mesh.updateMatrixWorld(true);
+    const mw = mesh.matrixWorld.elements;
+    const offX = mesh.position.x + (tc ? tc[0] : 0);
+    const offY = mesh.position.y + (tc ? tc[1] : 0);
+
+    if (Array.isArray(preparedStrokes) && preparedStrokes.length > 0 && THREE) {
+      const mvp = new THREE.Matrix4();
+      for (let si = 0; si < preparedStrokes.length; si++) {
+        const s = preparedStrokes[si];
+        const isSub = s.op === "sub";
+        const sb = s.sectionBox;
+        mvp.multiplyMatrices(s.vpMat, mesh.matrixWorld);
+        const e = mvp.elements;
+        for (let i = 0; i < n; i++) {
+          if (isSub && !flags[i]) continue;
+          if (!isSub && flags[i]) continue;
+          const i3 = i * 3;
+          const lx = pos[i3], ly = pos[i3 + 1], lz = pos[i3 + 2];
+          const cw = e[3] * lx + e[7] * ly + e[11] * lz + e[15];
+          if (cw <= 0.05) continue;
+          const nx = (e[0] * lx + e[4] * ly + e[8] * lz + e[12]) / cw;
+          const ny = (e[1] * lx + e[5] * ly + e[9] * lz + e[13]) / cw;
+          if (nx < s.bMinX || nx > s.bMaxX || ny < s.bMinY || ny > s.bMaxY) continue;
+          if (sb) {
+            const wx = mw[0] * lx + mw[4] * ly + mw[8] * lz + mw[12];
+            const wy = mw[1] * lx + mw[5] * ly + mw[9] * lz + mw[13];
+            const wz = mw[2] * lx + mw[6] * ly + mw[10] * lz + mw[14];
+            if (!_gsPointInSectionBox(wx, wy, wz, sb)) continue;
+          }
+          if (!_gsPointInPoly2D(nx, ny, s.poly)) continue;
+          if (s.visibleOnly && s.dg) {
+            const gx = Math.max(0, Math.min(s.G - 1, Math.floor((nx * 0.5 + 0.5) * s.G)));
+            const gy = Math.max(0, Math.min(s.G - 1, Math.floor((ny * 0.5 + 0.5) * s.G)));
+            const cellW = s.dg[gy * s.G + gx];
+            const effFrontW = cellW > 0 ? cellW : s.maxValidW;
+            const tol = Math.max(s.tolM || 0.85, 0.03 * effFrontW);
+            if (cw > effFrontW + tol) continue;
+          }
+          flags[i] = isSub ? 0 : 1;
+        }
+      }
+    }
+
+    if (Array.isArray(preparedPolys) && preparedPolys.length > 0) {
+      for (let i = 0; i < n; i++) {
+        if (flags[i]) continue;
+        const i3 = i * 3;
+        const lx = pos[i3], ly = pos[i3 + 1], lz = pos[i3 + 2];
+        const natX = lx + offX;
+        const natY = ly + offY;
+        for (let pi = 0; pi < preparedPolys.length; pi++) {
+          const pp = preparedPolys[pi];
+          if (natX < pp.bMinX || natX > pp.bMaxX || natY < pp.bMinY || natY > pp.bMaxY) continue;
+          if (pp.sectionBox) {
+            const wx = mw[0] * lx + mw[4] * ly + mw[8] * lz + mw[12];
+            const wy = mw[1] * lx + mw[5] * ly + mw[9] * lz + mw[13];
+            const wz = mw[2] * lx + mw[6] * ly + mw[10] * lz + mw[14];
+            if (!_gsPointInSectionBox(wx, wy, wz, pp.sectionBox)) continue;
+          }
+          if (_gsPointInPoly2D(natX, natY, pp.poly)) {
+            flags[i] = 1;
+            break;
+          }
+        }
+      }
+    }
+    return flags;
+  }
+
+  function syncStudioGaussianSplatStagedEdits(editPayload) {
+    if (typeof studioThree === "undefined" || !studioThree) return;
+    const states = [studioThree.gsplatState, studioThree._warmGsplatState].filter(Boolean);
+    if (!states.length) return;
+    for (const st of states) {
+      if (!st || !st.src || !st.mesh) continue;
+      if (!editPayload) {
+        if (st.hiddenMask) {
+          st.hiddenMask = null;
+          st.appliedEditSig = "";
+          if (st === studioThree.gsplatState) updateGaussianSplatForContext(studioThree, "studio", true);
+        }
+        continue;
+      }
+      const { prepDelStrokes, prepDelPolys, hasKeep, prepKeepStrokes, prepKeepPolys, editSig } = editPayload;
+      _syncGaussianSplatMeshTransform(studioThree, st.scan || STATE.activeScan);
+      const tc = studioThree.tilesCenter || [0, 0, 0];
+      const hasDel = (prepDelStrokes && prepDelStrokes.length > 0) || (prepDelPolys && prepDelPolys.length > 0);
+      const hasKp = Boolean(hasKeep && ((prepKeepStrokes && prepKeepStrokes.length > 0) || (prepKeepPolys && prepKeepPolys.length > 0)));
+      if (!hasDel && !hasKp) {
+        st.hiddenMask = null;
+        st.appliedEditSig = "";
+      } else {
+        const delFlags = hasDel ? _evaluateGaussianSplatsMask(st, st.mesh, prepDelStrokes, prepDelPolys, tc) : null;
+        const keepFlags = hasKp ? _evaluateGaussianSplatsMask(st, st.mesh, prepKeepStrokes, prepKeepPolys, tc) : null;
+        const n = st.src.count;
+        const mask = st.hiddenMask && st.hiddenMask.length === n ? st.hiddenMask : new Uint8Array(n);
+        for (let i = 0; i < n; i++) {
+          mask[i] = (delFlags && delFlags[i]) || (keepFlags && !keepFlags[i]) ? 1 : 0;
+        }
+        st.hiddenMask = mask;
+        st.appliedEditSig = editSig || "active";
+      }
+      if (st === studioThree.gsplatState) {
+        updateGaussianSplatForContext(studioThree, "studio", true);
+      }
+    }
+  }
+  window.syncStudioGaussianSplatStagedEdits = syncStudioGaussianSplatStagedEdits;
 
   // ============================================================================
   // 3D Model Library with Folders & Admin Move Scan Between Sites and Folders

@@ -641,6 +641,19 @@ def _transform_tileset_crs_in_place(
     with open(os.path.join(tileset_dir, "offset.xyz"), "w", encoding="utf-8") as wf_off:
         wf_off.write(f"{float(c_dst[0]):.3f} {float(c_dst[1]):.3f} {float(c_dst[2]):.3f}\n")
 
+    try:
+        from pc_worker.gaussian_splat_builder import transform_gsplat_crs_in_place
+        transform_gsplat_crs_in_place(
+            tileset_dir,
+            float(c_dst[0] - c_src[0]),
+            float(c_dst[1] - c_src[1]),
+            float(c_dst[2] - c_src[2]),
+            j_2x2=L[:2, :2] if "L" in locals() else None,
+            pivot_xy=(float(c_src[0]), float(c_src[1])),
+        )
+    except Exception as gs_crs_err:
+        print(f"[OptimizerBridge] Warning: 3DGS CRS transform skipped: {gs_crs_err}")
+
     out_lat: Optional[float] = None
     out_lon: Optional[float] = None
     if tdef["kind"] == "tm":
@@ -1724,6 +1737,18 @@ class OptimizerBridge:
             scan_upd["size_bytes"] = max(int(new_size_bytes), 1024)
         scan_upd["tileset_path"] = ts_path
         scan_upd["tileset_version"] = tileset_ver_ms
+        try:
+            with open(ts_path, "r", encoding="utf-8") as _tf_s:
+                _ts_s = json.load(_tf_s)
+            _ext_s = _ts_s.get("extras") or (_ts_s.get("root") or {}).get("extras") or {}
+            if "has_gaussian_splat_layer" in _ext_s:
+                scan_upd["has_gaussian_splat_layer"] = bool(_ext_s["has_gaussian_splat_layer"])
+                scan_upd["gaussian_splat_uri"] = _ext_s.get("gaussian_splat_uri") or ""
+                scan_upd["gaussian_splat_origin"] = _ext_s.get("gaussian_splat_origin")
+                scan_upd["splat_count"] = int(_ext_s.get("splat_count") or 0)
+                scan_upd["splat_size_mb"] = float(_ext_s.get("splat_size_mb") or 0.0)
+        except Exception:
+            pass
         if extra_updates:
             scan_upd.update(extra_updates)
         self.db.upsert_scan(scan_upd)
@@ -1738,6 +1763,9 @@ class OptimizerBridge:
                     m_obj["size_bytes"] = scan_upd.get("size_bytes", m_obj.get("size_bytes"))
                     m_obj["covered_area_m2"] = scan_upd.get("covered_area_m2", m_obj.get("covered_area_m2"))
                     m_obj["tileset_version"] = tileset_ver_ms
+                    for _gk in ("has_gaussian_splat_layer", "gaussian_splat_uri", "gaussian_splat_origin", "splat_count", "splat_size_mb"):
+                        if _gk in scan_upd:
+                            m_obj[_gk] = scan_upd[_gk]
                     with open(meta_fp, "w", encoding="utf-8") as mf:
                         json.dump(m_obj, mf, ensure_ascii=False, indent=2)
             except Exception:
@@ -1860,6 +1888,27 @@ class OptimizerBridge:
             resume=False,
         )
         stats = opt.run()
+
+        in_gs = os.path.join(in_dir, "tiles", "splats.gsplat")
+        if os.path.isfile(in_gs):
+            out_gs_dir = os.path.join(out_dir, "tiles")
+            os.makedirs(out_gs_dir, exist_ok=True)
+            shutil.copy2(in_gs, os.path.join(out_gs_dir, "splats.gsplat"))
+            if os.path.isfile(in_gs + ".gz"):
+                shutil.copy2(in_gs + ".gz", os.path.join(out_gs_dir, "splats.gsplat.gz"))
+            try:
+                with open(os.path.join(in_dir, "tileset.json"), "r", encoding="utf-8") as _fi:
+                    _in_ts = json.load(_fi)
+                with open(os.path.join(out_dir, "tileset.json"), "r", encoding="utf-8") as _fo:
+                    _out_ts = json.load(_fo)
+                if isinstance(_in_ts.get("extras"), dict):
+                    _out_ts.setdefault("extras", {}).update(_in_ts["extras"])
+                if isinstance((_in_ts.get("root") or {}).get("extras"), dict) and isinstance(_out_ts.get("root"), dict):
+                    _out_ts["root"].setdefault("extras", {}).update(_in_ts["root"]["extras"])
+                with open(os.path.join(out_dir, "tileset.json"), "w", encoding="utf-8") as _fow:
+                    json.dump(_out_ts, _fow, indent=2)
+            except Exception:
+                pass
 
         tex_limit_map = {"quality": 2048, "balanced": 1536, "web": 1024, "ultra": 768}
         jpeg_qual_map = {"quality": 85, "balanced": 76, "web": 68, "ultra": 58}
@@ -2004,6 +2053,7 @@ class OptimizerBridge:
         os.makedirs(out_dir, exist_ok=True)
 
         from cutter.spatial_cutter import SpatialCutter
+        from pc_worker.gaussian_splat_builder import slice_gsplat_for_tileset_cut
 
         cutter = SpatialCutter(
             input_tileset_dir=in_dir,
@@ -2017,6 +2067,12 @@ class OptimizerBridge:
             frustum_strokes=frustum_strokes if frustum_strokes else None,
         )
         stats = cutter.run()
+        try:
+            gs_res = slice_gsplat_for_tileset_cut(in_dir, out_dir, cutter)
+            if isinstance(gs_res, dict):
+                stats.update(gs_res)
+        except Exception as gse:
+            print(f"[OptimizerBridge] Note slicing .gsplat in run_crop_action for {scan_id}: {gse}")
 
         area_m2 = 0.0
         n = len(twd_poly)
@@ -3765,6 +3821,13 @@ class OptimizerBridge:
                     raise ValueError(
                         "The marked deletion regions removed 100% of the scan mesh. Undo or adjust your marked regions and try again."
                     )
+                try:
+                    from pc_worker.gaussian_splat_builder import slice_gsplat_for_tileset_cut
+                    gs_del = slice_gsplat_for_tileset_cut(cur_dir, stage_del, cutter_del)
+                    if gs_del:
+                        del_stats["gaussian_splat"] = gs_del
+                except Exception as gs_del_err:
+                    print(f"[OptimizerBridge] Warning slicing 3DGS during stage_del: {gs_del_err}")
                 cur_dir = stage_del
                 applied_steps.append(
                     f"Deleted {len(all_del_strokes) + len(all_del_polys)} region(s) ({int(del_stats.get('triangles_deleted', 0)):,} tris)"
@@ -3791,6 +3854,13 @@ class OptimizerBridge:
                     raise ValueError(
                         "The Crop Keep boundary excluded 100% of the scan mesh. Adjust your keep boundary and try again."
                     )
+                try:
+                    from pc_worker.gaussian_splat_builder import slice_gsplat_for_tileset_cut
+                    gs_keep = slice_gsplat_for_tileset_cut(cur_dir, stage_keep, cutter_keep)
+                    if gs_keep:
+                        keep_stats["gaussian_splat"] = gs_keep
+                except Exception as gs_keep_err:
+                    print(f"[OptimizerBridge] Warning slicing 3DGS during stage_keep: {gs_keep_err}")
                 cur_dir = stage_keep
                 applied_steps.append(f"Cropped to {len(keep_strokes) + len(keep_polys)} keep region(s)")
 
@@ -3819,6 +3889,29 @@ class OptimizerBridge:
                                 tex_limit=target_tex_res,
                                 jpeg_quality=target_qual,
                             )
+                try:
+                    src_gs = os.path.join(cur_dir, "tiles", "splats.gsplat")
+                    if os.path.isfile(src_gs):
+                        dst_gs_dir = os.path.join(stage_opt, "tiles")
+                        os.makedirs(dst_gs_dir, exist_ok=True)
+                        shutil.copy2(src_gs, os.path.join(dst_gs_dir, "splats.gsplat"))
+                        if os.path.isfile(src_gs + ".gz"):
+                            shutil.copy2(src_gs + ".gz", os.path.join(dst_gs_dir, "splats.gsplat.gz"))
+                        in_ts_p = os.path.join(cur_dir, "tileset.json")
+                        out_ts_p = os.path.join(stage_opt, "tileset.json")
+                        if os.path.isfile(in_ts_p) and os.path.isfile(out_ts_p):
+                            in_ts_d = json.load(open(in_ts_p, "r", encoding="utf-8"))
+                            out_ts_d = json.load(open(out_ts_p, "r", encoding="utf-8"))
+                            in_ex = in_ts_d.get("extras") if isinstance(in_ts_d.get("extras"), dict) else {}
+                            out_ex = out_ts_d.get("extras") if isinstance(out_ts_d.get("extras"), dict) else {}
+                            for k_gs in ("has_gaussian_splat_layer", "gaussian_splat_uri", "gaussian_splat_origin", "splat_count", "splat_size_mb", "render_mode", "source_format"):
+                                if k_gs in in_ex:
+                                    out_ex[k_gs] = in_ex[k_gs]
+                            out_ts_d["extras"] = out_ex
+                            with open(out_ts_p, "w", encoding="utf-8") as wf_opt_gs:
+                                json.dump(out_ts_d, wf_opt_gs, indent=2)
+                except Exception as gs_opt_err:
+                    print(f"[OptimizerBridge] Warning preserving 3DGS during stage_opt: {gs_opt_err}")
                 cur_dir = stage_opt
                 applied_steps.append(f"Optimized ({preset_name}, {target_tex_res}px)")
 
@@ -3902,6 +3995,15 @@ class OptimizerBridge:
                 str(source_scan.get("uploader_email") or payload.get("actor_email") or "glibivanov@gatheren.com.tw"),
                 str(source_scan.get("source_zip_path") or source_scan.get("name") or source_scan_id),
             )
+            final_ts_ex = final_ts_obj.get("extras") if isinstance(final_ts_obj.get("extras"), dict) else {}
+            gs_fields: Dict[str, Any] = {}
+            if os.path.isfile(os.path.join(tileset_work_dir, "tiles", "splats.gsplat")):
+                for k_gs in ("has_gaussian_splat_layer", "gaussian_splat_uri", "gaussian_splat_origin", "splat_count", "splat_size_mb", "render_mode", "source_format"):
+                    if k_gs in final_ts_ex:
+                        gs_fields[k_gs] = final_ts_ex[k_gs]
+                gs_fields.setdefault("has_gaussian_splat_layer", True)
+                gs_fields.setdefault("gaussian_splat_uri", "tiles/splats.gsplat")
+
             scan_record = {
                 "scan_id": new_scan_id,
                 "name": raw_name,
@@ -3941,6 +4043,7 @@ class OptimizerBridge:
                 "derived_from_scan_id": source_scan_id,
                 "applied_adjustments": applied_steps,
                 **({"merged_from": source_scan["merged_from"]} if source_scan.get("merged_from") else {}),
+                **gs_fields,
             }
 
             with open(os.path.join(work_proj_dir, "scan_meta.json"), "w", encoding="utf-8") as mf_pre:
@@ -4699,12 +4802,24 @@ class OptimizerBridge:
                     "children": [old_root, *patch_nodes],
                 }
             json.dump(ts_dict, open(ts_path, "w", encoding="utf-8"), indent=2)
+            try:
+                from pc_worker.gaussian_splat_builder import restore_gsplat_region_from_backup
+                restore_gsplat_region_from_backup(ts_dir, proj_dir, scan, cutter_eval, self.db)
+            except Exception as gs_rest_err:
+                print(f"[OptimizerBridge] Warning restoring 3DGS region: {gs_rest_err}")
 
         ensure_scan_low_quality_preview(ts_path, force=True)
         ensure_scan_full_quality_thumbnail(ts_path, scan_id, project_dir=proj_dir, force=True)
 
         now_ts = time.time()
         scan_upd = dict(scan)
+        try:
+            ts_latest_ex = (json.load(open(ts_path, encoding="utf-8")).get("extras") or {})
+            for k_gs in ("has_gaussian_splat_layer", "gaussian_splat_uri", "gaussian_splat_origin", "splat_count", "splat_size_mb"):
+                if k_gs in ts_latest_ex:
+                    scan_upd[k_gs] = ts_latest_ex[k_gs]
+        except Exception:
+            pass
         scan_upd["tileset_version"] = int(now_ts * 1000)
         scan_upd["uploaded_at"] = now_ts
         scan_upd["size_bytes"] = sum(os.path.getsize(os.path.join(rd, fn)) for rd, _, rfs in os.walk(proj_dir) for fn in rfs)
