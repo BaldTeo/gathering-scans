@@ -4,7 +4,19 @@
 # any temporary PowerShell / Scheduled Task job object.
 
 $ErrorActionPreference = "SilentlyContinue"
-$WorkDir = "C:\Antigravity\GatheringScans"
+$WorkDir = if ($PSScriptRoot -and (Test-Path "$PSScriptRoot\start_gathering_scans.py")) {
+    $PSScriptRoot
+} elseif (Test-Path "C:\GatheringScans\_app\start_gathering_scans.py") {
+    "C:\GatheringScans\_app"
+} else {
+    "C:\Antigravity\GatheringScans"
+}
+
+# Keep master portable folder C:\GatheringScans\_app synchronized when running on dev PC
+if ($WorkDir -ieq "C:\Antigravity\GatheringScans" -and (Test-Path "C:\GatheringScans")) {
+    New-Item -ItemType Directory -Force -Path "C:\GatheringScans\_app" | Out-Null
+    robocopy "C:\Antigravity\GatheringScans" "C:\GatheringScans\_app" /E /XO /XD "__pycache__" "glb_cache" "backups" ".agents" "target" /NFL /NDL /NJH /NJS /NP | Out-Null
+}
 
 $listening = Get-NetTCPConnection -LocalPort 8095 -State Listen -ErrorAction SilentlyContinue
 if ($null -ne $listening) {
@@ -13,7 +25,8 @@ if ($null -ne $listening) {
 
 $pyw = (Get-Command pythonw.exe -ErrorAction SilentlyContinue).Source
 if (-not $pyw) {
-    $pyw = "pythonw.exe"
+    $cand = Join-Path $env:LOCALAPPDATA "Programs\Python\Python312\pythonw.exe"
+    $pyw = if (Test-Path $cand) { $cand } else { "pythonw.exe" }
 }
 
 $cmdLine = "`"$pyw`" -u `"$WorkDir\start_gathering_scans.py`""

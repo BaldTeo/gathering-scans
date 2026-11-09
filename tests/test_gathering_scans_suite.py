@@ -46,7 +46,7 @@ class GatheringScansTestSuite(unittest.TestCase):
                 "project_group": "QuChi Dam",
                 "project_dir": r"C:\GatheringScans\QuChi_20261005_Compressed",
                 "tileset_path": r"C:\GatheringScans\QuChi_20261005_Compressed\tileset\tileset.json",
-                "obj_path": r"C:\Scans\QuChi\QuChi_20261005_Compressed\exports\QuChi_20261005_Compressed-obj_mesh\mesh.obj",
+                "obj_path": r"C:\GatheringScans\QuChi_20261005_Compressed\exports\obj_mesh\mesh.obj",
                 "crs": "TWD97 (121) + TWVD2001",
                 "status": "completed",
             }
@@ -4520,6 +4520,34 @@ vm.runInContext(fs.readFileSync('./web/src/12-public-utilities-gis.js', 'utf8'),
         self.assertIn('window.innerWidth <= 767 && STATE.leftPaneMode === "library" && STATE.siteTimelineOpen', app_js)
         self.assertNotIn("lblCol.textContent =", app_js)
 
+    def test_55_single_master_folder_consolidation(self):
+        """
+        Verify all local workstation software, optimizer binaries, SSH keys, and 3D scan assets
+        are consolidated inside the single C:\\GatheringScans master folder with zero external junctions
+        or legacy C:\\Scans dependencies.
+        """
+        from pc_worker.config import LOCAL_SCANS_ROOT, LEGACY_SCANS_ROOT, GC_SCAN_OPTIMIZER_DIR
+        from pc_worker.surveying.dsm_and_volume import GLTFPACK_EXE
+
+        self.assertEqual(LEGACY_SCANS_ROOT, LOCAL_SCANS_ROOT)
+        if os.name == "nt" and os.path.isdir(LOCAL_SCANS_ROOT):
+            self.assertEqual(os.path.normcase(GC_SCAN_OPTIMIZER_DIR), os.path.normcase(os.path.join(LOCAL_SCANS_ROOT, "_optimizer")))
+            self.assertTrue(os.path.isfile(GLTFPACK_EXE), f"Missing gltfpack.exe at {GLTFPACK_EXE}")
+            self.assertTrue(os.path.isfile(os.path.join(LOCAL_SCANS_ROOT, "_ssh", "id_gathering_vps")))
+            self.assertTrue(os.path.isfile(os.path.join(LOCAL_SCANS_ROOT, "_app", "server.py")))
+            self.assertTrue(os.path.isfile(os.path.join(LOCAL_SCANS_ROOT, "Setup_New_Workstation.ps1")))
+            self.assertTrue(os.path.isfile(os.path.join(LOCAL_SCANS_ROOT, "Start_GatheringScans.cmd")))
+            self.assertFalse(os.path.exists(r"C:\Scans"), "Legacy C:\\Scans folder should no longer exist")
+
+            main_db = ScanQueueDB()
+            for sc in main_db.list_scans():
+                sid = sc["scan_id"]
+                for col in ("project_dir", "tileset_path", "obj_path", "cameras_dir"):
+                    val = str(sc.get(col) or "")
+                    self.assertNotIn(r"c:\scans", val.lower(), f"Scan {sid} {col} still references C:\\Scans: {val}")
+                    self.assertNotIn("gc_scanoptimizer", val.lower(), f"Scan {sid} {col} still references GC_ScanOptimizer: {val}")
+
 
 if __name__ == "__main__":
     unittest.main()
+

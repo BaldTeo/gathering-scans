@@ -19,8 +19,11 @@ GDRIVE_INBOX_DIR = os.environ.get("GDRIVE_INBOX_DIR", r"G:\Shared drives\6.è»Ÿé«
 GDRIVE_INPUTS_DIR = os.environ.get("GDRIVE_INPUTS_DIR", os.path.join(GDRIVE_INBOX_DIR, "INPUTS"))
 LEGACY_GDRIVE_INBOX_DIR = os.environ.get("LEGACY_GDRIVE_INBOX_DIR", r"G:\My Drive\SCANS TEST")
 LOCAL_SCANS_ROOT = os.environ.get("LOCAL_SCANS_ROOT", r"C:\GatheringScans")
-LEGACY_SCANS_ROOT = os.environ.get("LEGACY_SCANS_ROOT", r"C:\Scans")
-GC_SCAN_OPTIMIZER_DIR = os.environ.get("GC_SCAN_OPTIMIZER_DIR", r"C:\Antigravity\GC_ScanOptimizer")
+LEGACY_SCANS_ROOT = os.environ.get("LEGACY_SCANS_ROOT", LOCAL_SCANS_ROOT)
+_DEFAULT_OPTIMIZER_DIR = os.path.join(LOCAL_SCANS_ROOT, "_optimizer")
+if not os.path.isdir(_DEFAULT_OPTIMIZER_DIR) and os.path.isdir(r"C:\Antigravity\GC_ScanOptimizer"):
+    _DEFAULT_OPTIMIZER_DIR = r"C:\Antigravity\GC_ScanOptimizer"
+GC_SCAN_OPTIMIZER_DIR = os.environ.get("GC_SCAN_OPTIMIZER_DIR", _DEFAULT_OPTIMIZER_DIR)
 GATHERING_CLOUD_DEV_DIR = os.environ.get("GATHERING_CLOUD_DEV_DIR", r"C:\Antigravity\GatheringCloud_Develop")
 
 # 2. PIX4Dmatic 2.11.0 Automated Engine Settings
@@ -69,7 +72,12 @@ PUBLIC_BASE_URL = os.environ.get("PUBLIC_BASE_URL", "https://scans.gatheren.clou
 # 4. Hostinger VPS Reverse SSH & Socket Pool Tunnel Settings
 VPS_HOST = os.environ.get("VPS_HOST", "76.13.197.29")
 VPS_USER = os.environ.get("VPS_USER", "root")
-VPS_SSH_KEY = os.environ.get("VPS_SSH_KEY", os.path.expanduser(r"~\.ssh\id_gathering_vps"))
+_USER_SSH_KEY = os.path.expanduser(r"~\.ssh\id_gathering_vps")
+_MASTER_SSH_KEY = os.path.join(LOCAL_SCANS_ROOT, "_ssh", "id_gathering_vps")
+VPS_SSH_KEY = os.environ.get(
+    "VPS_SSH_KEY",
+    _USER_SSH_KEY if os.path.isfile(_USER_SSH_KEY) else (_MASTER_SSH_KEY if os.path.isfile(_MASTER_SSH_KEY) else _USER_SSH_KEY),
+)
 VPS_REMOTE_TUNNEL_PORT = int(os.environ.get("VPS_REMOTE_TUNNEL_PORT", "18095"))
 TUNNEL_SHARED_KEY = os.environ.get("GATHERING_SCANS_TUNNEL_KEY", "gs_tunnel_gatheren_2026_twd97")
 

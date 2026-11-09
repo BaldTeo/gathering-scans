@@ -1824,12 +1824,26 @@ class ContoursAndCadMixin:
         portable_cache = os.path.join(CAMERAS_CACHE_DIR, f"{scan_id}_cameras_v7.json")
         proj_cache = os.path.join(proj_dir, "_cameras_cache_v7.json") if os.path.isdir(proj_dir) else None
 
+        _LEGACY_CAM_REWRITES = (
+            (r"C:\Scans\NTU Dorm\NTU Dorm 260917\ntuDorm 0917", os.path.join(SCANS_ROOT_DIR, "NTU_Dorm_260917", "inputs")),
+            (r"C:\Scans\QuChi\QuChi_20261005\inputs", os.path.join(SCANS_ROOT_DIR, "QuChi_20261005_Compressed", "inputs")),
+            (r"C:\Scans\2026-09-17-13-40-52", os.path.join(SCANS_ROOT_DIR, "RosePark_260917", "inputs")),
+            (r"C:\Scans\RosePark\RosePark 0916", os.path.join(SCANS_ROOT_DIR, "RosePark_Merged2", "inputs")),
+        )
+
         for cache_cand in (proj_cache, portable_cache):
             if cache_cand and os.path.isfile(cache_cand):
                 try:
                     with open(cache_cand, "r", encoding="utf-8") as f:
                         cams = json.load(f)
                     if isinstance(cams, list) and len(cams) > 0:
+                        for c_item in cams:
+                            if isinstance(c_item, dict) and c_item.get("abs_path"):
+                                ap = str(c_item["abs_path"])
+                                for old_p, new_p in _LEGACY_CAM_REWRITES:
+                                    if old_p in ap:
+                                        c_item["abs_path"] = ap.replace(old_p, new_p)
+                                        break
                         self._camera_mem_cache[scan_id] = cams
                         return cams
                 except Exception:

@@ -166,7 +166,8 @@ def twd97_to_wgs84(easting: float, northing: float, lon0_deg: float = 121.0) -> 
     lon = math.radians(lon0_deg) + (q5 - q6 + q7) / cos_fp
     return round(math.degrees(lat), 8), round(math.degrees(lon), 8)
 
-GLTFPACK_EXE = r"C:\Antigravity\GC_ScanOptimizer\bin\gltfpack.exe"
+from pc_worker.config import GC_SCAN_OPTIMIZER_DIR
+GLTFPACK_EXE = os.path.join(GC_SCAN_OPTIMIZER_DIR, "bin", "gltfpack.exe")
 
 # Standard 16-case Marching Squares lookup table
 # Edge indices: 0=bottom (v00->v10), 1=right (v10->v11), 2=top (v01->v11), 3=left (v00->v01)
@@ -297,6 +298,11 @@ class DsmAndVolumeMixin:
                     pass
         cand_dir = os.path.join(SCANS_ROOT_DIR, clean_id)
         if os.path.isdir(cand_dir):
+            return {"scan_id": clean_id, "project_dir": cand_dir}
+        if (
+            os.path.isfile(os.path.join(CATEGORIZATION_CACHE_DIR, f"{clean_id}_categorization_v3.json"))
+            or os.path.isfile(os.path.join(DATA_DIR, "utilities_cache", f"{clean_id}_master_v3.json"))
+        ):
             return {"scan_id": clean_id, "project_dir": cand_dir}
         raise KeyError(f"Scan not found: {clean_id}")
 
