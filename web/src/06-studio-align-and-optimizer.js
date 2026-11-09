@@ -1379,6 +1379,7 @@
     const restorePosUnder = (root) => {
       if (!root) return;
       root.traverse((m) => {
+        if (m && m.userData && m.userData.isGaussianSplatMesh) return;
         if (m && m.isMesh && m.geometry && m.userData && m.userData._origPosSaved && m.userData._origPosArray) {
           const posAttr = m.geometry.attributes.position;
           if (posAttr && posAttr.array && posAttr.array.length === m.userData._origPosArray.length) {
@@ -1394,6 +1395,9 @@
     };
     restorePosUnder(studioThree.modelPivot);
     restorePosUnder(studioThree.fallbackGroup);
+    if (typeof window.restoreStudioGaussianSplatPositions === "function") {
+      window.restoreStudioGaussianSplatPositions();
+    }
     if (studioThree.renderer && studioThree.scene && studioThree.camera) {
       studioThree.renderer.render(studioThree.scene, studioThree.camera);
     }
@@ -1510,16 +1514,18 @@
     if (studioThree.modelPivot && studioThree.modelPivot.visible) {
       studioThree.modelPivot.updateMatrixWorld(true);
       studioThree.modelPivot.traverse((m) => {
+        if (m && m.userData && m.userData.isGaussianSplatMesh) return;
         if (m && m.isMesh && m.geometry && m.geometry.attributes && m.geometry.attributes.position) meshes.push(m);
       });
     }
     if (meshes.length === 0 && studioThree.fallbackGroup && studioThree.fallbackGroup.visible) {
       studioThree.fallbackGroup.updateMatrixWorld(true);
       studioThree.fallbackGroup.traverse((m) => {
+        if (m && m.userData && m.userData.isGaussianSplatMesh) return;
         if (m && m.isMesh && m.geometry && m.geometry.attributes && m.geometry.attributes.position) meshes.push(m);
       });
     }
-    if (meshes.length === 0) return null;
+    if (meshes.length === 0 && !studioThree.gsplatState) return null;
 
     let lastZoneStats = null;
     for (let zi = 0; zi < st.flattenZones.length; zi++) {
@@ -1610,6 +1616,10 @@
           m.geometry.computeBoundingBox();
           m.geometry.computeBoundingSphere();
         }
+      }
+
+      if (typeof window.applyPlaneToStudioGaussianSplats === "function") {
+        window.applyPlaneToStudioGaussianSplats(polyXZ, minX, maxX, minZ, maxZ, plane, keepRatio, featherM, maxDevM, _distPointToPolygon2D);
       }
 
       zone.flattenedVerts = modifiedVerts;

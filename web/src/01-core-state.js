@@ -1602,9 +1602,10 @@
     });
   }
 
-  function _syncGaussianSplatMeshTransform(ctx, scan) {
-    if (!ctx || !ctx.gsplatState || !ctx.gsplatState.mesh) return;
-    const mesh = ctx.gsplatState.mesh;
+  function _syncGaussianSplatMeshTransform(ctx, scan, targetState = null) {
+    const st = targetState || (ctx && ctx.gsplatState);
+    if (!ctx || !st || !st.mesh) return;
+    const mesh = st.mesh;
     const tr = ctx.tilesRenderer;
     if (!tr || !tr.group) return;
     const grpPos = tr.group.position;
@@ -1621,7 +1622,7 @@
         Number(origin[1] || 0) + grpPos.y,
         Number(origin[2] || 0) + grpPos.z
       );
-    } else if (ctx.gsplatState.src?.hasGeoref) {
+    } else if (st.src?.hasGeoref) {
       mesh.position.set(0, 0, 0);
     } else {
       mesh.position.copy(grpPos);
@@ -1905,9 +1906,8 @@
       }
       if (prefix === "studio" && typeof window.reapplyStudioGaussianSplatStagedEdits === "function") {
         window.reapplyStudioGaussianSplatStagedEdits();
-      } else {
-        updateGaussianSplatForContext(ctx, prefix, true);
       }
+      updateGaussianSplatForContext(ctx, prefix, true);
       if (prefix === "studio") {
         syncStudio3dgsToggleButton(scan, ctx.tilesRenderer);
         if (typeof finishScanLoader === "function") finishScanLoader(ctx, "studio");
@@ -2189,9 +2189,15 @@
     ctx._gsplatLoading = false;
     if (prefix === "studio" && typeof window.reapplyStudioGaussianSplatStagedEdits === "function") {
       window.reapplyStudioGaussianSplatStagedEdits();
-    } else {
-      updateGaussianSplatForContext(ctx, prefix, true);
     }
+    if (
+      prefix === "studio" &&
+      typeof window.applyLiveFlattenZonesToStudioMeshes === "function" &&
+      STATE.stagedMeshEdits?.[scan.scan_id]?.flattenZones?.length > 0
+    ) {
+      window.applyLiveFlattenZonesToStudioMeshes();
+    }
+    updateGaussianSplatForContext(ctx, prefix, true);
     if (prefix === "studio") {
       syncStudio3dgsToggleButton(scan, ctx.tilesRenderer);
       if (typeof finishScanLoader === "function") finishScanLoader(ctx, "studio");
@@ -2441,7 +2447,7 @@
         continue;
       }
       const { prepDelStrokes, prepDelPolys, hasKeep, prepKeepStrokes, prepKeepPolys, editSig } = editPayload;
-      _syncGaussianSplatMeshTransform(studioThree, st.scan || STATE.activeScan);
+      _syncGaussianSplatMeshTransform(studioThree, st.scan || STATE.activeScan, st);
       const tc = studioThree.tilesCenter || [0, 0, 0];
       const hasDel = (prepDelStrokes && prepDelStrokes.length > 0) || (prepDelPolys && prepDelPolys.length > 0);
       const hasKp = Boolean(hasKeep && ((prepKeepStrokes && prepKeepStrokes.length > 0) || (prepKeepPolys && prepKeepPolys.length > 0)));
@@ -2465,6 +2471,72 @@
     }
   }
   window.syncStudioGaussianSplatStagedEdits = syncStudioGaussianSplatStagedEdits;
+
+  function restoreStudioGaussianSplatPositions() {
+    if (typeof studioThree === "undefined" || !studioThree) return;
+    const states = [studioThree.gsplatState, studioThree._warmGsplatState].filter(Boolean);
+    for (const st of states) {
+      if (st && st.src && st.src._origPos && st.src.pos && st.src.pos.length === st.src._origPos.length) {
+        st.src.pos.set(st.src._origPos);
+        if (st === studioThree.gsplatState) {
+          updateGaussianSplatForContext(studioThree, "studio", true);
+        }
+      }
+    }
+  }
+  window.restoreStudioGaussianSplatPositions = restoreStudioGaussianSplatPositions;
+
+  function applyPlaneToStudioGaussianSplats(polyXZ, minX, maxX, minZ, maxZ, plane, keepRatio, featherM, maxDevM, distFn) {
+    if (typeof studioThree === "undefined" || !studioThree || !plane) return 0;
+    const states = [studioThree.gsplatState, studioThree._warmGsplatState].filter(Boolean);
+    let totalMod = 0;
+    for (const st of states) {
+      if (!st || !st.src || !st.mesh) continue;
+      if (!st.src._origPos) {
+        st.src._origPos = st.src.pos.slice();
+      }
+      _syncGaussianSplatMeshTransform(studioThree, st.scan || STATE.activeScan, st);
+      if (studioThree.modelPivot) studioThree.modelPivot.updateMatrixWorld(true);
+      st.mesh.updateMatrixWorld(true);
+      const mw = st.mesh.matrixWorld.elements;
+      const srcPos = st.src.pos;
+      const n = st.src.count;
+      let touched = false;
+      for (let i = 0; i < n; i++) {
+        const i3 = i * 3;
+        const lx = srcPos[i3];
+        const ly = srcPos[i3 + 1];
+        const lz = srcPos[i3 + 2];
+        const wx = mw[0] * lx + mw[4] * ly + mw[8] * lz + mw[12];
+        const wy = mw[1] * lx + mw[5] * ly + mw[9] * lz + mw[13];
+        const wz = mw[2] * lx + mw[6] * ly + mw[10] * lz + mw[14];
+        if (wx < minX || wx > maxX || wz < minZ || wz > maxZ) continue;
+        if (!_gsPointInPoly2D(wx, wz, polyXZ)) continue;
+        const yPlane = plane.a * (wx - plane.cx) + plane.b * (wz - plane.cz) + plane.c;
+        const resY = wy - yPlane;
+        if (Math.abs(resY) > maxDevM) continue;
+        let wBlend = 1.0;
+        if (featherM > 0.05 && typeof distFn === "function") {
+          const bDist = distFn(wx, wz, polyXZ);
+          if (bDist < featherM) {
+            const t = Math.max(0.0, Math.min(1.0, bDist / featherM));
+            wBlend = 0.5 - 0.5 * Math.cos(Math.PI * t);
+          }
+        }
+        const yTarget = yPlane + keepRatio * resY;
+        const dyWorld = wBlend * (yTarget - wy);
+        // modelPivot rotates Z-up to Y-up (wy = lz + offset), so world +Y maps to local +Z (srcPos[i3 + 2])
+        srcPos[i3 + 2] = lz + dyWorld;
+        touched = true;
+        totalMod++;
+      }
+      if (touched && st === studioThree.gsplatState) {
+        updateGaussianSplatForContext(studioThree, "studio", true);
+      }
+    }
+    return totalMod;
+  }
+  window.applyPlaneToStudioGaussianSplats = applyPlaneToStudioGaussianSplats;
 
   // ============================================================================
   // 3D Model Library with Folders & Admin Move Scan Between Sites and Folders

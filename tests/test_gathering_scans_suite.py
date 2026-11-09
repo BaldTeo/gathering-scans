@@ -4680,6 +4680,122 @@ vm.runInContext(fs.readFileSync('./web/src/12-public-utilities-gis.js', 'utf8'),
             self.assertIsNotNone(loaded_keep)
             self.assertEqual(len(loaded_keep[0]), 20)
 
+            # 4. Verify transform_gsplat_crs_in_place handles both j_2x2 and J_2x2, scales radii, and rotates quaternions
+            from pc_worker.gaussian_splat_builder import (
+                transform_gsplat_crs_in_place,
+                apply_flatten_zones_to_gsplat,
+                merge_gsplat_layers_for_unified_scan,
+            )
+            crs_ts = os.path.join(tmp_root, "crs_ts")
+            os.makedirs(os.path.join(crs_ts, "tiles"), exist_ok=True)
+            with open(os.path.join(crs_ts, "tiles", "splats.gsplat"), "wb") as wf:
+                wf.write(raw_blob)
+            ts_crs_doc = json.loads(json.dumps(ts_doc))
+            ts_crs_doc["root"]["boundingVolume"]["box"][0] = 1100.0
+            ts_crs_doc["root"]["boundingVolume"]["box"][1] = 2200.0
+            ts_crs_doc["root"]["boundingVolume"]["box"][2] = 15.0
+            with open(os.path.join(crs_ts, "tileset.json"), "w", encoding="utf-8") as tf:
+                json.dump(ts_crs_doc, tf)
+
+            # 90-degree CCW rotation in XY with 2.0x scale: J = [[0, -2], [2, 0]]
+            J_rot90_scale2 = np.array([[0.0, -2.0], [2.0, 0.0]], dtype=np.float64)
+            transform_gsplat_crs_in_place(
+                crs_ts,
+                100.0,
+                200.0,
+                5.0,
+                j_2x2=J_rot90_scale2,
+                pivot_xy=(1000.0, 2000.0),
+            )
+            recs_crs, orig_crs, _ = read_gsplat_records_and_origin(crs_ts)
+            self.assertTrue(np.allclose(orig_crs, [1100.0, 2200.0, 15.0]))
+            # First splat had dx=-50, dy=0 -> rotated 90 deg CCW & scaled 2x -> dx'=0, dy'=-100
+            self.assertAlmostEqual(float(recs_crs["pos"][0, 0]), 0.0, places=3)
+            self.assertAlmostEqual(float(recs_crs["pos"][0, 1]), -100.0, places=3)
+            self.assertAlmostEqual(float(recs_crs["scale"][0, 0]), 0.10, places=4)
+            # Identity quaternion (0, 0, 0, 1) rotated 90 deg around Z -> (0, 0, sin(45), cos(45)) = (0, 0, 0.7071, 0.7071)
+            q0 = (recs_crs["quat"][0].astype(np.float64) / 255.0) * 2.0 - 1.0
+            self.assertAlmostEqual(abs(float(q0[2])), 0.7071, delta=0.02)
+            self.assertAlmostEqual(abs(float(q0[3])), 0.7071, delta=0.02)
+
+            # 5. Verify apply_flatten_zones_to_gsplat warps splat elevations onto sloped plane
+            flat_ts = os.path.join(tmp_root, "flat_ts")
+            os.makedirs(os.path.join(flat_ts, "tiles"), exist_ok=True)
+            recs_bumpy = recs.copy()
+            recs_bumpy["pos"][:, 2] = 0.20  # +20cm bump above z=10.0 plane
+            with open(os.path.join(flat_ts, "tiles", "splats.gsplat"), "wb") as wf:
+                wf.write(struct.pack("<4sIII", b"GSPL", 1, 100, 1) + recs_bumpy.tobytes())
+            with open(os.path.join(flat_ts, "tileset.json"), "w", encoding="utf-8") as tf:
+                json.dump(ts_doc, tf)
+            active_zones = [
+                {
+                    "poly": poly_box,
+                    "ext_ring": poly_box.exterior,
+                    "bounds": poly_box.bounds,
+                    "min_z": 5.0,
+                    "max_z": 15.0,
+                    "coef": np.array([0.0, 0.0, 10.0], dtype=np.float64),
+                    "cx": 1000.0,
+                    "cy": 2000.0,
+                    "strength": 1.0,
+                    "max_res_m": 0.50,
+                    "feather_m": 0.0,
+                }
+            ]
+            n_flat = apply_flatten_zones_to_gsplat(flat_ts, active_zones)
+            self.assertEqual(n_flat, 20)
+            recs_flat, _, _ = read_gsplat_records_and_origin(flat_ts)
+            # Inside poly_box (indices 40..59: dx=-10..+9), local z should be flattened from 0.20 to 0.0
+            self.assertTrue(np.allclose(recs_flat["pos"][40:60, 2], 0.0, atol=1e-4))
+            # Outside poly_box (indices 0..39), local z remains 0.20
+            self.assertTrue(np.allclose(recs_flat["pos"][0:40, 2], 0.20, atol=1e-4))
+
+            # 6. Verify merge_gsplat_layers_for_unified_scan fuses aligned layers and filters multi-scan deletions
+            mrg_proj = os.path.join(tmp_root, "mrg_proj")
+            mrg_ts = os.path.join(mrg_proj, "tileset")
+            os.makedirs(mrg_ts, exist_ok=True)
+            with open(os.path.join(mrg_ts, "tileset.json"), "w", encoding="utf-8") as tf:
+                json.dump(ts_doc, tf)
+            layer_tfs = {
+                "scan_a": {
+                    "na": np.array([1000.0, 2000.0, 10.0], dtype=np.float64),
+                    "ma": np.array([1005.0, 2000.0, 10.0], dtype=np.float64),
+                    "R": np.eye(3, dtype=np.float64),
+                    "sc": {"project_dir": tmp_root, "scan_id": "scan_a"},
+                }
+            }
+            # Place scan_a's tileset at tmp_root/tileset
+            os.makedirs(os.path.join(tmp_root, "tileset", "tiles"), exist_ok=True)
+            with open(os.path.join(tmp_root, "tileset", "tiles", "splats.gsplat"), "wb") as wf:
+                wf.write(raw_blob)
+            with open(os.path.join(tmp_root, "tileset", "tileset.json"), "w", encoding="utf-8") as tf:
+                json.dump(ts_doc, tf)
+            # Delete centered X in [-10.5, +9.5] (20 splats) in scan_a
+            mrg_dels = [
+                {
+                    "polygons": [
+                        {
+                            "target_scan_id": "scan_a",
+                            "points": [[-10.5, -10.0], [9.5, -10.0], [9.5, 10.0], [-10.5, 10.0]],
+                        }
+                    ]
+                }
+            ]
+            mrg_info = merge_gsplat_layers_for_unified_scan(
+                mrg_ts,
+                mrg_proj,
+                layer_tfs,
+                raw_deletions=mrg_dels,
+                new_origin=np.array([1005.0, 2000.0, 10.0], dtype=np.float64),
+            )
+            self.assertIsNotNone(mrg_info)
+            self.assertEqual(mrg_info["splat_count"], 80)
+
+        with open(os.path.join(BASE_DIR, "web", "src", "06-studio-align-and-optimizer.js"), "r", encoding="utf-8") as f:
+            js06 = f.read()
+        self.assertIn("window.applyPlaneToStudioGaussianSplats = applyPlaneToStudioGaussianSplats;", js01)
+        self.assertIn("if (m && m.userData && m.userData.isGaussianSplatMesh) return;", js06)
+
 
 if __name__ == "__main__":
     unittest.main()

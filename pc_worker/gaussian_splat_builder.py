@@ -1118,6 +1118,59 @@ def evaluate_points_in_cutter(
     return selected
 
 
+def _rotmat_to_quat_xyzw(R_in: np.ndarray) -> Tuple[float, float, float, float]:
+    """Converts a 3x3 rotation/linear matrix into a unit quaternion (qx, qy, qz, qw)."""
+    det = float(np.linalg.det(R_in))
+    if det <= 1e-8:
+        return (0.0, 0.0, 0.0, 1.0)
+    R = R_in / (det ** (1.0 / 3.0))
+    tr = float(R[0, 0] + R[1, 1] + R[2, 2])
+    if tr > 0.0:
+        s = math.sqrt(tr + 1.0) * 2.0
+        qw = 0.25 * s
+        qx = float(R[2, 1] - R[1, 2]) / s
+        qy = float(R[0, 2] - R[2, 0]) / s
+        qz = float(R[1, 0] - R[0, 1]) / s
+    elif R[0, 0] > R[1, 1] and R[0, 0] > R[2, 2]:
+        s = math.sqrt(1.0 + float(R[0, 0] - R[1, 1] - R[2, 2])) * 2.0
+        qw = float(R[2, 1] - R[1, 2]) / s
+        qx = 0.25 * s
+        qy = float(R[0, 1] + R[1, 0]) / s
+        qz = float(R[0, 2] + R[2, 0]) / s
+    elif R[1, 1] > R[2, 2]:
+        s = math.sqrt(1.0 + float(R[1, 1] - R[0, 0] - R[2, 2])) * 2.0
+        qw = float(R[0, 2] - R[2, 0]) / s
+        qx = float(R[0, 1] + R[1, 0]) / s
+        qy = 0.25 * s
+        qz = float(R[1, 2] + R[2, 1]) / s
+    else:
+        s = math.sqrt(1.0 + float(R[2, 2] - R[0, 0] - R[1, 1])) * 2.0
+        qw = float(R[1, 0] - R[0, 1]) / s
+        qx = float(R[0, 2] + R[2, 0]) / s
+        qy = float(R[1, 2] + R[2, 1]) / s
+        qz = 0.25 * s
+    nrm = math.sqrt(qx * qx + qy * qy + qz * qz + qw * qw)
+    if nrm < 1e-8:
+        return (0.0, 0.0, 0.0, 1.0)
+    return (qx / nrm, qy / nrm, qz / nrm, qw / nrm)
+
+
+def _rotate_packed_quats_by_matrix(u8_quat: np.ndarray, R: np.ndarray) -> np.ndarray:
+    """Left-multiplies packed uint8 quaternions `(qx, qy, qz, qw)` by rotation matrix `R`."""
+    if len(u8_quat) == 0 or np.allclose(R, np.eye(3, dtype=np.float64), atol=1e-6):
+        return u8_quat
+    rx, ry, rz, rw = _rotmat_to_quat_xyzw(R)
+    q = (u8_quat.astype(np.float64) / 255.0) * 2.0 - 1.0
+    qx, qy, qz, qw = q[:, 0], q[:, 1], q[:, 2], q[:, 3]
+    nx = rw * qx + rx * qw + ry * qz - rz * qy
+    ny = rw * qy - rx * qz + ry * qw + rz * qx
+    nz = rw * qz + rx * qy - ry * qx + rz * qw
+    nw = rw * qw - rx * qx - ry * qy - rz * qz
+    nrm = np.maximum(np.sqrt(nx * nx + ny * ny + nz * nz + nw * nw), 1e-8)
+    q_out = np.column_stack([nx / nrm, ny / nrm, nz / nrm, nw / nrm])
+    return np.clip(np.round((q_out * 0.5 + 0.5) * 255.0), 0, 255).astype(np.uint8)
+
+
 def slice_gsplat_for_tileset_cut(
     input_tileset_dir: str,
     output_tileset_dir: str,
@@ -1150,11 +1203,15 @@ def slice_gsplat_for_tileset_cut(
         kept_pts_ts = kept_pts_ts[: int(max_splats)]
 
     new_origin = old_origin.copy()
+    is_standalone_gsplat = False
     out_ts_path = os.path.join(output_tileset_dir, "tileset.json")
     if os.path.isfile(out_ts_path):
         try:
             with open(out_ts_path, "r", encoding="utf-8") as tf:
                 out_ts = json.load(tf)
+            ex = out_ts.get("extras") if isinstance(out_ts.get("extras"), dict) else {}
+            r_ex = ((out_ts.get("root") or {}).get("extras") or {}) if isinstance(out_ts.get("root"), dict) else {}
+            is_standalone_gsplat = bool(ex.get("is_gaussian_splat") or r_ex.get("is_gaussian_splat"))
             r_box = ((out_ts.get("root") or {}).get("boundingVolume") or {}).get("box")
             if isinstance(r_box, list) and len(r_box) >= 3:
                 cand_o = np.array([float(r_box[0]), float(r_box[1]), float(r_box[2])], dtype=np.float64)
@@ -1164,6 +1221,11 @@ def slice_gsplat_for_tileset_cut(
             pass
 
     n_kept = len(kept_recs)
+    if is_standalone_gsplat and n_kept >= 8 and np.linalg.norm(old_origin) > 100.0:
+        q_min_w = np.quantile(kept_pts_ts, 0.005, axis=0)
+        q_max_w = np.quantile(kept_pts_ts, 0.995, axis=0)
+        new_origin = 0.5 * (q_min_w + q_max_w)
+
     if n_kept > 0:
         kept_recs["pos"] = (kept_pts_ts - new_origin).astype(np.float32)
 
@@ -1176,6 +1238,43 @@ def slice_gsplat_for_tileset_cut(
     with open(out_gs_path, "wb") as wf:
         wf.write(raw_blob)
     _write_gsplat_gz_sidecar(out_gs_path, raw_blob)
+
+    if is_standalone_gsplat and n_kept >= 4:
+        try:
+            rgba_f = kept_recs["rgba"].astype(np.float32) / 255.0
+            q_xyzw = (kept_recs["quat"].astype(np.float32) / 255.0) * 2.0 - 1.0
+            quat_wxyz = np.column_stack([q_xyzw[:, 3], q_xyzw[:, 0], q_xyzw[:, 1], q_xyzw[:, 2]]).astype(np.float32)
+            wo_tuple = (float(new_origin[0]), float(new_origin[1]), float(new_origin[2]))
+            glb_b = _build_surfel_glb_bytes(kept_recs["pos"], kept_recs["scale"], rgba_f, quat_wxyz, wo_tuple, max_surfels=24000)
+            with open(os.path.join(out_tiles_dir, "root.glb"), "wb") as rf:
+                rf.write(glb_b)
+            prev_glb_p = os.path.join(output_tileset_dir, "preview_low", "tiles", "root.glb")
+            if os.path.isdir(os.path.dirname(prev_glb_p)):
+                prev_b = _build_surfel_glb_bytes(kept_recs["pos"], kept_recs["scale"], rgba_f, quat_wxyz, wo_tuple, max_surfels=8000)
+                with open(prev_glb_p, "wb") as pf:
+                    pf.write(prev_b)
+            if os.path.isfile(out_ts_path):
+                q_min = np.quantile(kept_recs["pos"], 0.005, axis=0)
+                q_max = np.quantile(kept_recs["pos"], 0.995, axis=0)
+                hx = max(0.25, float((q_max[0] - q_min[0]) * 0.5))
+                hy = max(0.25, float((q_max[1] - q_min[1]) * 0.5))
+                hz = max(0.25, float((q_max[2] - q_min[2]) * 0.5))
+                with open(out_ts_path, "r", encoding="utf-8") as tf_r:
+                    ts_d = json.load(tf_r)
+                bx, by, bz = round(float(new_origin[0]), 4), round(float(new_origin[1]), 4), round(float(new_origin[2]), 4)
+                if isinstance(ts_d.get("root"), dict):
+                    ts_d["root"]["boundingVolume"] = {
+                        "box": [bx, by, bz, round(hx, 4), 0.0, 0.0, 0.0, round(hy, 4), 0.0, 0.0, 0.0, round(hz, 4)]
+                    }
+                if isinstance(ts_d.get("extras"), dict):
+                    ts_d["extras"]["tight_bounds"] = {
+                        "center": [bx, by, bz],
+                        "half_extents": [round(hx, 4), round(hy, 4), round(hz, 4)],
+                    }
+                with open(out_ts_path, "w", encoding="utf-8") as tf_w:
+                    json.dump(ts_d, tf_w, indent=2)
+        except Exception:
+            pass
 
     gs_mtime = int(os.path.getmtime(out_gs_path))
     splat_size_mb = round(len(raw_blob) / (1024.0 * 1024.0), 2)
@@ -1200,10 +1299,12 @@ def slice_gsplat_for_tileset_cut(
     }
 
 
-def _extract_surviving_mesh_sample_points_zup(tileset_dir: str) -> Optional[np.ndarray]:
+def _extract_surviving_mesh_sample_points_zup(tileset_dir: str, max_horizon_tiles: int = 48) -> Optional[np.ndarray]:
     """
     Extracts dense 3D surface sample points (vertices + triangle centroids + edge midpoints) in
     Tileset Z-up coordinates (`[Easting, Northing, Elevation]`) from the surviving `.glb` tiles in `tileset_dir`.
+    Uses a BFS Horizon Cut of up to `max_horizon_tiles` tiles on deep octrees (since `SpatialCutter` slices
+    all LOD levels in lockstep) + per-tile 2cm grid quantization so large scans complete in ~1.5-2.5s.
     """
     from concurrent.futures import ThreadPoolExecutor
     import tempfile
@@ -1220,26 +1321,54 @@ def _extract_surviving_mesh_sample_points_zup(tileset_dir: str) -> Optional[np.n
         return None
 
     gltf_up = str((ts_doc.get("asset") or {}).get("gltfUpAxis") or "").upper().strip()
-    leaf_items: List[Tuple[str, np.ndarray]] = []
+    root_nd = ts_doc.get("root")
+    if not isinstance(root_nd, dict):
+        return None
 
-    def _walk_leaves(nd: Dict[str, Any], p_tf: np.ndarray) -> None:
-        c_tf = p_tf
+    def _node_uri_fp(nd: Dict[str, Any]) -> Optional[str]:
+        u = str((nd.get("content") or {}).get("uri") or (nd.get("content") or {}).get("url") or "").split("?")[0].strip()
+        if u and "{level}" not in u:
+            fp = os.path.normpath(os.path.join(tileset_dir, u.replace("/", os.sep)))
+            if os.path.isfile(fp):
+                return fp
+        return None
+
+    def _child_tf(nd: Dict[str, Any], p_tf: np.ndarray) -> np.ndarray:
         ntf = nd.get("transform")
         if isinstance(ntf, list) and len(ntf) == 16:
-            c_tf = p_tf @ np.array(ntf, dtype=np.float64).reshape((4, 4), order="F")
-        chs = [c for c in (nd.get("children") or []) if isinstance(c, dict)]
-        if chs:
-            for ch in chs:
-                _walk_leaves(ch, c_tf)
-        else:
-            u = str((nd.get("content") or {}).get("uri") or (nd.get("content") or {}).get("url") or "").split("?")[0].strip()
-            if u and "{level}" not in u:
-                fp = os.path.normpath(os.path.join(tileset_dir, u.replace("/", os.sep)))
-                if os.path.isfile(fp):
-                    leaf_items.append((fp, c_tf))
+            return p_tf @ np.array(ntf, dtype=np.float64).reshape((4, 4), order="F")
+        return p_tf
 
-    if isinstance(ts_doc.get("root"), dict):
-        _walk_leaves(ts_doc["root"], np.eye(4, dtype=np.float64))
+    # BFS horizon cut: expand tree level by level until frontier reaches max_horizon_tiles or all leaves
+    frontier: List[Tuple[Dict[str, Any], np.ndarray]] = [(root_nd, _child_tf(root_nd, np.eye(4, dtype=np.float64)))]
+    while True:
+        expandable = [
+            (i, nd, tf)
+            for i, (nd, tf) in enumerate(frontier)
+            if any(isinstance(c, dict) for c in (nd.get("children") or []))
+        ]
+        if not expandable:
+            break
+        # Expand one BFS layer if total tiles stays <= max_horizon_tiles (or if current frontier has no valid GLBs)
+        next_frontier: List[Tuple[Dict[str, Any], np.ndarray]] = []
+        for nd, tf in frontier:
+            chs = [c for c in (nd.get("children") or []) if isinstance(c, dict)]
+            if chs:
+                for ch in chs:
+                    next_frontier.append((ch, _child_tf(ch, tf)))
+            else:
+                next_frontier.append((nd, tf))
+        valid_cur = sum(1 for nd, _ in frontier if _node_uri_fp(nd) is not None)
+        if len(next_frontier) <= max_horizon_tiles or valid_cur == 0:
+            frontier = next_frontier
+        else:
+            break
+
+    leaf_items: List[Tuple[str, np.ndarray]] = []
+    for nd, tf in frontier:
+        fp = _node_uri_fp(nd)
+        if fp is not None:
+            leaf_items.append((fp, tf))
 
     if not leaf_items:
         return None
@@ -1308,7 +1437,14 @@ def _extract_surviving_mesh_sample_points_zup(tileset_dir: str) -> Optional[np.n
                         tile_pts.append((v0 + v1) * 0.5)
                         tile_pts.append((v1 + v2) * 0.5)
                         tile_pts.append((v2 + v0) * 0.5)
-            return np.vstack(tile_pts) if tile_pts else None
+            if not tile_pts:
+                return None
+            pts_cat = np.vstack(tile_pts)
+            if len(pts_cat) > 40_000:
+                vq = np.round(pts_cat * 50.0).astype(np.int64)
+                _, u_idx = np.unique(vq, axis=0, return_index=True)
+                pts_cat = pts_cat[u_idx]
+            return pts_cat
         except Exception:
             return None
         finally:
@@ -1325,8 +1461,7 @@ def _extract_surviving_mesh_sample_points_zup(tileset_dir: str) -> Optional[np.n
     if not results:
         return None
     all_pts = np.vstack(results)
-    # Quantize to 2cm grid so cKDTree build & query on 100M+ points runs in <0.5s
-    if len(all_pts) > 1_500_000:
+    if len(all_pts) > 800_000:
         vq = np.round(all_pts * 50.0).astype(np.int64)
         _, u_idx = np.unique(vq, axis=0, return_index=True)
         all_pts = all_pts[u_idx]
@@ -1531,18 +1666,33 @@ def transform_gsplat_crs_in_place(
     off_z: float,
     J_2x2: Optional[np.ndarray] = None,
     pivot_xy: Optional[Tuple[float, float]] = None,
+    j_2x2: Optional[np.ndarray] = None,
+    **_kwargs: Any,
 ) -> None:
-    """Updates `gaussian_splat_origin` (and local splat positions if `J_2x2` is non-identity) when CRS is shifted."""
+    """Updates `gaussian_splat_origin` and local splat positions/scales/quaternions when CRS is transformed."""
     loaded = read_gsplat_records_and_origin(ts_dir)
     if loaded is None:
         return
     recs, old_origin, flags = loaded
     pts_ts = recs["pos"].astype(np.float64) + old_origin
 
-    if J_2x2 is not None and pivot_xy is not None:
-        px, py = float(pivot_xy[0]), float(pivot_xy[1])
+    J = J_2x2 if J_2x2 is not None else j_2x2
+    if J is not None:
+        J_mat = np.asarray(J, dtype=np.float64).reshape(2, 2)
+        if pivot_xy is not None:
+            px, py = float(pivot_xy[0]), float(pivot_xy[1])
+        else:
+            px, py = float(old_origin[0]), float(old_origin[1])
         dxy = pts_ts[:, :2] - np.array([px, py], dtype=np.float64)
-        pts_ts[:, :2] = np.array([px, py], dtype=np.float64) + (dxy @ J_2x2.T)
+        pts_ts[:, :2] = np.array([px, py], dtype=np.float64) + (dxy @ J_mat.T)
+        det_j = float(np.linalg.det(J_mat))
+        if det_j > 1e-6:
+            k_xy = math.sqrt(det_j)
+            if abs(k_xy - 1.0) > 1e-5:
+                recs["scale"] = (recs["scale"].astype(np.float64) * k_xy).astype(np.float32)
+            R_3x3 = np.eye(3, dtype=np.float64)
+            R_3x3[:2, :2] = J_mat / k_xy
+            recs["quat"] = _rotate_packed_quats_by_matrix(recs["quat"], R_3x3)
 
     pts_ts[:, 0] += float(off_x)
     pts_ts[:, 1] += float(off_y)
@@ -1573,6 +1723,328 @@ def transform_gsplat_crs_in_place(
     splat_uri_rel = f"tiles/splats.gsplat?v={gs_mtime}"
     splat_origin_list = [round(float(new_origin[0]), 4), round(float(new_origin[1]), 4), round(float(new_origin[2]), 4)]
     _sync_tileset_and_meta_gsplat_fields(ts_dir, os.path.dirname(os.path.abspath(ts_dir)), splat_uri_rel, splat_origin_list, len(recs), splat_size_mb)
+
+
+def apply_flatten_zones_to_gsplat(tileset_dir: str, active_zones: List[Dict[str, Any]]) -> int:
+    """
+    Applies Slope-Preserving Flatten Zones (`active_zones` prepared by `_apply_slope_preserving_flatten_zones_to_tileset`)
+    to `tileset_dir/tiles/splats.gsplat` (+ `.gz`) so Gaussian Splat elevations match the flattened ground surface.
+    """
+    if not active_zones:
+        return 0
+    loaded = read_gsplat_records_and_origin(tileset_dir)
+    if loaded is None:
+        return 0
+    recs, origin, flags = loaded
+    if len(recs) == 0:
+        return 0
+
+    import shapely
+
+    pos_zup = recs["pos"].astype(np.float64) + origin
+    total_splats_flattened = 0
+    any_mod = False
+
+    for zn in active_zones:
+        zminx, zminy, zmaxx, zmaxy = zn["bounds"]
+        cand_m = (
+            (pos_zup[:, 0] >= zminx)
+            & (pos_zup[:, 0] <= zmaxx)
+            & (pos_zup[:, 1] >= zminy)
+            & (pos_zup[:, 1] <= zmaxy)
+            & (pos_zup[:, 2] >= zn["min_z"])
+            & (pos_zup[:, 2] <= zn["max_z"])
+        )
+        c_idx = np.where(cand_m)[0]
+        if len(c_idx) == 0:
+            continue
+        in_p = np.asarray(shapely.contains_xy(zn["poly"], pos_zup[c_idx, 0], pos_zup[c_idx, 1]), dtype=bool)
+        hit_idx = c_idx[in_p]
+        if len(hit_idx) == 0:
+            continue
+        hx = pos_zup[hit_idx, 0]
+        hy = pos_zup[hit_idx, 1]
+        hz = pos_zup[hit_idx, 2]
+        coef = zn["coef"]
+        z_plane = coef[0] * (hx - zn["cx"]) + coef[1] * (hy - zn["cy"]) + coef[2]
+        res_h = z_plane - hz
+        abs_r = np.abs(res_h)
+        v_weight = np.where(
+            abs_r <= zn["max_res_m"],
+            1.0,
+            np.clip(1.0 - (abs_r - zn["max_res_m"]) / 0.25, 0.0, 1.0),
+        )
+        if zn["feather_m"] > 0.05 and hasattr(shapely, "points"):
+            pts_geom = shapely.points(hx, hy)
+            d_edge = np.asarray(shapely.distance(zn["ext_ring"], pts_geom), dtype=np.float64)
+            f_weight = np.clip(d_edge / zn["feather_m"], 0.15, 1.0)
+        else:
+            f_weight = 1.0
+        eff_alpha = zn["strength"] * v_weight * f_weight
+        active_v = eff_alpha > 0.001
+        if np.any(active_v):
+            pos_zup[hit_idx, 2] = hz + eff_alpha * res_h
+            total_splats_flattened += int(np.count_nonzero(active_v))
+            any_mod = True
+
+    if any_mod:
+        recs["pos"] = (pos_zup - origin).astype(np.float32)
+        gs_path = os.path.join(tileset_dir, "tiles", "splats.gsplat")
+        header_bytes = struct.pack("<4sIII", b"GSPL", 1, len(recs), flags)
+        raw_blob = header_bytes + recs.tobytes()
+        with open(gs_path, "wb") as wf:
+            wf.write(raw_blob)
+        _write_gsplat_gz_sidecar(gs_path, raw_blob)
+        gs_mtime = int(os.path.getmtime(gs_path))
+        splat_size_mb = round(len(raw_blob) / (1024.0 * 1024.0), 2)
+        splat_uri_rel = f"tiles/splats.gsplat?v={gs_mtime}"
+        splat_origin_list = [round(float(origin[0]), 4), round(float(origin[1]), 4), round(float(origin[2]), 4)]
+        _sync_tileset_and_meta_gsplat_fields(
+            tileset_dir,
+            os.path.dirname(os.path.abspath(tileset_dir)),
+            splat_uri_rel,
+            splat_origin_list,
+            len(recs),
+            splat_size_mb,
+            also_update_backup=False,
+        )
+
+    return total_splats_flattened
+
+
+def _evaluate_multiscan_gsplat_deletions(
+    pts_centered: np.ndarray,
+    radii: np.ndarray,
+    scan_id: str,
+    deletions: List[Dict[str, Any]],
+) -> np.ndarray:
+    """Evaluates multi-scan staged deletions on a single layer's centered Z-up splat positions `pts_centered`."""
+    n = len(pts_centered)
+    overall_del = np.zeros(n, dtype=bool)
+    if n == 0 or not deletions:
+        return overall_del
+
+    import shapely
+    from shapely.geometry import Polygon as ShapelyPolygon
+
+    for batch in deletions:
+        if not isinstance(batch, dict):
+            continue
+        batch_mask = np.zeros(n, dtype=bool)
+        for st in batch.get("frustum_strokes") or []:
+            if not isinstance(st, dict):
+                continue
+            tgt = st.get("target_scan_id")
+            if tgt and tgt != "all" and tgt != scan_id:
+                continue
+            poly_ndc = st.get("polygon_ndc") or []
+            mvp = st.get("mvp_elements") or []
+            if len(poly_ndc) < 3 or len(mvp) != 16:
+                continue
+            try:
+                ndc_poly = ShapelyPolygon([(float(p[0]), float(p[1])) for p in poly_ndc])
+                if not ndc_poly.is_valid:
+                    ndc_poly = ndc_poly.buffer(0)
+            except Exception:
+                continue
+            m = np.array([float(x) for x in mvp], dtype=np.float64).reshape((4, 4), order="F")
+            # pts_centered is Z-up (x, y, z) -> Three.js local Y-up (x, z, -y)
+            tx = pts_centered[:, 0]
+            ty = pts_centered[:, 2]
+            tz = -pts_centered[:, 1]
+            cw = m[3, 0] * tx + m[3, 1] * ty + m[3, 2] * tz + m[3, 3]
+            valid_w = cw > 1e-5
+            if not np.any(valid_w):
+                continue
+            v_idx = np.where(valid_w)[0]
+            inv_w = 1.0 / cw[v_idx]
+            nx = (m[0, 0] * tx[v_idx] + m[0, 1] * ty[v_idx] + m[0, 2] * tz[v_idx] + m[0, 3]) * inv_w
+            ny = (m[1, 0] * tx[v_idx] + m[1, 1] * ty[v_idx] + m[1, 2] * tz[v_idx] + m[1, 3]) * inv_w
+            nz = (m[2, 0] * tx[v_idx] + m[2, 1] * ty[v_idx] + m[2, 2] * tz[v_idx] + m[2, 3]) * inv_w
+            in_fr = (nx >= -1.05) & (nx <= 1.05) & (ny >= -1.05) & (ny <= 1.05) & (nz >= -1.05) & (nz <= 1.05)
+            f_sub = v_idx[in_fr]
+            if len(f_sub) == 0:
+                continue
+            in_poly = np.asarray(shapely.contains_xy(ndc_poly, nx[in_fr], ny[in_fr]), dtype=bool)
+            hit_idx = f_sub[in_poly]
+            if len(hit_idx) > 0:
+                batch_mask[hit_idx] = True
+
+        for pg in batch.get("polygons") or []:
+            pts_raw = pg.get("points") if isinstance(pg, dict) else pg
+            tgt = pg.get("target_scan_id") if isinstance(pg, dict) else None
+            if tgt and tgt != "all" and tgt != scan_id:
+                continue
+            if not isinstance(pts_raw, list) or len(pts_raw) < 3:
+                continue
+            try:
+                poly_2d = ShapelyPolygon([(float(p[0]), float(p[1])) for p in pts_raw])
+                if not poly_2d.is_valid:
+                    poly_2d = poly_2d.buffer(0)
+            except Exception:
+                continue
+            p_minz = float(pg.get("min_z")) if isinstance(pg, dict) and pg.get("min_z") is not None else None
+            p_maxz = float(pg.get("max_z")) if isinstance(pg, dict) and pg.get("max_z") is not None else None
+            # 2D polygons in multi-scan align use Three.js (X, Z) = (pts_centered[:, 0], -pts_centered[:, 1])
+            px_3 = pts_centered[:, 0]
+            pz_3 = -pts_centered[:, 1]
+            py_3 = pts_centered[:, 2]
+            in_2d = np.asarray(shapely.contains_xy(poly_2d, px_3, pz_3), dtype=bool)
+            if p_minz is not None:
+                in_2d &= (py_3 + radii) >= p_minz
+            if p_maxz is not None:
+                in_2d &= (py_3 - radii) <= p_maxz
+            batch_mask |= in_2d
+
+        sb = batch.get("section_box")
+        if isinstance(sb, dict) and np.any(batch_mask):
+            # Section box clip in Three.js space
+            c_sb = sb.get("center") or [0.0, 0.0, 0.0]
+            he_sb = sb.get("half_extents") or [1e9, 1e9, 1e9]
+            yaw_r = float(sb.get("yaw_rad") or 0.0)
+            cos_y, sin_y = math.cos(-yaw_r), math.sin(-yaw_r)
+            dx = pts_centered[:, 0] - float(c_sb[0])
+            dy = pts_centered[:, 2] - float(c_sb[1])
+            dz = (-pts_centered[:, 1]) - float(c_sb[2])
+            lx = dx * cos_y + dz * sin_y
+            lz = -dx * sin_y + dz * cos_y
+            in_sb = (
+                (np.abs(lx) <= float(he_sb[0]) + radii)
+                & (np.abs(dy) <= float(he_sb[1]) + radii)
+                & (np.abs(lz) <= float(he_sb[2]) + radii)
+            )
+            batch_mask &= in_sb
+
+        overall_del |= batch_mask
+
+    return overall_del
+
+
+def merge_gsplat_layers_for_unified_scan(
+    ts_work_dir: str,
+    work_proj_dir: str,
+    layer_transforms_by_sid: Dict[str, Dict[str, Any]],
+    raw_deletions: Optional[List[Dict[str, Any]]] = None,
+    new_origin: Optional[np.ndarray] = None,
+     brightness_by_sid: Optional[Dict[str, float]] = None,
+    max_splats: int = 500_000,
+) -> Optional[Dict[str, Any]]:
+    """
+    Fuses `.gsplat` layers across aligned source scans in `run_merge_scans_action`, applying each
+    layer's 6-DOF transform (`na`, `ma`, `R`), filtering multi-scan staged `raw_deletions`,
+    and writing `ts_work_dir/tiles/splats.gsplat` (+ `.gz`).
+    """
+    from .config import LOCAL_SCANS_ROOT
+
+    if not layer_transforms_by_sid:
+        return None
+
+    merged_chunks: List[np.ndarray] = []
+    any_flags = 0
+
+    for sid, tf_info in layer_transforms_by_sid.items():
+        sc = tf_info.get("sc") or {}
+        cand_ts_dirs = []
+        if sc.get("project_dir"):
+            cand_ts_dirs.append(os.path.join(str(sc["project_dir"]), "tileset"))
+        cand_ts_dirs.append(os.path.join(LOCAL_SCANS_ROOT, str(sid), "tileset"))
+        loaded = None
+        for c_dir in cand_ts_dirs:
+            if os.path.isdir(c_dir):
+                loaded = read_gsplat_records_and_origin(c_dir)
+                if loaded is not None:
+                    break
+        if loaded is None:
+            continue
+        recs, old_origin, flags = loaded
+        if len(recs) == 0:
+            continue
+        any_flags |= int(flags)
+
+        na = np.asarray(tf_info["na"], dtype=np.float64)
+        ma = np.asarray(tf_info["ma"], dtype=np.float64)
+        R = np.asarray(tf_info["R"], dtype=np.float64).reshape(3, 3)
+
+        pts_world = recs["pos"].astype(np.float64) + old_origin
+        pts_centered = pts_world - na
+        radii = np.max(recs["scale"], axis=1).astype(np.float64)
+
+        if raw_deletions:
+            del_mask = _evaluate_multiscan_gsplat_deletions(pts_centered, radii, str(sid), raw_deletions)
+            if np.any(del_mask):
+                recs = recs[~del_mask].copy()
+                pts_centered = pts_centered[~del_mask]
+                if len(recs) == 0:
+                    continue
+            else:
+                recs = recs.copy()
+        else:
+            recs = recs.copy()
+
+        pts_merged = ma + (pts_centered @ R.T)
+        recs["quat"] = _rotate_packed_quats_by_matrix(recs["quat"], R)
+
+        b_fac = float((brightness_by_sid or {}).get(sid, 1.0))
+        if abs(b_fac - 1.0) > 0.01:
+            rgb_f = recs["rgba"][:, :3].astype(np.float32) * b_fac
+            recs["rgba"][:, :3] = np.clip(np.round(rgb_f), 0, 255).astype(np.uint8)
+
+        # Store world merged coordinates temporarily in a float64 copy via tuple
+        merged_chunks.append((recs, pts_merged))
+
+    if not merged_chunks:
+        return None
+
+    all_recs = np.concatenate([c[0] for c in merged_chunks])
+    all_pts_w = np.vstack([c[1] for c in merged_chunks])
+
+    if new_origin is not None and len(new_origin) >= 3:
+        origin_vec = np.array([float(new_origin[0]), float(new_origin[1]), float(new_origin[2])], dtype=np.float64)
+    else:
+        origin_vec = np.median(all_pts_w, axis=0)
+
+    all_recs["pos"] = (all_pts_w - origin_vec).astype(np.float32)
+
+    # Sort by visual importance descending and cap at max_splats
+    sc_m = all_recs["scale"]
+    max_s = np.maximum(np.maximum(sc_m[:, 0], sc_m[:, 1]), sc_m[:, 2])
+    imp = (all_recs["rgba"][:, 3].astype(np.float32) / 255.0) * (np.maximum(max_s, 1e-5) ** 1.35)
+    order = np.argsort(-imp)
+    if max_splats and max_splats > 0 and len(order) > max_splats:
+        order = order[: int(max_splats)]
+    all_recs = all_recs[order].copy()
+
+    n_total = len(all_recs)
+    tiles_dir = os.path.join(ts_work_dir, "tiles")
+    os.makedirs(tiles_dir, exist_ok=True)
+    gs_path = os.path.join(tiles_dir, "splats.gsplat")
+    header_bytes = struct.pack("<4sIII", b"GSPL", 1, n_total, any_flags)
+    raw_blob = header_bytes + all_recs.tobytes()
+    with open(gs_path, "wb") as wf:
+        wf.write(raw_blob)
+    _write_gsplat_gz_sidecar(gs_path, raw_blob)
+
+    gs_mtime = int(os.path.getmtime(gs_path))
+    splat_size_mb = round(len(raw_blob) / (1024.0 * 1024.0), 2)
+    splat_uri_rel = f"tiles/splats.gsplat?v={gs_mtime}"
+    splat_origin_list = [round(float(origin_vec[0]), 4), round(float(origin_vec[1]), 4), round(float(origin_vec[2]), 4)]
+
+    _sync_tileset_and_meta_gsplat_fields(
+        ts_work_dir,
+        work_proj_dir,
+        splat_uri_rel,
+        splat_origin_list,
+        n_total,
+        splat_size_mb,
+        also_update_backup=False,
+    )
+    return {
+        "has_gaussian_splat_layer": True,
+        "gaussian_splat_uri": splat_uri_rel,
+        "gaussian_splat_origin": splat_origin_list,
+        "splat_count": int(n_total),
+        "splat_size_mb": splat_size_mb,
+    }
 
 
 def attach_gaussian_splat_layer_to_tileset(

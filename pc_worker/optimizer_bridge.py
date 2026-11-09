@@ -648,7 +648,7 @@ def _transform_tileset_crs_in_place(
             float(c_dst[0] - c_src[0]),
             float(c_dst[1] - c_src[1]),
             float(c_dst[2] - c_src[2]),
-            j_2x2=L[:2, :2] if "L" in locals() else None,
+            J_2x2=L[:2, :2] if "L" in locals() else None,
             pivot_xy=(float(c_src[0]), float(c_src[1])),
         )
     except Exception as gs_crs_err:
@@ -1195,10 +1195,17 @@ def _apply_slope_preserving_flatten_zones_to_tileset(
                 with open(t_rec["fp"], "wb") as wf:
                     wf.write(final_b)
                 tiles_updated += 1
+    splats_flattened = 0
+    try:
+        from pc_worker.gaussian_splat_builder import apply_flatten_zones_to_gsplat
+        splats_flattened = apply_flatten_zones_to_gsplat(tileset_dir, active_zones)
+    except Exception as gs_flat_err:
+        print(f"[OptimizerBridge] Warning flattening 3DGS splats: {gs_flat_err}")
 
     return {
         "zones_applied": len(zone_reports),
         "vertices_flattened": total_verts_flattened,
+        "splats_flattened": splats_flattened,
         "tiles_updated": tiles_updated,
         "zone_reports": zone_reports,
     }
@@ -3350,6 +3357,19 @@ class OptimizerBridge:
             with open(os.path.join(ts_work_dir, "offset.xyz"), "w", encoding="utf-8") as off_ts:
                 off_ts.write(f"{ox_m:.3f} {oy_m:.3f} {oz_m:.3f}\n")
 
+            merged_gs_info = None
+            try:
+                from pc_worker.gaussian_splat_builder import merge_gsplat_layers_for_unified_scan
+                merged_gs_info = merge_gsplat_layers_for_unified_scan(
+                    ts_work_dir,
+                    work_proj_dir,
+                    layer_transforms_by_sid,
+                    raw_deletions=raw_deletions,
+                    new_origin=bc,
+                )
+            except Exception as gs_mrg_err:
+                print(f"[OptimizerBridge] Warning merging 3DGS layers: {gs_mrg_err}")
+
             prim_crs_upper = str(primary_scan.get("crs") or "").upper()
             is_local_merge = ("LOCAL" in prim_crs_upper) or (
                 primary_scan.get("lat") is None and abs(float(bc[0])) < 50000.0 and abs(float(bc[1])) < 50000.0
@@ -3443,6 +3463,18 @@ class OptimizerBridge:
                 "merged_from": merged_from_meta,
                 "applied_adjustments": applied_steps,
             }
+            if isinstance(merged_gs_info, dict) and merged_gs_info.get("has_gaussian_splat_layer"):
+                try:
+                    with open(ts_work_path, "r", encoding="utf-8") as f_ts_gs:
+                        ts_gs_ex = (json.load(f_ts_gs).get("extras") or {})
+                except Exception:
+                    ts_gs_ex = {}
+                scan_record["has_gaussian_splat_layer"] = True
+                scan_record["gaussian_splat_uri"] = ts_gs_ex.get("gaussian_splat_uri") or merged_gs_info["gaussian_splat_uri"]
+                scan_record["gaussian_splat_origin"] = ts_gs_ex.get("gaussian_splat_origin") or merged_gs_info["gaussian_splat_origin"]
+                scan_record["splat_count"] = int(ts_gs_ex.get("splat_count") or merged_gs_info["splat_count"])
+                scan_record["splat_size_mb"] = float(ts_gs_ex.get("splat_size_mb") or merged_gs_info["splat_size_mb"])
+                scan_record["render_mode"] = "hybrid_mesh_and_splat"
 
             # Write scan_meta.json BEFORE publishing work_proj_dir so InboxDiscovery never clobbers it!
             with open(os.path.join(work_proj_dir, "scan_meta.json"), "w", encoding="utf-8") as mf_pre:
