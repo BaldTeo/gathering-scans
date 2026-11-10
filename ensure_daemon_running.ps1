@@ -1,20 +1,21 @@
 # GatheringScans Workstation Watchdog & Auto-Start Launcher
 # Checks if GatheringScans (127.0.0.1:8095) is already listening; if not, synchronizes
-# C:\GatheringScans\_app and launches start_gathering_scans.py via WMI Win32_Process Create.
+# D:\GatheringScans\_app and launches start_gathering_scans.py via WMI Win32_Process Create.
 
 $ErrorActionPreference = "SilentlyContinue"
-$WorkDir = if (Test-Path "C:\GatheringScans\_app\start_gathering_scans.py") {
-    "C:\GatheringScans\_app"
+$MasterRoot = if (Test-Path "D:\GatheringScans") { "D:\GatheringScans" } elseif (Test-Path "C:\GatheringScans") { "C:\GatheringScans" } else { "D:\GatheringScans" }
+$WorkDir = if (Test-Path "$MasterRoot\_app\start_gathering_scans.py") {
+    "$MasterRoot\_app"
 } elseif ($PSScriptRoot -and (Test-Path "$PSScriptRoot\start_gathering_scans.py")) {
     $PSScriptRoot
 } else {
     "C:\Antigravity\GatheringScans"
 }
 
-# Keep master portable folder C:\GatheringScans\_app synchronized when running on dev PC
-if ((Test-Path "C:\Antigravity\GatheringScans\server.py") -and (Test-Path "C:\GatheringScans")) {
-    New-Item -ItemType Directory -Force -Path "C:\GatheringScans\_app" | Out-Null
-    robocopy "C:\Antigravity\GatheringScans" "C:\GatheringScans\_app" /E /XO /R:1 /W:1 /XD "__pycache__" "glb_cache" "backups" ".agents" "target" /NFL /NDL /NJH /NJS /NP | Out-Null
+# Keep master portable folder D:\GatheringScans\_app synchronized when running on dev PC
+if ((Test-Path "C:\Antigravity\GatheringScans\server.py") -and (Test-Path $MasterRoot)) {
+    New-Item -ItemType Directory -Force -Path "$MasterRoot\_app" | Out-Null
+    robocopy "C:\Antigravity\GatheringScans" "$MasterRoot\_app" /E /XO /R:1 /W:1 /XD "data" "__pycache__" "glb_cache" "backups" ".agents" "target" ".git" /XF ".env" "gathering_scans.db" /NFL /NDL /NJH /NJS /NP | Out-Null
 }
 
 $listening = Get-NetTCPConnection -LocalPort 8095 -State Listen -ErrorAction SilentlyContinue

@@ -1831,6 +1831,8 @@ class ContoursAndCadMixin:
             (r"C:\Scans\2026-09-17-13-40-52", os.path.join(SCANS_ROOT_DIR, "RosePark_260917", "inputs")),
             (r"C:\Scans\RosePark\RosePark 0916", os.path.join(SCANS_ROOT_DIR, "RosePark_Merged2", "inputs")),
             (r"C:\GatheringScans\catch_QihuPark_20261028\inputs", os.path.join(SCANS_ROOT_DIR, "catch_QihuPark_20261028_HQ", "inputs")),
+            (r"D:\GatheringScans\catch_QihuPark_20261028\inputs", os.path.join(SCANS_ROOT_DIR, "catch_QihuPark_20261028_HQ", "inputs")),
+            (r"C:\GatheringScans", SCANS_ROOT_DIR),
         )
 
         def _rewrite_legacy_cam_path(ap_raw: str) -> str:

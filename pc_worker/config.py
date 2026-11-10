@@ -11,9 +11,10 @@ Enforces:
 import os
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-LOCAL_SCANS_ROOT = os.environ.get("LOCAL_SCANS_ROOT", r"C:\GatheringScans")
+_DEFAULT_SCANS_ROOT = r"D:\GatheringScans" if os.path.isdir(r"D:\GatheringScans") else r"C:\GatheringScans"
+LOCAL_SCANS_ROOT = os.environ.get("LOCAL_SCANS_ROOT", _DEFAULT_SCANS_ROOT)
 
-# Automatically load .env from C:\GatheringScans\_app\.env or BASE_DIR\.env into os.environ
+# Automatically load .env from D:\GatheringScans\_app\.env, C:\GatheringScans\_app\.env, or BASE_DIR\.env into os.environ
 for _env_cand in (
     os.path.join(LOCAL_SCANS_ROOT, "_app", ".env"),
     os.path.join(LOCAL_SCANS_ROOT, ".env"),
@@ -34,7 +35,7 @@ for _env_cand in (
         except Exception:
             pass
 
-LOCAL_SCANS_ROOT = os.environ.get("LOCAL_SCANS_ROOT", r"C:\GatheringScans")
+LOCAL_SCANS_ROOT = os.environ.get("LOCAL_SCANS_ROOT", _DEFAULT_SCANS_ROOT)
 _MASTER_DATA_DIR = os.path.join(LOCAL_SCANS_ROOT, "_app", "data")
 DATA_DIR = os.environ.get(
     "GATHERING_SCANS_DATA_DIR",

@@ -1451,10 +1451,11 @@ class ServerWriteRoutesMixin:
                     DB.set_force_next(scan_id, True)
 
                 in_path = inputs_dir if os.path.isdir(inputs_dir) else (src_zip or proj_dir)
+                _root_posix = LOCAL_SCANS_ROOT.replace("\\", "/").rstrip("/")
                 gst_script = generate_pix4dmatic_gst_script(
-                    project_p4m_path=f"C:/GatheringScans/{scan_id}/{scan_id}.p4m",
+                    project_p4m_path=f"{_root_posix}/{scan_id}/{scan_id}.p4m",
                     input_zip_or_folder=in_path,
-                    export_dir=f"C:/GatheringScans/{scan_id}/exports",
+                    export_dir=f"{_root_posix}/{scan_id}/exports",
                     texture_size=tex_sz,
                     pipeline_settings=p4d_cfg,
                 )
@@ -1492,10 +1493,11 @@ class ServerWriteRoutesMixin:
                 in_path = inputs_dir if os.path.isdir(inputs_dir) else (scan.get("source_zip_path") or proj_dir)
                 raw_custom = payload.get("settings") if isinstance(payload.get("settings"), dict) else {}
                 custom_cfg = {**load_pix4d_settings(), **raw_custom}
+                _root_posix = LOCAL_SCANS_ROOT.replace("\\", "/").rstrip("/")
                 gst_script = generate_pix4dmatic_gst_script(
-                    project_p4m_path=f"C:/GatheringScans/{scan_id}/{scan_id}.p4m",
+                    project_p4m_path=f"{_root_posix}/{scan_id}/{scan_id}.p4m",
                     input_zip_or_folder=in_path,
-                    export_dir=f"C:/GatheringScans/{scan_id}/exports",
+                    export_dir=f"{_root_posix}/{scan_id}/exports",
                     texture_size=int(custom_cfg.get("texture_size", PIX4DMATIC_TEXTURE_SIZE)),
                     pipeline_settings=custom_cfg,
                 )

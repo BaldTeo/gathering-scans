@@ -7,8 +7,8 @@
 # 4. Starts the GatheringScans System Tray Controller & Reverse Tunnel Daemon (port 8095 -> scans.gatheren.cloud)
 
 $ErrorActionPreference = "Continue"
-$MasterRoot = if (Test-Path "C:\GatheringScans\_app\server.py") { "C:\GatheringScans" } else { Split-Path -Parent $PSScriptRoot }
-$AppDir = if (Test-Path "C:\GatheringScans\_app\server.py") { "C:\GatheringScans\_app" } elseif (Test-Path "$PSScriptRoot\server.py") { $PSScriptRoot } else { "C:\Antigravity\GatheringScans" }
+$MasterRoot = if (Test-Path "D:\GatheringScans\_app\server.py") { "D:\GatheringScans" } elseif (Test-Path "C:\GatheringScans\_app\server.py") { "C:\GatheringScans" } else { Split-Path -Parent $PSScriptRoot }
+$AppDir = if (Test-Path "$MasterRoot\_app\server.py") { "$MasterRoot\_app" } elseif (Test-Path "$PSScriptRoot\server.py") { $PSScriptRoot } else { "C:\Antigravity\GatheringScans" }
 
 Write-Host "=================================================================" -ForegroundColor Cyan
 Write-Host "  GatheringScans — Workstation Setup & Migration Installer" -ForegroundColor Cyan
@@ -17,7 +17,7 @@ Write-Host "  App Folder    : $AppDir" -ForegroundColor Gray
 Write-Host "=================================================================" -ForegroundColor Cyan
 
 # 1. Install VPS SSH Key (%USERPROFILE%\.ssh\id_gathering_vps) with strict OpenSSH ACLs
-$SshSrcDir = "C:\GatheringScans\_ssh"
+$SshSrcDir = "$MasterRoot\_ssh"
 $UserSshDir = Join-Path $env:USERPROFILE ".ssh"
 if (Test-Path "$SshSrcDir\id_gathering_vps") {
     Write-Host "`n[1/4] Installing VPS SSH Key into $UserSshDir..." -ForegroundColor Yellow

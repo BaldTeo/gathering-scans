@@ -24,6 +24,7 @@ if BASE_DIR not in sys.path:
 
 from pc_worker.config import (
     GDRIVE_INBOX_DIR,
+    LOCAL_SCANS_ROOT,
     TWD97_TWVD2001_WKT,
     PIX4DMATIC_TEXTURE_SIZE,
 )
@@ -44,9 +45,9 @@ class GatheringScansTestSuite(unittest.TestCase):
                 "scan_id": scan_id,
                 "name": "2026-10-05-15-43-55",
                 "project_group": "QuChi Dam",
-                "project_dir": r"C:\GatheringScans\QuChi_20261005_Compressed",
-                "tileset_path": r"C:\GatheringScans\QuChi_20261005_Compressed\tileset\tileset.json",
-                "obj_path": r"C:\GatheringScans\QuChi_20261005_Compressed\exports\obj_mesh\mesh.obj",
+                "project_dir": os.path.join(LOCAL_SCANS_ROOT, "QuChi_20261005_Compressed"),
+                "tileset_path": os.path.join(LOCAL_SCANS_ROOT, "QuChi_20261005_Compressed", "tileset", "tileset.json"),
+                "obj_path": os.path.join(LOCAL_SCANS_ROOT, "QuChi_20261005_Compressed", "exports", "obj_mesh", "mesh.obj"),
                 "crs": "TWD97 (121) + TWVD2001",
                 "status": "completed",
             }
@@ -2379,7 +2380,7 @@ class GatheringScansTestSuite(unittest.TestCase):
             build_gaussian_splat_tileset,
         )
 
-        jishi_dir = r"C:\GatheringScans\Jishi Gauss"
+        jishi_dir = os.path.join(LOCAL_SCANS_ROOT, "Jishi Gauss")
         if os.path.isdir(jishi_dir):
             ply_src = find_gaussian_splat_source_in_folder(jishi_dir)
             self.assertTrue(is_gaussian_splat_file(ply_src))
@@ -3840,7 +3841,7 @@ class GatheringScansTestSuite(unittest.TestCase):
         self.assertIn("tr.errorTarget = 1.2;", js02)
 
         # 3. Verify QiHu_Merged 3-level LOD hierarchy (tile_s4_l0.glb -> tile_s4_l1.glb -> tile_s4.glb) if present on disk
-        qihu_ts = r"C:\GatheringScans\edited_qihu_merged_2026_10_28_858499\tileset\tileset.json"
+        qihu_ts = os.path.join(LOCAL_SCANS_ROOT, "edited_qihu_merged_2026_10_28_858499", "tileset", "tileset.json")
         if os.path.isfile(qihu_ts):
             with open(qihu_ts, "r", encoding="utf-8") as tf:
                 ts_doc = _json.load(tf)
@@ -4305,7 +4306,7 @@ vm.runInContext(fs.readFileSync('./web/src/12-public-utilities-gis.js', 'utf8'),
         self.assertIn('_l1.glb"', ensure_src)
 
         # 3. Verify edited_daan_652376 ('DaAn') is uncropped on disk (full ~87m x 80m park, > 400 tiles)
-        daan_dir = r"C:\GatheringScans\edited_daan_652376"
+        daan_dir = os.path.join(LOCAL_SCANS_ROOT, "edited_daan_652376")
         if os.path.isdir(daan_dir):
             daan_ts_path = os.path.join(daan_dir, "tileset", "tileset.json")
             self.assertTrue(os.path.isfile(daan_ts_path))
