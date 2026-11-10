@@ -4489,10 +4489,11 @@ body.gs-embed-mode .gs-embed-floating-hud {
   overflow: hidden;
 }
 .gs-embed-hud-logo {
-  width: 20px;
-  height: 20px;
-  border-radius: 4px;
+  height: 24px;
+  width: auto;
+  border-radius: 3px;
   object-fit: contain;
+  display: block;
   flex-shrink: 0;
 }
 .gs-embed-hud-title {
@@ -4640,6 +4641,7 @@ body.gs-embed-mode .gs-embed-floating-hud {
 @media (max-width: 640px) {
   .gs-embed-floating-hud { top: 8px; left: 8px; right: 8px; max-width: calc(100% - 16px); padding: 5px 8px; gap: 4px 6px; border-radius: 10px; }
   .gs-embed-hud-brand { gap: 6px; }
+  .gs-embed-hud-logo { height: 22px; width: auto; }
   .gs-embed-hud-title { max-width: 150px; font-size: 11.5px; }
   #gsEmbedScanSelect { max-width: 115px !important; font-size: 10.5px !important; height: 22px !important; padding: 0 4px !important; }
   .gs-embed-hud-actions { gap: 4px; }
@@ -4649,7 +4651,7 @@ body.gs-embed-mode .gs-embed-floating-hud {
 }
 @media (max-width: 440px) {
   .gs-embed-floating-hud { top: 6px; left: 6px; right: 6px; max-width: calc(100% - 12px); padding: 4px 6px; gap: 4px; }
-  .gs-embed-hud-logo { width: 17px; height: 17px; }
+  .gs-embed-hud-logo { height: 20px; width: auto; }
   .gs-embed-hud-title { font-size: 11px; max-width: 100%; }
   #gsEmbedScanSelect { max-width: 96px !important; }
   .gs-embed-hud-actions { gap: 3px; justify-content: flex-end; }
