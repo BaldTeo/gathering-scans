@@ -44,6 +44,7 @@ except ImportError:
 
 from pc_worker.config import (
     BASE_DIR,
+    DATA_DIR,
     LOCAL_SCANS_ROOT as SCANS_ROOT_DIR,
     GC_SCAN_OPTIMIZER_DIR,
     REPORTS_DIR,
