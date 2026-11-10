@@ -120,6 +120,7 @@
       </svg>
       <span>${tr("已複製！", "Copied!")}</span>
     `;
+    window.GatherenLoader?.burstClouds?.({ includeTrophy: false, anchorEl: btnEl });
     if (btnEl._copyTimer) clearTimeout(btnEl._copyTimer);
     btnEl._copyTimer = setTimeout(() => {
       btnEl.classList.remove("is-copied");

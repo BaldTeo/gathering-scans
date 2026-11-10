@@ -353,6 +353,7 @@
           STATE.activeScan.measurement_bookmarks = res.bookmarks;
         }
         showToast(tr(`已儲存測量視角書籤：「${title}」`, `Saved Survey View: "${title}"`));
+        window.GatherenLoader?.burstClouds?.({ includeTrophy: false, anchorEl: "#btnSaveMeasurementBookmark" });
         openSavedMeasurementsInspector();
       } catch (err) {
         showToast(`Bookmark Save Error: ${err.message}`);
@@ -2464,6 +2465,11 @@
       STATE.lastGcpQaResult = res;
       renderGcpQaMarkers3D(res.points || []);
       openGcpAccuracyQaInspector(res);
+      if (res && res.qa_grade === "A") {
+        window.GatherenLoader?.celebrateTaskCompletion?.({ text: tr("精度檢核 Grade A", "Accuracy QA: Grade A"), anchorEl: "#btnComputeGcpQa" });
+      } else {
+        window.GatherenLoader?.pulseResultReady?.("#sidePanelContent", { anchorEl: "#btnComputeGcpQa" });
+      }
     } catch (err) {
       showToast(`GCP QA Error: ${err.message}`);
     }

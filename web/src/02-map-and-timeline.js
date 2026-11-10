@@ -1654,6 +1654,7 @@
       if (barEl) {
         barEl.style.width = "100%";
       }
+      window.GatherenLoader?.pulseResultReady?.(pillEl, { burst: false });
       if (ctx._detailPillHideTimer) clearTimeout(ctx._detailPillHideTimer);
       ctx._detailPillHideTimer = setTimeout(() => {
         pillEl.classList.remove("active", "done");

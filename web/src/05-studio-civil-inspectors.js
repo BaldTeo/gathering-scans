@@ -1116,6 +1116,7 @@
           </a>
         </div>
       `;
+      window.GatherenLoader?.pulseResultReady?.(box, { anchorEl: "#btnComputeCutFill" });
     }
 
     const ptsToRender =
@@ -1556,6 +1557,7 @@
       `;
       const previewCanvas = document.getElementById("a3SheetPreviewCanvas");
       if (previewCanvas) drawA3PreviewCanvas(previewCanvas, res);
+      window.GatherenLoader?.pulseResultReady?.(box, { anchorEl: "#btnGenerateContours" });
     }
 
     if (!studioThree) return;
@@ -2503,6 +2505,7 @@
         renderCategorize3DOverlays(res);
         syncCategorizeVisibilityUI();
         renderCategorizePanelContent(res);
+        window.GatherenLoader?.pulseResultReady?.("#catResultContainer", { anchorEl: "#btnRunCategorize" });
         const s = res.summary || {};
         showToast(
           tr(
@@ -4239,6 +4242,7 @@
           bannerNameInp.value = customGuestName;
         }
         showToast(tr("已新增 3D 空間標註", "Posted 3D geo-referenced comment"));
+        window.GatherenLoader?.burstClouds?.({ includeTrophy: false, anchorEl: "#btnSubmitComment" });
         await refreshScansCatalog();
         openCommentsInspector(pt, twd);
       } catch (err) {

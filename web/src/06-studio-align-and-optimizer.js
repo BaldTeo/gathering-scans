@@ -750,6 +750,7 @@
       document.getElementById("btnOpenBinAfterSaveEdit")?.addEventListener("click", () => {
         openRecycleBinModal();
       });
+      window.GatherenLoader?.pulseResultReady?.("#sidePanelContent", { anchorEl: "#btnGenerateStagedScan" });
       showToast(`Saved "${res.scan?.name || newScanName}" — original backup sent to Trash Bin!`);
     } catch (err) {
       if (resBox) {
@@ -3921,6 +3922,7 @@
           document.getElementById("btnMergeResultOpenBin")?.addEventListener("click", () => {
             openRecycleBinModal();
           });
+          window.GatherenLoader?.pulseResultReady?.(finalBox, { anchorEl: "#btnExecuteMergeScans" });
         }
         showToast(
           `Merged ${res.merged_count} scans into "${mergedName}"${

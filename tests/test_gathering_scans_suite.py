@@ -4798,13 +4798,15 @@ vm.runInContext(fs.readFileSync('./web/src/12-public-utilities-gis.js', 'utf8'),
         self.assertIn("if (m && m.userData && m.userData.isGaussianSplatMesh) return;", js06)
 
     def test_60_gatheren_loading_animation_and_portfolio_switcher(self):
-        """Verify GatherenLoader startup/Studio loading animation and Portfolio Switcher buttons (BIM, Scans, Files)."""
+        """Verify GatherenLoader startup/Studio loading animation, Portfolio Switcher, and subtle result-ready animations."""
         loader_path = os.path.join(BASE_DIR, "web", "src", "gatheren-loading-animation.js")
         self.assertTrue(os.path.isfile(loader_path))
         with open(loader_path, "r", encoding="utf-8") as f:
             loader_js = f.read()
         self.assertIn("root.GatherenLoader = GatherenLoader;", loader_js)
-        self.assertIn("root.GatherenLoadingAnimation = GatherenLoader;", loader_js)
+        self.assertIn("pulseResultReady: function", loader_js)
+        self.assertIn("glideStudioCamera: function", loader_js)
+        self.assertIn(".gs-result-ready-pulse", loader_js)
 
         with open(os.path.join(BASE_DIR, "web", "index.html"), "r", encoding="utf-8") as f:
             html = f.read()
@@ -4814,6 +4816,14 @@ vm.runInContext(fs.readFileSync('./web/src/12-public-utilities-gis.js', 'utf8'),
             app_css = f.read()
         with open(os.path.join(BASE_DIR, "web", "src", "02-map-and-timeline.js"), "r", encoding="utf-8") as f:
             js02 = f.read()
+        with open(os.path.join(BASE_DIR, "web", "src", "03-studio-core.js"), "r", encoding="utf-8") as f:
+            js03 = f.read()
+        with open(os.path.join(BASE_DIR, "web", "src", "05-studio-civil-inspectors.js"), "r", encoding="utf-8") as f:
+            js05 = f.read()
+        with open(os.path.join(BASE_DIR, "web", "src", "06-studio-align-and-optimizer.js"), "r", encoding="utf-8") as f:
+            js06 = f.read()
+        with open(os.path.join(BASE_DIR, "web", "src", "08-advanced-surveying-and-qa.js"), "r", encoding="utf-8") as f:
+            js08 = f.read()
         with open(os.path.join(BASE_DIR, "web", "app.js"), "r", encoding="utf-8") as f:
             app_js = f.read()
 
@@ -4826,6 +4836,14 @@ vm.runInContext(fs.readFileSync('./web/src/12-public-utilities-gis.js', 'utf8'),
         self.assertIn(".portfolio-switcher", app_css)
         self.assertIn("window.GatherenLoader.start", js02)
         self.assertIn("window.GatherenLoader.complete", js02)
+        self.assertIn("window.GatherenLoader?.glideStudioCamera", js03)
+        self.assertIn("window.GatherenLoader?.pulseResultReady", js05)
+        self.assertNotIn("celebrateTaskCompletion", js05)
+        self.assertIn("window.GatherenLoader?.pulseResultReady", js06)
+        self.assertNotIn("celebrateTaskCompletion", js06)
+        self.assertIn('res.qa_grade === "A"', js08)
+        self.assertIn("window.GatherenLoader?.celebrateTaskCompletion", js08)
+        self.assertIn("window.GatherenLoader?.pulseResultReady", js08)
         self.assertIn("window.GatherenLoader.start", app_js)
 
 

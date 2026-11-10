@@ -2017,6 +2017,7 @@
       studioThree.camera.lookAt(studioThree.controls.target);
       studioThree.controls.update();
       studioThree.camera.updateMatrixWorld(true);
+      window.GatherenLoader?.glideStudioCamera?.(studioThree);
       return;
     }
     let rawR = Number(studioThree?.boundingSphere?.radius) || 58;
@@ -2064,6 +2065,7 @@
     if (STATE.multiAlign?.active && typeof updateMultiAlignLayersEachFrame === "function") {
       updateMultiAlignLayersEachFrame();
     }
+    window.GatherenLoader?.glideStudioCamera?.(studioThree);
   }
 
   async function saveCurrentScanHomeView(source = "studio") {
@@ -2174,6 +2176,7 @@
         renderModelLibraryView();
       }
       showToast(tr("✓ 已將目前視角設為首頁視角並更新預覽圖片", "✓ Saved current camera as Home View and updated preview picture"));
+      window.GatherenLoader?.burstClouds?.({ includeTrophy: false, anchorEl: source === "preview" ? "#btnPreviewSetHomeView" : "#btnStudioSetHomeView" });
     } catch (err) {
       showToast(tr(`設定首頁視角失敗：${err?.message || err}`, `Failed to set Home View: ${err?.message || err}`));
     }

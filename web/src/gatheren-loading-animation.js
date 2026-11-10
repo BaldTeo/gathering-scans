@@ -233,7 +233,45 @@
       "  color: #0f172a;",
       "  text-shadow: 0 1px 0 rgba(255, 255, 255, 0.9), 0 2px 8px rgba(14, 165, 233, 0.22);",
       "  white-space: nowrap;",
-      "}"
+      "}",
+      "#studioDetailStreamBar, #previewDetailStreamBar, #volProgressBar, #catProgressBar, #contoursProgressBar, #studioVolProgressHudFill {",
+      "  transition: width 0.28s cubic-bezier(0.22, 1, 0.36, 1) !important;",
+      "}",
+      "@keyframes gsResultReadyPulse {",
+      "  0% { transform: translate3d(0, 3px, 0) scale(0.992); box-shadow: 0 0 0 0 rgba(56, 189, 248, 0), 0 0 0 0 rgba(16, 185, 129, 0); }",
+      "  38% { transform: translate3d(0, 0, 0) scale(1.004); box-shadow: 0 0 0 1.5px rgba(56, 189, 248, 0.58), 0 10px 26px -6px rgba(16, 185, 129, 0.28); }",
+      "  100% { transform: translate3d(0, 0, 0) scale(1); box-shadow: 0 0 0 0 rgba(56, 189, 248, 0), 0 0 0 0 rgba(16, 185, 129, 0); }",
+      "}",
+      "@keyframes gsResultReadySheen {",
+      "  0% { transform: translateX(-115%) skewX(-18deg); opacity: 0; }",
+      "  28% { opacity: 0.72; }",
+      "  100% { transform: translateX(125%) skewX(-18deg); opacity: 0; }",
+      "}",
+      ".gs-result-ready-pulse {",
+      "  position: relative;",
+      "  overflow: hidden;",
+      "  border-radius: 8px;",
+      "  animation: gsResultReadyPulse 0.68s cubic-bezier(0.22, 1, 0.36, 1) both;",
+      "}",
+      ".gs-result-ready-pulse::after {",
+      "  content: '';",
+      "  position: absolute;",
+      "  inset: 0;",
+      "  border-radius: inherit;",
+      "  pointer-events: none;",
+      "  background: linear-gradient(90deg, rgba(56, 189, 248, 0) 0%, rgba(56, 189, 248, 0.16) 44%, rgba(16, 185, 129, 0.22) 56%, rgba(56, 189, 248, 0) 100%);",
+      "  animation: gsResultReadySheen 0.68s cubic-bezier(0.22, 1, 0.36, 1) both;",
+      "}",
+      "@keyframes gsCardSlideFadeIn {",
+      "  0% { opacity: 0; transform: translate3d(0, 5px, 0); }",
+      "  100% { opacity: 1; transform: translate3d(0, 0, 0); }",
+      "}",
+      ".timeline-scan-card, .gs-lib-card, .gs-bookmark-card, #sidePanelContent > .gs-metric-grid, #sidePanelContent .gs-metric-box {",
+      "  animation: gsCardSlideFadeIn 0.2s cubic-bezier(0.16, 1, 0.3, 1) both;",
+      "}",
+      ".timeline-scan-card:nth-child(2), .gs-lib-card:nth-child(2), .gs-metric-box:nth-child(2) { animation-delay: 0.025s; }",
+      ".timeline-scan-card:nth-child(3), .gs-lib-card:nth-child(3), .gs-metric-box:nth-child(3) { animation-delay: 0.05s; }",
+      ".timeline-scan-card:nth-child(4), .gs-lib-card:nth-child(4), .gs-metric-box:nth-child(4) { animation-delay: 0.075s; }"
     ].join("\n");
     document.head.appendChild(style);
   }
@@ -1280,6 +1318,161 @@
           throw err;
         }
       );
+    },
+
+    /**
+     * Subtle, trophy-free result-ready animation: applies a specular cyan-emerald
+     * glow sweep + gentle spring settle on the target container and optionally
+     * emits a subtle cloud puff (strictly NO trophies and NO fanfare sound).
+     * @param {Element|string} [targetElOrSelector]
+     * @param {Object} [options]
+     * @returns {Promise<void>}
+     */
+    pulseResultReady: function (targetElOrSelector, options) {
+      injectScopedStyles();
+      var opts = options || {};
+      var targetEl = null;
+      if (typeof targetElOrSelector === "string" && targetElOrSelector) {
+        try {
+          targetEl = document.querySelector(targetElOrSelector);
+        } catch (_e) {}
+      } else if (targetElOrSelector && typeof targetElOrSelector.getBoundingClientRect === "function") {
+        targetEl = targetElOrSelector;
+      }
+      if (targetEl && targetEl.classList) {
+        if (targetEl._gsPulseCleanupTimer) {
+          clearTimeout(targetEl._gsPulseCleanupTimer);
+        }
+        targetEl.classList.remove("gs-result-ready-pulse");
+        void targetEl.offsetWidth;
+        targetEl.classList.add("gs-result-ready-pulse");
+        targetEl._gsPulseCleanupTimer = setTimeout(function () {
+          targetEl.classList.remove("gs-result-ready-pulse");
+          targetEl._gsPulseCleanupTimer = null;
+        }, 720);
+      }
+      if (opts.burst === false) {
+        return Promise.resolve();
+      }
+      return GatherenLoader.burstClouds({
+        includeTrophy: false,
+        anchorEl: opts.anchorEl || targetEl || undefined,
+        count: typeof opts.count === "number" ? opts.count : 6,
+        radius: typeof opts.radius === "number" ? opts.radius : 68,
+        durationMs: typeof opts.durationMs === "number" ? opts.durationMs : 560
+      });
+    },
+
+    /**
+     * Smooth 3D Studio camera entry / reset glide (520ms cubic ease-out).
+     * Assumes studioThree.camera.position and studioThree.controls.target have just
+     * been set to their target framed coordinates. On automated webdriver (unless
+     * forced), keeps exact final coordinates synchronously for deterministic tests.
+     * @param {Object} studioThree
+     * @param {Object} [options]
+     * @returns {Promise<void>}
+     */
+    glideStudioCamera: function (studioThree, options) {
+      var opts = options || {};
+      if (!studioThree || !studioThree.camera || !studioThree.controls || !studioThree.controls.target) {
+        return Promise.resolve();
+      }
+      var isAutomatedWebdriver = Boolean(
+        navigator && navigator.webdriver && !root.__GATHEREN_TEST_LOADER_ANIMATION && !opts.forceGlide
+      );
+      if (isAutomatedWebdriver) {
+        return Promise.resolve();
+      }
+      if (typeof studioThree._gsCamGlideCancel === "function") {
+        studioThree._gsCamGlideCancel();
+      }
+      var cam = studioThree.camera;
+      var ctrl = studioThree.controls;
+      var endX = Number(cam.position.x) || 0;
+      var endY = Number(cam.position.y) || 0;
+      var endZ = Number(cam.position.z) || 0;
+      var tgtX = Number(ctrl.target.x) || 0;
+      var tgtY = Number(ctrl.target.y) || 0;
+      var tgtZ = Number(ctrl.target.z) || 0;
+      var dx = endX - tgtX;
+      var dy = endY - tgtY;
+      var dz = endZ - tgtZ;
+      var dist = Math.hypot(dx, dy, dz) || 12;
+      var startX = tgtX + dx * 1.16;
+      var startY = tgtY + dy * 1.16 + dist * 0.08;
+      var startZ = tgtZ + dz * 1.16;
+      var startTgtY = tgtY - dist * 0.025;
+      var durationMs = typeof opts.durationMs === "number" ? Math.max(80, opts.durationMs) : 520;
+      var startMs = performance.now();
+
+      return new Promise(function (resolve) {
+        var rafId = null;
+        var cancelled = false;
+        var domEl = studioThree.renderer && studioThree.renderer.domElement;
+
+        function finishGlide(snapToEnd) {
+          if (cancelled) return;
+          cancelled = true;
+          if (rafId) window.cancelAnimationFrame(rafId);
+          if (domEl) {
+            domEl.removeEventListener("pointerdown", onUserInteract);
+            domEl.removeEventListener("wheel", onUserInteract);
+            domEl.removeEventListener("touchstart", onUserInteract);
+          }
+          studioThree._gsCamGlideCancel = null;
+          if (snapToEnd) {
+            ctrl.target.set(tgtX, tgtY, tgtZ);
+            cam.position.set(endX, endY, endZ);
+            cam.lookAt(tgtX, tgtY, tgtZ);
+            ctrl.update();
+            cam.updateMatrixWorld(true);
+            if (studioThree.renderer && studioThree.scene) {
+              studioThree.renderer.render(studioThree.scene, cam);
+            }
+          }
+          resolve();
+        }
+
+        function onUserInteract() {
+          finishGlide(false);
+        }
+
+        if (domEl) {
+          domEl.addEventListener("pointerdown", onUserInteract, { passive: true });
+          domEl.addEventListener("wheel", onUserInteract, { passive: true });
+          domEl.addEventListener("touchstart", onUserInteract, { passive: true });
+        }
+        studioThree._gsCamGlideCancel = function () {
+          finishGlide(true);
+        };
+
+        function stepGlide() {
+          if (cancelled) return;
+          var elapsed = performance.now() - startMs;
+          var t = Math.max(0, Math.min(1, elapsed / durationMs));
+          var ease = 1 - Math.pow(1 - t, 3);
+          var curTgtY = startTgtY + (tgtY - startTgtY) * ease;
+          ctrl.target.set(tgtX, curTgtY, tgtZ);
+          cam.position.set(
+            startX + (endX - startX) * ease,
+            startY + (endY - startY) * ease,
+            startZ + (endZ - startZ) * ease
+          );
+          cam.lookAt(tgtX, curTgtY, tgtZ);
+          ctrl.update();
+          cam.updateMatrixWorld(true);
+          if (studioThree.renderer && studioThree.scene) {
+            studioThree.renderer.render(studioThree.scene, cam);
+          }
+          if (t >= 1) {
+            finishGlide(true);
+            return;
+          }
+          rafId = window.requestAnimationFrame(stepGlide);
+        }
+
+        stepGlide();
+      });
     },
 
     /**

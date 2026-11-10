@@ -3299,6 +3299,7 @@
       renderModelLibraryView();
       populateProjectScanDropdowns(STATE.activeProjectGroup, STATE.activeScanId);
       if (typeof renderMapClusters === "function") renderMapClusters();
+      window.GatherenLoader?.burstClouds?.({ includeTrophy: false, anchorEl: btn || "#btnConfirmLibraryFolder" });
       if (typeof showToast === "function") {
         const disp = formatGroupDisplayName(norm.en, norm.zh);
         showToast(
