@@ -1581,6 +1581,10 @@
         clearTimeout(ctx._detailPillHideTimer);
         ctx._detailPillHideTimer = null;
       }
+      if (ctx._gatherenStudioCapTimer) {
+        clearTimeout(ctx._gatherenStudioCapTimer);
+        ctx._gatherenStudioCapTimer = null;
+      }
       ctx._wasRefiningDetails = false;
       ctx._loadingDone = false;
       ctx._tilesetReady = false;
@@ -1592,6 +1596,18 @@
     const detailPill = document.getElementById(`${prefix}DetailStreamPill`);
     if (detailPill) detailPill.classList.remove("active", "done");
     updateScanLoader(prefix, true, 6, tr(`正在載入 ${scanName || "3D 掃描"}...`, `Loading ${scanName || "3D Scan"}...`));
+    if (prefix === "studio" && !STATE.isEmbedded && window.GatherenLoader) {
+      window.GatherenLoader.start({
+        targetSelector: ".top-navbar .brand-cluster",
+        minLoopDurationMs: 360,
+      });
+      if (ctx) {
+        ctx._gatherenStudioCapTimer = setTimeout(() => {
+          ctx._gatherenStudioCapTimer = null;
+          if (window.GatherenLoader) window.GatherenLoader.complete();
+        }, 880);
+      }
+    }
   }
 
   function syncBackgroundDetailStreamingPill(ctx, prefix) {
@@ -1648,6 +1664,13 @@
   function finishScanLoader(ctx, prefix, labelText = tr("掃描已就緒", "Scan Ready")) {
     const loadElapsedMs = ctx && ctx._loadingStartMs ? performance.now() - ctx._loadingStartMs : 0;
     SHARE_TELEMETRY.recordLoadProgress(100, true, loadElapsedMs);
+    if (ctx && ctx._gatherenStudioCapTimer) {
+      clearTimeout(ctx._gatherenStudioCapTimer);
+      ctx._gatherenStudioCapTimer = null;
+    }
+    if (prefix === "studio" && window.GatherenLoader) {
+      window.GatherenLoader.complete();
+    }
     if (ctx) {
       ctx._loadingDone = true;
       ctx._maxPct = 100;

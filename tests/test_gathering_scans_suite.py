@@ -4797,6 +4797,37 @@ vm.runInContext(fs.readFileSync('./web/src/12-public-utilities-gis.js', 'utf8'),
         self.assertIn("window.applyPlaneToStudioGaussianSplats = applyPlaneToStudioGaussianSplats;", js01)
         self.assertIn("if (m && m.userData && m.userData.isGaussianSplatMesh) return;", js06)
 
+    def test_60_gatheren_loading_animation_and_portfolio_switcher(self):
+        """Verify GatherenLoader startup/Studio loading animation and Portfolio Switcher buttons (BIM, Scans, Files)."""
+        loader_path = os.path.join(BASE_DIR, "web", "src", "gatheren-loading-animation.js")
+        self.assertTrue(os.path.isfile(loader_path))
+        with open(loader_path, "r", encoding="utf-8") as f:
+            loader_js = f.read()
+        self.assertIn("root.GatherenLoader = GatherenLoader;", loader_js)
+        self.assertIn("root.GatherenLoadingAnimation = GatherenLoader;", loader_js)
+
+        with open(os.path.join(BASE_DIR, "web", "index.html"), "r", encoding="utf-8") as f:
+            html = f.read()
+        with open(os.path.join(BASE_DIR, "web", "sw.js"), "r", encoding="utf-8") as f:
+            sw_js = f.read()
+        with open(os.path.join(BASE_DIR, "web", "app.css"), "r", encoding="utf-8") as f:
+            app_css = f.read()
+        with open(os.path.join(BASE_DIR, "web", "src", "02-map-and-timeline.js"), "r", encoding="utf-8") as f:
+            js02 = f.read()
+        with open(os.path.join(BASE_DIR, "web", "app.js"), "r", encoding="utf-8") as f:
+            app_js = f.read()
+
+        self.assertIn('id="gatherenLoadingOverlay"', html)
+        self.assertIn("/src/gatheren-loading-animation.js", html)
+        self.assertIn("/src/gatheren-loading-animation.js", sw_js)
+        self.assertIn('class="portfolio-switcher"', html)
+        self.assertIn('href="https://gatheren.cloud"', html)
+        self.assertIn('href="https://files.gatheren.cloud"', html)
+        self.assertIn(".portfolio-switcher", app_css)
+        self.assertIn("window.GatherenLoader.start", js02)
+        self.assertIn("window.GatherenLoader.complete", js02)
+        self.assertIn("window.GatherenLoader.start", app_js)
+
 
 if __name__ == "__main__":
     unittest.main()

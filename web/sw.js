@@ -5,7 +5,7 @@
  * Strictly zero scan cache is ever stored on the Linux VPS.
  */
 
-const CACHE_NAME = "gathering-scans-offline-v314";
+const CACHE_NAME = "gathering-scans-offline-v315";
 const SCAN_TILES_CACHE = "gathering-scans-tiles-v4";
 const APP_SHELL = [
   "/",
@@ -13,6 +13,7 @@ const APP_SHELL = [
   "/app.css",
   "/survey-bim.css",
   "/i18n.js",
+  "/src/gatheren-loading-animation.js",
   "/src/01-core-state.js",
   "/src/02-map-and-timeline.js",
   "/src/03-studio-core.js",
@@ -33,6 +34,9 @@ const APP_SHELL = [
   "/lib/3d-tiles-renderer.bundle.js",
   "/lib/basis/basis_transcoder.js",
   "/lib/basis/basis_transcoder.wasm",
+  "/assets/logo_dark.png",
+  "/assets/logo_transparent.png",
+  "/assets/logo_icon.png",
   "/assets/gathering_cloud_logo.png",
   "/assets/gathering_cloud_logo_dark.png",
   "/assets/gathering_construction_logo_dark.png",

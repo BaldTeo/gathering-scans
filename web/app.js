@@ -2050,6 +2050,13 @@
       showToast(`Signed in with Google OAuth as ${verifiedUser.name} (${verifiedUser.email})`);
       setTimeout(() => {
         closeModal("userProfileGateModal");
+        if (!STATE.isEmbedded && window.GatherenLoader) {
+          window.GatherenLoader.start({
+            targetSelector: ".top-navbar .brand-cluster",
+            minLoopDurationMs: 380,
+          });
+          window.requestAnimationFrame(() => window.GatherenLoader.complete());
+        }
       }, 550);
     } catch (err) {
       const errMsg = err?.message || "Unable to verify Google Sign-In token";
@@ -2158,6 +2165,13 @@
       return;
     }
     closeModal("userProfileGateModal");
+    if (!STATE.isEmbedded && window.GatherenLoader) {
+      window.GatherenLoader.start({
+        targetSelector: ".top-navbar .brand-cluster",
+        minLoopDurationMs: 380,
+      });
+      window.requestAnimationFrame(() => window.GatherenLoader.complete());
+    }
     if (STATE.currentUser) {
       showToast(`Active user: ${STATE.currentUser.name} (${STATE.currentUser.email})`);
     }
@@ -2176,9 +2190,17 @@
       true
     );
     closeModal("userProfileGateModal");
+    if (!STATE.isEmbedded && window.GatherenLoader) {
+      window.GatherenLoader.start({
+        targetSelector: ".top-navbar .brand-cluster",
+        minLoopDurationMs: 380,
+      });
+      window.requestAnimationFrame(() => window.GatherenLoader.complete());
+    }
     showToast("Entered in Guest Mode");
   });
   document.getElementById("btnUserLogout")?.addEventListener("click", () => {
+    if (window.GatherenLoader) window.GatherenLoader.hideImmediate();
     try {
       localStorage.removeItem("gs_auth_verified_v1");
       localStorage.removeItem("gathering_user_profile");
@@ -2305,6 +2327,11 @@
   function switchView(viewName, optionalScanId = null) {
     const requestedLibrary = viewName === "library";
     const resolvedView = requestedLibrary ? "map" : viewName;
+    if (resolvedView !== "studio" && studioThree && studioThree._gatherenStudioCapTimer) {
+      clearTimeout(studioThree._gatherenStudioCapTimer);
+      studioThree._gatherenStudioCapTimer = null;
+      if (window.GatherenLoader) window.GatherenLoader.complete();
+    }
     if (resolvedView !== "studio" && STATE.fpMode?.active && typeof exitFirstPersonMode === "function") {
       exitFirstPersonMode(true);
     }
@@ -3119,6 +3146,12 @@
       document.body.classList.add("gs-auth-locked");
       openUserProfileGateModal();
     } else if (!STATE.isEmbedded) {
+      if (window.GatherenLoader) {
+        window.GatherenLoader.start({
+          targetSelector: ".top-navbar .brand-cluster",
+          minLoopDurationMs: 420,
+        });
+      }
       loadTeamUserProfiles();
       if (
         STATE.shareToken &&
@@ -3177,6 +3210,8 @@
         (STATE.shareToken && String(STATE.shareLinkInfo?.scope_type || "").toLowerCase() === "scan")
       ) {
         switchView("studio", STATE.activeScanId);
+      } else if (window.GatherenLoader) {
+        window.requestAnimationFrame(() => window.GatherenLoader.complete());
       }
       // Refresh catalog non-blockingly in the background
       setTimeout(() => refreshScansCatalog(true), 1200);
@@ -3196,6 +3231,8 @@
         STATE.activeScanId
       ) {
         switchView("studio", STATE.activeScanId);
+      } else if (window.GatherenLoader) {
+        window.requestAnimationFrame(() => window.GatherenLoader.complete());
       }
     }
     window.addEventListener("focus", () => {

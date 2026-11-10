@@ -18,23 +18,43 @@
   <meta name="twitter:image" content="https://scans.gatheren.cloud/assets/gathering_cloud_logo.png" />
   <!-- GS_SHARE_OG_END -->
   <link rel="icon" type="image/png" href="/assets/gathering_cloud_logo.png" />
-  <link rel="stylesheet" href="/app.css?v=20261110_v314" />
-  <link rel="stylesheet" href="/survey-bim.css?v=20261110_v314" />
+  <link rel="stylesheet" href="/app.css?v=20261110_v315" />
+  <link rel="stylesheet" href="/survey-bim.css?v=20261110_v315" />
   <script src="https://accounts.google.com/gsi/client" async defer></script>
 
 </head>
 <body>
 
+  <!-- Standalone Two-Phase Loading Animation Overlay (Clouds Drift -> Converge -> Fly to Top-Left Header) -->
+  <div id="gatherenLoadingOverlay" class="gatheren-loading-overlay hidden" aria-hidden="true"></div>
+
   <!-- Top Engineering Navigation Header -->
-  <header class="gs-topbar">
+  <header class="gs-topbar top-navbar">
     <div class="gs-brand">
-      <img src="/assets/gathering_cloud_logo_dark.png" alt="聚Gathering 雲Cloud" class="gs-brand-logo-img gs-logo-dark" />
-      <img src="/assets/gathering_cloud_logo.png" alt="聚Gathering 雲Cloud" class="gs-brand-logo-img gs-logo-light" />
+      <a href="/" class="brand-cluster" aria-label="Gathering Cloud 聚人雲端">
+        <img src="/assets/logo_dark.png" alt="聚Gathering 雲Cloud" class="gs-brand-logo-img brand-logo-img gs-logo-dark brand-logo-dark" />
+        <img src="/assets/logo_transparent.png" alt="聚Gathering 雲Cloud" class="gs-brand-logo-img brand-logo-img gs-logo-light brand-logo-light" />
+      </a>
       <div class="gs-brand-title" style="display:none;">
         <span class="gs-crs-pill" id="topCrsBadge" title="由 雲在天 博士與 Gemini 4 Argon 共同開發" data-i18n-zh="由 雲在天 博士與 Gemini 4 Argon 開發" data-i18n-en="Created by Glib Ivanov, PhD and Gemini 4 Argon" data-i18n-title-zh="由 雲在天 博士與 Gemini 4 Argon 共同開發" data-i18n-title-en="Created by Glib Ivanov, PhD and Gemini 4 Argon">
           由 雲在天 博士與 Gemini 4 Argon 開發
         </span>
       </div>
+      <!-- Gatheren Cloud Portfolio Switcher (1-word labels + Monochrome SVGs) -->
+      <nav class="portfolio-switcher" aria-label="Gatheren Cloud Portfolio">
+        <a href="https://gatheren.cloud" target="_blank" rel="noopener" class="portfolio-link" title="gatheren.cloud — 3D/4D BIM &amp; Scheduling">
+          <svg class="gc-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>
+          <span>BIM</span>
+        </a>
+        <a href="/" class="portfolio-link active" title="scans.gatheren.cloud — 3D Point Cloud &amp; Scans">
+          <svg class="gc-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 7V5a2 2 0 0 1 2-2h2"/><path d="M17 3h2a2 2 0 0 1 2 2v2"/><path d="M21 17v2a2 2 0 0 1-2 2h-2"/><path d="M7 21H5a2 2 0 0 1-2-2v-2"/><line x1="7" y1="12" x2="17" y2="12"/></svg>
+          <span>Scans</span>
+        </a>
+        <a href="https://files.gatheren.cloud" target="_blank" rel="noopener" class="portfolio-link" title="files.gatheren.cloud — AI File Router &amp; Version Control">
+          <svg class="gc-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+          <span>Files</span>
+        </a>
+      </nav>
     </div>
 
     <!-- Center Mode Switcher (Clean Segmented Pill — 1 Word per Button) -->
@@ -2590,24 +2610,25 @@
   <!-- Three.js + 3D Tileset / KTX2 / Meshopt Libraries -->
   <script src="/lib/three.min.js"></script>
   <script src="/lib/OrbitControls.js?v=20261029_v48"></script>
-  <script src="/lib/GLTFLoader.js?v=20261110_v314"></script>
+  <script src="/lib/GLTFLoader.js?v=20261110_v315"></script>
   <script src="/lib/KTX2Loader.js"></script>
   <script src="/lib/meshopt_decoder.js"></script>
-  <script src="/lib/3d-tiles-renderer.bundle.js?v=20261110_v314"></script>
+  <script src="/lib/3d-tiles-renderer.bundle.js?v=20261110_v315"></script>
 
   <!-- Main GatheringScans Bilingual Translation & Modular Application Logic (< 5,000 lines per module) -->
-  <script src="/i18n.js?v=20261110_v314"></script>
-  <script src="/src/01-core-state.js?v=20261110_v314"></script>
-  <script src="/src/02-map-and-timeline.js?v=20261110_v314"></script>
-  <script src="/src/03-studio-core.js?v=20261110_v314"></script>
-  <script src="/src/04-studio-lasso-and-edits.js?v=20261110_v314"></script>
-  <script src="/src/05-studio-civil-inspectors.js?v=20261110_v314"></script>
-  <script src="/src/06-studio-align-and-optimizer.js?v=20261110_v314"></script>
-  <script src="/src/07-compare-and-queue.js?v=20261110_v314"></script>
-  <script src="/src/08-advanced-surveying-and-qa.js?v=20261110_v314"></script>
-  <script src="/src/09-construction-survey-and-bim.js?v=20261110_v314"></script>
-  <script src="/src/10-construction-qa-and-stakeout.js?v=20261110_v314"></script>
-  <script src="/src/12-public-utilities-gis.js?v=20261110_v314"></script>
-  <script src="/app.js?v=20261110_v314"></script>
+  <script src="/i18n.js?v=20261110_v315"></script>
+  <script src="/src/gatheren-loading-animation.js?v=20261110_v315"></script>
+  <script src="/src/01-core-state.js?v=20261110_v315"></script>
+  <script src="/src/02-map-and-timeline.js?v=20261110_v315"></script>
+  <script src="/src/03-studio-core.js?v=20261110_v315"></script>
+  <script src="/src/04-studio-lasso-and-edits.js?v=20261110_v315"></script>
+  <script src="/src/05-studio-civil-inspectors.js?v=20261110_v315"></script>
+  <script src="/src/06-studio-align-and-optimizer.js?v=20261110_v315"></script>
+  <script src="/src/07-compare-and-queue.js?v=20261110_v315"></script>
+  <script src="/src/08-advanced-surveying-and-qa.js?v=20261110_v315"></script>
+  <script src="/src/09-construction-survey-and-bim.js?v=20261110_v315"></script>
+  <script src="/src/10-construction-qa-and-stakeout.js?v=20261110_v315"></script>
+  <script src="/src/12-public-utilities-gis.js?v=20261110_v315"></script>
+  <script src="/app.js?v=20261110_v315"></script>
 </body>
 </html>

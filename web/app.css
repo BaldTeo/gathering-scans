@@ -93,21 +93,103 @@ body { display: flex; flex-direction: column; }
   user-select: none;
 }
 
-.gs-brand { display: flex; align-items: center; gap: 10px; }
+.gs-brand { display: flex; align-items: center; gap: 12px; }
 
-.gs-brand-logo-img {
-  height: 30px;
+.brand-cluster {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  text-decoration: none;
+}
+
+.gs-brand-logo-img,
+.brand-logo-img {
+  height: 28px;
   width: auto;
+  max-width: 160px;
   object-fit: contain;
   display: block;
   flex-shrink: 0;
+  transition: opacity 0.2s ease;
 }
 
-.gs-logo-light { display: none; }
+.gs-logo-light,
+.brand-logo-light { display: none; }
 
-html[data-theme="light"] .gs-logo-dark { display: none; }
+html[data-theme="light"] .gs-logo-dark,
+html[data-theme="light"] .brand-logo-dark { display: none !important; }
 
-html[data-theme="light"] .gs-logo-light { display: block; }
+html[data-theme="light"] .gs-logo-light,
+html[data-theme="light"] .brand-logo-light { display: block !important; }
+
+.gc-icon {
+  display: inline-block;
+  vertical-align: middle;
+  flex-shrink: 0;
+}
+
+/* Portfolio Switcher (Portfolio-Unified with GatherenFiles & GatherenCloud) */
+.portfolio-switcher {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  background: #f8fafc;
+  padding: 3px;
+  border-radius: 8px;
+  border: 1px solid rgba(15, 23, 42, 0.07);
+}
+
+html[data-theme="dark"] .portfolio-switcher {
+  background: #152033;
+  border-color: rgba(148, 163, 184, 0.11);
+}
+
+.portfolio-link {
+  text-decoration: none;
+  color: #475569;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 4px 10px;
+  border-radius: 6px;
+  transition: all 0.14s ease;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  white-space: nowrap;
+}
+
+html[data-theme="dark"] .portfolio-link {
+  color: #94a3b8;
+}
+
+.portfolio-link:hover {
+  color: #0f172a;
+  background: #eff6ff;
+}
+
+html[data-theme="dark"] .portfolio-link:hover {
+  color: #f1f5f9;
+  background: #1b2942;
+}
+
+.portfolio-link.active {
+  background: #e2e8f0;
+  color: #0f172a;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+}
+
+html[data-theme="dark"] .portfolio-link.active {
+  background: #223250;
+  color: #f1f5f9;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
+}
+
+@media (max-width: 767px) {
+  .portfolio-switcher {
+    display: none !important;
+  }
+}
 
 .gs-brand-logo {
   width: 30px;
