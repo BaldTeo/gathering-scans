@@ -4165,20 +4165,20 @@ body.theme-light.gs-auth-locked #userProfileGateModal.oauth-login-gate {
 }
 #userProfileGateModal .oauth-login-card {
   position: relative;
-  max-width: 446px;
+  max-width: 440px;
   width: 100%;
   max-height: calc(100dvh - 32px);
   overflow-y: auto;
   background: #0f172a;
   border: 1px solid rgba(148, 163, 184, 0.26);
   border-radius: 16px;
-  padding: 28px 26px 22px;
+  padding: 28px 26px;
   box-shadow: 0 14px 34px rgba(0, 0, 0, 0.52);
   display: flex;
   flex-direction: column;
   align-items: center;
   text-align: center;
-  gap: 13px;
+  gap: 14px;
   animation: gsOauthCardEnter 0.22s cubic-bezier(0.16, 1, 0.3, 1);
 }
 html[data-theme="light"] #userProfileGateModal .oauth-login-card,
@@ -4220,7 +4220,7 @@ body.theme-light #userProfileGateModal .oauth-login-card {
   flex-wrap: wrap;
   margin-top: 6px;
 }
-.oauth-logo { height: 42px; width: auto; object-fit: contain; display: block; }
+.oauth-logo { height: 34px; max-width: 185px; width: auto; object-fit: contain; display: block; }
 .oauth-brand-row .brand-logo-light { display: none; }
 html[data-theme="light"] .oauth-brand-row .brand-logo-dark,
 body.theme-light .oauth-brand-row .brand-logo-dark { display: none; }
@@ -4243,15 +4243,15 @@ body.theme-light .oauth-domain-pill {
   border-color: rgba(2, 132, 199, 0.26);
 }
 .oauth-title {
-  margin: 2px 0 0;
-  font-size: 19px;
-  font-weight: 700;
+  margin: 0;
+  font-size: 18px;
+  font-weight: 800;
   color: var(--ui-text-primary);
-  letter-spacing: 0.01em;
+  letter-spacing: -0.015em;
 }
 .oauth-subtitle {
   margin: 0;
-  font-size: 13px;
+  font-size: 12.5px;
   line-height: 1.55;
   color: var(--ui-text-secondary);
   max-width: 390px;
@@ -4260,14 +4260,14 @@ body.theme-light .oauth-domain-pill {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 7px;
-  padding: 6px 12px;
-  border-radius: 999px;
+  gap: 6px;
+  padding: 5px 11px;
+  border-radius: 99px;
   background: rgba(16, 185, 129, 0.15);
   color: #10b981;
   border: 1px solid rgba(16, 185, 129, 0.30);
-  font-size: 11.5px;
-  font-weight: 600;
+  font-size: 11px;
+  font-weight: 700;
   max-width: 100%;
 }
 html[data-theme="light"] .oauth-security-badge,
@@ -4292,7 +4292,9 @@ body.theme-light .oauth-security-badge {
   align-items: center;
   justify-content: center;
   width: 100%;
+  color-scheme: light;
 }
+#googleSignInButtonContainer, #googleSignInButtonContainer iframe { color-scheme: light; border-radius: 999px; overflow: hidden; }
 .oauth-account-chooser-btn {
   appearance: none;
   display: inline-flex;

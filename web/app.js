@@ -2018,7 +2018,7 @@
       try {
         const desiredGisTheme =
           (document.documentElement.getAttribute("data-theme") || STATE.resolvedTheme) === "dark"
-            ? "filled_black"
+            ? "filled_blue"
             : "outline";
         window.google.accounts.id.initialize({
           client_id: GOOGLE_OAUTH_CLIENT_ID,
@@ -2035,10 +2035,10 @@
             type: "standard",
             theme: desiredGisTheme,
             size: "large",
-            text: "continue_with",
-            shape: "rectangular",
+            text: "signin_with",
+            shape: "pill",
             logo_alignment: "left",
-            width: Math.min(280, Math.max(220, (window.innerWidth || 360) - 96)),
+            width: Math.min(320, Math.max(220, (window.innerWidth || 360) - 72)),
           });
         }
       } catch (e) {
