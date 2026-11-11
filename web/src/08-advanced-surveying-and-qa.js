@@ -217,7 +217,7 @@
       } else if (m.type === "area" && Array.isArray(m.points)) {
         const pts = m.points.map(arrToVec).filter(Boolean);
         if (pts.length >= 3 && typeof renderClosedAreaPolygon === "function") {
-          renderClosedAreaPolygon(pts);
+          renderClosedAreaPolygon(pts, { preserveExistingAreas: true });
           STATE.completedMeasurements.push({
             id: m.id || `area_bmk_${idx}`,
             type: "area",

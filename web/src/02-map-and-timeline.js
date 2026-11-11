@@ -1272,6 +1272,9 @@
         studioStarBtn.innerHTML = _renderStarSvg(isStPrim, 13);
       }
     }
+    if (typeof window.syncCompactStudioDockUI === "function") {
+      window.syncCompactStudioDockUI();
+    }
   }
   window.syncPrimaryScanHeaderButtons = syncPrimaryScanHeaderButtons;
 

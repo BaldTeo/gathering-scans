@@ -2151,7 +2151,8 @@ class ContoursAndCadMixin:
                     ):
                         if os.path.isfile(off_cand):
                             try:
-                                parts_off = open(off_cand, "r", encoding="utf-8").read().strip().split()
+                                with open(off_cand, "r", encoding="utf-8") as _off_f:
+                                    parts_off = _off_f.read().strip().split()
                                 if len(parts_off) >= 3 and abs(float(parts_off[0])) > 100.0 and abs(float(parts_off[1])) > 100.0:
                                     ox, oy, oz = float(parts_off[0]), float(parts_off[1]), float(parts_off[2])
                                     is_p4m_utm = ox > 335000.0

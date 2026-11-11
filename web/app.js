@@ -3585,7 +3585,7 @@
       { id: "btnStudioSurveyReport", zh: "測量報告", en: "Survey Report" },
       { id: "btnStudioQuickShare", zh: "快速分享", en: "Quick Share" },
       { id: "btnStudioDownloadObj", zh: "下載模型", en: "Download 3D" },
-      { id: "btnSetPrimaryStudioScan", zh: "設為主掃描", en: "Set Primary" },
+      { id: "btnSetPrimaryStudioScan", zh: "設為主掃描", en: "Set Primary", keepOpen: true },
       { id: "btnStudioSetHomeView", zh: "設為首頁", en: "Set Home" },
       { id: "btnStudioToggle3dgsMode", zh: "3DGS 實景", en: "3DGS Splat", keepOpen: true },
       { id: "btnRenameStudioSite", zh: "工區改名", en: "Rename Site" },
@@ -3605,12 +3605,15 @@
       }
       const btn = document.createElement("button");
       btn.type = "button";
-      const isAct = realEl.classList.contains("active") || realEl.getAttribute("aria-pressed") === "true";
+      const isPrimBtn = act.id === "btnSetPrimaryStudioScan" && realEl.classList.contains("is-primary");
+      const isAct = realEl.classList.contains("active") || isPrimBtn || realEl.getAttribute("aria-pressed") === "true";
       btn.className = `gs-compact-tool-tile${isAct ? " active" : ""}${act.danger ? " is-danger" : ""}`;
+      if (realEl.disabled) btn.disabled = true;
       const svgHtml = realEl.querySelector("svg")?.outerHTML || "";
+      const tileLbl = act.id === "btnSetPrimaryStudioScan" && isPrimBtn ? tr("主掃描 ★", "Primary ★") : tr(act.zh, act.en);
       btn.innerHTML = `
         <span class="gs-compact-tile-icon">${svgHtml}</span>
-        <span class="gs-compact-tile-label">${escapeHtml(tr(act.zh, act.en))}</span>
+        <span class="gs-compact-tile-label">${escapeHtml(tileLbl)}</span>
       `;
       btn.addEventListener("click", (ev) => {
         ev.preventDefault();
@@ -3917,8 +3920,12 @@
         }
         if (STATE.activeView === "studio" && studioThree && studioThree.tilesRenderer && !studioThree._loadingDone) {
           studioThree.camera.updateMatrixWorld();
-          studioThree.tilesRenderer.update();
-          syncTilesLoaderProgress(studioThree, "studio");
+          if (typeof window.stepStudioTilesStreaming === "function") {
+            window.stepStudioTilesStreaming(performance.now());
+          } else {
+            studioThree.tilesRenderer.update();
+            syncTilesLoaderProgress(studioThree, "studio");
+          }
           studioThree.renderer.render(studioThree.scene, studioThree.camera);
         }
         if (STATE.activeView === "compare" && compareCtx && !compareCtx._loadingDone) {

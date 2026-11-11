@@ -2187,6 +2187,7 @@
     const badge = document.getElementById("lblStagedEditsBadge");
     const mobBadge = document.getElementById("lblMobileUmbrellaStagedBadge");
     const colBadge = document.getElementById("lblCollapsedEditDockBadge");
+    const cmpBadge = document.getElementById("lblCompactDockStagedBadge");
     const btn = document.getElementById("btnDockGenerateScan");
     if (badge) {
       badge.textContent = String(cnt);
@@ -2199,6 +2200,10 @@
     if (colBadge) {
       colBadge.textContent = String(cnt);
       colBadge.style.display = cnt > 0 ? "inline-block" : "none";
+    }
+    if (cmpBadge) {
+      cmpBadge.textContent = String(cnt);
+      cmpBadge.style.display = cnt > 0 ? "inline-flex" : "none";
     }
     if (btn) btn.classList.toggle("has-staged", cnt > 0);
   }

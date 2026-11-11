@@ -4847,6 +4847,9 @@ vm.runInContext(fs.readFileSync('./web/src/12-public-utilities-gis.js', 'utf8'),
         self.assertIn("window.GatherenLoader.start", app_js)
 
 
+from tests.test_ux_lod_primary_login import UxLodPrimaryLoginTests  # noqa: E402,F401
+
+
 if __name__ == "__main__":
     unittest.main()
 

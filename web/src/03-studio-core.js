@@ -988,6 +988,7 @@
       });
     }
   }
+  window.stepStudioTilesStreaming = stepStudioTilesStreaming;
 
   function initStudio3D() {
     if (studioThree) return studioThree;
