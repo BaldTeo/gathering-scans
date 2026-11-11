@@ -145,10 +145,27 @@ from pc_worker.server_cloud_and_tunnel import (
     _pc_cloud_manifest_sync_loop,
     CloudAndTunnelHandlerMixin,
 )
-from pc_worker.server_api_routes import ServerWriteRoutesMixin
+from pc_worker.server_api_routes import (
+    ServerWriteRoutesMixin,
+    PRIMARY_SCAN_API_PATHS,
+    load_primary_scans_map,
+    get_site_primary_scan_id,
+    export_public_primary_scans_summary,
+)
 
 
 class GatheringScansHandler(CloudAndTunnelHandlerMixin, ServerWriteRoutesMixin, SimpleHTTPRequestHandler):
+    def _proxy_via_pc_tunnel_if_vps(self, method: str, path: str, body: bytes = b"") -> bool:
+        if os.name != "nt" and (
+            path in PRIMARY_SCAN_API_PATHS
+            or (path.startswith("/api/scans/") and path.endswith("/primary"))
+        ):
+            sock_item = _acquire_vps_tunnel_socket()
+            if sock_item is None:
+                return False
+            VPS_TUNNEL_POOL.put(sock_item)
+        return super()._proxy_via_pc_tunnel_if_vps(method, path, body)
+
     extensions_map = SimpleHTTPRequestHandler.extensions_map.copy()
     extensions_map.update(
         {
@@ -336,7 +353,18 @@ class GatheringScansHandler(CloudAndTunnelHandlerMixin, ServerWriteRoutesMixin, 
             else:
                 allowed_scans = [s for s in m_scans if str(s.get("project_group")) == target_id]
 
-        lead_scan = allowed_scans[0] if allowed_scans else None
+        lead_scan = None
+        if allowed_scans and scope_type == "group":
+            site_prim_sid = get_site_primary_scan_id(target_id)
+            if site_prim_sid:
+                lead_scan = next(
+                    (s for s in allowed_scans if str(s.get("scan_id") or "").lower() == site_prim_sid.lower()),
+                    None,
+                )
+            if lead_scan is None:
+                lead_scan = next((s for s in allowed_scans if s.get("is_primary")), None)
+        if lead_scan is None:
+            lead_scan = allowed_scans[0] if allowed_scans else None
         if lead_scan and lead_scan.get("scan_id"):
             lead_sid = urllib.parse.quote(str(lead_scan["scan_id"]), safe="-_")
             img_url = f"{origin}/api/scans/{lead_sid}/thumbnail.png?share={safe_tok}"
@@ -473,7 +501,12 @@ class GatheringScansHandler(CloudAndTunnelHandlerMixin, ServerWriteRoutesMixin, 
             return None
 
         enriched = [self._enrich_scan_urls(s, tok) for s in allowed_scans]
-        lead_scan = next((s for s in enriched if str(s.get("scan_id")) == req_scan_id), enriched[0])
+        lead_scan = next((s for s in enriched if req_scan_id and str(s.get("scan_id")) == req_scan_id), None)
+        if lead_scan is None:
+            lead_scan = next(
+                (s for s in enriched if s.get("is_primary") and s.get("status") not in ("queued", "waiting_parts", "processing", "failed")),
+                None,
+            ) or next((s for s in enriched if s.get("is_primary")), None) or enriched[0]
         lod_q = str((query.get("lod") or [""])[0] or "").strip().lower()
         preload_url = (
             (lead_scan.get("preview_stream_url") or lead_scan.get("stream_url") or "")
@@ -1381,11 +1414,18 @@ class GatheringScansHandler(CloudAndTunnelHandlerMixin, ServerWriteRoutesMixin, 
         except Exception:
             s["has_categorization"] = False
             s["categorization_overlay_visible_default"] = False
+
+        grp_prim = str(s.get("project_group") or "").strip()
+        site_prim_id = get_site_primary_scan_id(grp_prim) if grp_prim else ""
+        s["site_primary_scan_id"] = site_prim_id
+        s["is_primary"] = bool(sid and site_prim_id and str(sid).strip().lower() == site_prim_id.lower())
         return s
 
     def _build_projects_summary(self, scans: list) -> list:
+        primary_map = load_primary_scans_map()
         projects_map: Dict[str, Dict[str, Any]] = {}
         georef_accum: Dict[str, List[Tuple[float, float, float, float]]] = {}
+        playable_ids_by_grp: Dict[str, List[str]] = {}
         for s in scans:
             grp = s.get("project_group") or "Unassigned Site"
             s_gtype = "library" if s.get("group_type") == "library" else "site"
@@ -1401,16 +1441,23 @@ class GatheringScansHandler(CloudAndTunnelHandlerMixin, ServerWriteRoutesMixin, 
                     "twd97_n": 0.0,
                     "has_georef": False,
                     "latest_date": s.get("capture_date") or "",
+                    "primary_scan_id": "",
+                    "default_scan_id": "",
                     "scan_ids": [],
                 }
                 georef_accum[grp] = []
+                playable_ids_by_grp[grp] = []
             entry = projects_map[grp]
             if not entry["project_name_zh"] and s.get("project_name_zh"):
                 entry["project_name_zh"] = s.get("project_name_zh")
             if s_gtype == "library":
                 entry["group_type"] = "library"
             entry["scan_count"] += 1
-            entry["scan_ids"].append(s.get("scan_id"))
+            sid_cur = str(s.get("scan_id") or "").strip()
+            if sid_cur:
+                entry["scan_ids"].append(sid_cur)
+                if s.get("status") not in ("queued", "waiting_parts", "processing", "failed"):
+                    playable_ids_by_grp[grp].append(sid_cur)
             cdate = str(s.get("capture_date") or "")
             if cdate > str(entry["latest_date"]):
                 entry["latest_date"] = cdate
@@ -1438,6 +1485,27 @@ class GatheringScansHandler(CloudAndTunnelHandlerMixin, ServerWriteRoutesMixin, 
                 entry["twd97_e"] = round(sum(p[2] for p in pts) / n_pts, 3)
                 entry["twd97_n"] = round(sum(p[3] for p in pts) / n_pts, 3)
                 entry["has_georef"] = True
+            cfg_prim = get_site_primary_scan_id(grp, primary_map)
+            matched_prim = ""
+            if cfg_prim:
+                matched_prim = next(
+                    (sid_e for sid_e in entry["scan_ids"] if str(sid_e).lower() == cfg_prim.lower()),
+                    "",
+                )
+            if matched_prim:
+                entry["primary_scan_id"] = matched_prim
+                entry["scan_ids"] = [matched_prim] + [x for x in entry["scan_ids"] if x != matched_prim]
+            else:
+                entry["primary_scan_id"] = ""
+            playable_list = playable_ids_by_grp.get(grp) or []
+            if matched_prim and matched_prim in playable_list:
+                entry["default_scan_id"] = matched_prim
+            elif playable_list:
+                entry["default_scan_id"] = playable_list[0]
+            elif matched_prim:
+                entry["default_scan_id"] = matched_prim
+            else:
+                entry["default_scan_id"] = entry["scan_ids"][0] if entry["scan_ids"] else ""
 
         # Also include any configured Library Folders so empty folders appear in the catalog/dropdowns
         try:
@@ -1466,6 +1534,8 @@ class GatheringScansHandler(CloudAndTunnelHandlerMixin, ServerWriteRoutesMixin, 
                         "twd97_n": 0.0,
                         "has_georef": False,
                         "latest_date": "",
+                        "primary_scan_id": "",
+                        "default_scan_id": "",
                         "scan_ids": [],
                     }
         except Exception:
@@ -1720,7 +1790,23 @@ class GatheringScansHandler(CloudAndTunnelHandlerMixin, ServerWriteRoutesMixin, 
                     "active_job": processing[0] if processing else None,
                     "queued_count": len(queued),
                     "total_scans": len(scans),
+                    "primary_scans": export_public_primary_scans_summary(),
                     **get_rust_status(),
+                }
+            )
+            return
+
+        # 2b. Primary Scan Lookup Endpoint
+        if path in PRIMARY_SCAN_API_PATHS:
+            req_grp = str((query.get("project_group") or query.get("site") or [""])[0] or "").strip()
+            p_map = load_primary_scans_map()
+            self.send_json(
+                {
+                    "status": "ok",
+                    "ok": True,
+                    "project_group": req_grp,
+                    "primary_scan_id": get_site_primary_scan_id(req_grp, p_map) if req_grp else "",
+                    "primary_scans": export_public_primary_scans_summary(p_map),
                 }
             )
             return
@@ -1779,6 +1865,7 @@ class GatheringScansHandler(CloudAndTunnelHandlerMixin, ServerWriteRoutesMixin, 
                     "crs": TWD97_TWVD2001_LABEL,
                     "scans": scans,
                     "projects": self._build_projects_summary(scans),
+                    "primary_scans": export_public_primary_scans_summary(),
                     "library_folders": DB.get_library_folders() if hasattr(DB, "get_library_folders") else [],
                     "bin_scans_count": len(bin_scans),
                     "materials": MATERIAL_CATALOG,
@@ -1812,6 +1899,7 @@ class GatheringScansHandler(CloudAndTunnelHandlerMixin, ServerWriteRoutesMixin, 
                     "total_projects": len(projects),
                     "total_scans": len(scans),
                     "projects": projects,
+                    "primary_scans": export_public_primary_scans_summary(),
                     "library_folders": DB.get_library_folders() if hasattr(DB, "get_library_folders") else [],
                 }
             )

@@ -1077,12 +1077,378 @@
   }
   window.formatPendingScanStatusMessage = formatPendingScanStatusMessage;
 
+  // ============================================================================
+  // 1A-PRIMARY. SITE PRIMARY SCAN (STAR TOGGLE, PERSISTENCE & DEFAULT SELECTION)
+  // ============================================================================
+  let _savingPrimaryScanBusy = false;
+
+  function ensurePrimaryScanStylesInjected() {
+    if (typeof document === "undefined" || document.getElementById("gsPrimaryScanStyles")) return;
+    const st = document.createElement("style");
+    st.id = "gsPrimaryScanStyles";
+    st.textContent = [
+      ".gs-map-tile-thumb-wrap { position: relative; }",
+      ".gs-primary-star-btn { display: inline-flex; align-items: center; justify-content: center; gap: 4px; height: 22px; padding: 0 7px; border-radius: 999px; border: 1px solid var(--ui-border-strong, rgba(148,163,184,0.42)); background: var(--ui-bg-surface, rgba(15,23,42,0.78)); color: var(--ui-text-secondary, #cbd5e1); font-size: 10.5px; font-weight: 600; line-height: 1; cursor: pointer; user-select: none; white-space: nowrap; transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease, transform 0.12s ease; }",
+      ".gs-primary-star-btn:hover:not(:disabled) { border-color: rgba(245,158,11,0.85); color: #f59e0b; background: rgba(245,158,11,0.14); transform: translateY(-0.5px); }",
+      ".gs-primary-star-btn.is-primary { border-color: rgba(245,158,11,0.85); background: rgba(245,158,11,0.2); color: #b45309; box-shadow: 0 1px 6px rgba(245,158,11,0.24); }",
+      "[data-theme='dark'] .gs-primary-star-btn.is-primary, body.dark-theme .gs-primary-star-btn.is-primary { color: #fbbf24; background: rgba(245,158,11,0.24); }",
+      ".gs-primary-star-btn.gs-tile-star-corner { position: absolute; top: 6px; right: 6px; z-index: 4; backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); background: rgba(15,23,42,0.72); color: #f8fafc; border-color: rgba(255,255,255,0.28); }",
+      ".gs-primary-star-btn.gs-tile-star-corner.is-primary { background: rgba(120,53,15,0.88); color: #fde68a; border-color: rgba(251,191,36,0.92); }",
+      ".gs-primary-badge-chip { display: inline-flex; align-items: center; gap: 3px; height: 20px; padding: 0 7px; border-radius: 999px; font-size: 10px; font-weight: 700; background: rgba(120,53,15,0.86); color: #fde68a; border: 1px solid rgba(251,191,36,0.85); pointer-events: auto; }",
+      ".gs-primary-badge-chip.gs-tile-star-corner { position: absolute; top: 6px; right: 6px; z-index: 4; backdrop-filter: blur(6px); }",
+      ".gs-timeline-tile.is-primary-scan { border-color: rgba(245,158,11,0.6) !important; }",
+      ".gs-scan-item-card.is-primary-scan { border-color: rgba(245,158,11,0.55); }",
+      "@media (max-width: 640px) { #btnSetPrimaryPreviewScan .gs-primary-btn-label { display: none; } #btnSetPrimaryPreviewScan { width: 24px; padding: 0; } }",
+      "@media (max-width: 900px) { #btnSetPrimaryStudioScan { display: none !important; } }",
+    ].join("\n");
+    document.head.appendChild(st);
+  }
+
+  function canUserSetPrimaryScan() {
+    if (STATE.shareToken) return false;
+    const ri = typeof getCurrentUserRoleInfo === "function" ? getCurrentUserRoleInfo() : null;
+    return Boolean(ri && (ri.canEditNames || ri.canManageUsers));
+  }
+
+  function _sameSiteGroupKey(a, b) {
+    const sa = String(a || "").trim();
+    const sb = String(b || "").trim();
+    if (!sa || !sb) return false;
+    if (sa.toLowerCase() === sb.toLowerCase()) return true;
+    if (typeof normalizeCanonicalFolderName === "function") {
+      return (
+        normalizeCanonicalFolderName(sa).en.toLowerCase() ===
+        normalizeCanonicalFolderName(sb).en.toLowerCase()
+      );
+    }
+    return false;
+  }
+
+  function isScanPrimaryForSite(scan) {
+    if (!scan || !scan.scan_id) return false;
+    if (Boolean(scan.is_primary)) return true;
+    const grp = scan.project_group || "";
+    if (!grp) return false;
+    const proj = (STATE.projects || []).find((p) => _sameSiteGroupKey(p.project_group, grp));
+    if (proj && proj.primary_scan_id) {
+      return String(proj.primary_scan_id).toLowerCase() === String(scan.scan_id).toLowerCase();
+    }
+    return false;
+  }
+  window.isScanPrimaryForSite = isScanPrimaryForSite;
+
+  function getSitePrimaryScan(projectGroup, candidateScans = null) {
+    if (!projectGroup || projectGroup === "__all__") return null;
+    const pool = Array.isArray(candidateScans)
+      ? candidateScans
+      : (STATE.scans || []).filter((s) => _sameSiteGroupKey(s.project_group, projectGroup));
+    if (!pool.length) return null;
+    const isPlayable = (s) => s && (s.status === "completed" || Boolean(s.stream_url));
+    const playablePrim = pool.find((s) => isScanPrimaryForSite(s) && isPlayable(s));
+    if (playablePrim) return playablePrim;
+    return pool.find((s) => isScanPrimaryForSite(s)) || null;
+  }
+  window.getSitePrimaryScan = getSitePrimaryScan;
+
+  function getPreferredScanForSite(projectGroup, candidateScans = null) {
+    const pool = Array.isArray(candidateScans)
+      ? candidateScans.slice()
+      : (STATE.scans || []).filter((s) =>
+          !projectGroup || projectGroup === "__all__" ? true : _sameSiteGroupKey(s.project_group, projectGroup)
+        );
+    if (!pool.length) return null;
+    const prim = projectGroup && projectGroup !== "__all__" ? getSitePrimaryScan(projectGroup, pool) : null;
+    const isPlayable = (s) => s && (s.status === "completed" || Boolean(s.stream_url));
+    if (prim && (isPlayable(prim) || !pool.some(isPlayable))) return prim;
+    const sorted = pool.slice().sort((a, b) => {
+      const pDiff = (isScanPrimaryForSite(b) ? 1 : 0) - (isScanPrimaryForSite(a) ? 1 : 0);
+      if (pDiff !== 0) return pDiff;
+      const cmp = String(b.capture_date || "").localeCompare(String(a.capture_date || ""));
+      if (cmp !== 0) return cmp;
+      return Number(b.tileset_version || b.uploaded_at || 0) - Number(a.tileset_version || a.uploaded_at || 0);
+    });
+    return sorted.find(isPlayable) || sorted[0] || null;
+  }
+  window.getPreferredScanForSite = getPreferredScanForSite;
+
+  function _renderStarSvg(filled, size = 12) {
+    if (filled) {
+      return `<svg class="gs-star-svg" viewBox="0 0 24 24" width="${size}" height="${size}" fill="#f59e0b" stroke="#fbbf24" stroke-width="1.6" stroke-linejoin="round" style="flex-shrink:0;"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>`;
+    }
+    return `<svg class="gs-star-svg" viewBox="0 0 24 24" width="${size}" height="${size}" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" style="flex-shrink:0;"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>`;
+  }
+
+  function renderScanPrimaryCornerBadgeOrBtnHtml(scan) {
+    if (!scan || !scan.scan_id) return "";
+    const isPrim = isScanPrimaryForSite(scan);
+    const canEdit = canUserSetPrimaryScan();
+    const safeId = escapeHtml(scan.scan_id);
+    if (canEdit) {
+      const tip = isPrim
+        ? tr("主掃描 — 開啟此工區時優先顯示（點擊取消）", "Primary scan — shown first when opening this site (click to unset)")
+        : tr("設為主掃描 — 開啟此工區時優先顯示", "Set as primary scan — shown first when opening this site");
+      const lbl = isPrim ? tr("主掃描", "Primary") : tr("設為主掃描", "Set Primary");
+      return `<button type="button" class="gs-primary-star-btn gs-tile-star-corner${isPrim ? " is-primary" : ""}" data-primary-scan-toggle="${safeId}" data-primary-state="${isPrim ? "primary" : "secondary"}" title="${escapeHtml(tip)}" aria-label="${escapeHtml(tip)}">${_renderStarSvg(isPrim, 11)}<span>${escapeHtml(lbl)}</span></button>`;
+    }
+    if (isPrim) {
+      const tipView = tr("主掃描 — 開啟此工區時優先顯示", "Primary scan — shown first when opening this site");
+      return `<span class="gs-primary-badge-chip gs-tile-star-corner" title="${escapeHtml(tipView)}">${_renderStarSvg(true, 11)}<span>${escapeHtml(tr("主掃描", "Primary"))}</span></span>`;
+    }
+    return "";
+  }
+
+  function syncPrimaryScanHeaderButtons(previewScanOverride = null) {
+    ensurePrimaryScanStylesInjected();
+    const canEdit = canUserSetPrimaryScan();
+    const primaryTip = (isPrim) =>
+      isPrim
+        ? tr("主掃描 — 開啟此工區時優先顯示（點擊取消）", "Primary scan — shown first when opening this site (click to unset)")
+        : tr("設為主掃描 — 開啟此工區時優先顯示", "Set as primary scan — shown first when opening this site");
+
+    // 1. Site Preview Header Star Button (next to #previewScanTitle / #btnRenamePreviewScan)
+    const renPrev = document.getElementById("btnRenamePreviewScan");
+    let prevStarBtn = document.getElementById("btnSetPrimaryPreviewScan");
+    if (!prevStarBtn && renPrev && renPrev.parentElement) {
+      prevStarBtn = document.createElement("button");
+      prevStarBtn.type = "button";
+      prevStarBtn.id = "btnSetPrimaryPreviewScan";
+      prevStarBtn.className = "gs-primary-star-btn";
+      prevStarBtn.addEventListener("click", (ev) => {
+        ev.preventDefault();
+        ev.stopPropagation();
+        const sid = STATE.selectedTimelineScanId || STATE.activeScanId;
+        if (sid) toggleScanPrimaryStatus(sid);
+      });
+      renPrev.parentElement.insertBefore(prevStarBtn, renPrev);
+    }
+    if (prevStarBtn) {
+      const pScan = previewScanOverride || (STATE.scans || []).find((s) => s.scan_id === (STATE.selectedTimelineScanId || STATE.activeScanId)) || STATE.activeScan;
+      const isPrim = Boolean(pScan && isScanPrimaryForSite(pScan));
+      if (!pScan || (!canEdit && !isPrim)) {
+        prevStarBtn.style.display = "none";
+      } else {
+        prevStarBtn.style.display = "inline-flex";
+        prevStarBtn.disabled = !canEdit;
+        prevStarBtn.style.pointerEvents = canEdit ? "auto" : "none";
+        prevStarBtn.classList.toggle("is-primary", isPrim);
+        const tip = canEdit ? primaryTip(isPrim) : tr("主掃描 — 開啟此工區時優先顯示", "Primary scan — shown first when opening this site");
+        const lbl = isPrim ? tr("主掃描", "Primary") : tr("設為主掃描", "Set Primary");
+        prevStarBtn.title = tip;
+        prevStarBtn.setAttribute("aria-label", tip);
+        prevStarBtn.innerHTML = `${_renderStarSvg(isPrim, 12)}<span class="gs-primary-btn-label">${escapeHtml(lbl)}</span>`;
+      }
+    }
+
+    // 2. Desktop Studio Top Bar Star Button (right next to #studioScanSelect / #btnRenameStudioScan; hidden <=900px)
+    const renStudio = document.getElementById("btnRenameStudioScan");
+    let studioStarBtn = document.getElementById("btnSetPrimaryStudioScan");
+    if (!studioStarBtn && renStudio && renStudio.parentElement) {
+      studioStarBtn = document.createElement("button");
+      studioStarBtn.type = "button";
+      studioStarBtn.id = "btnSetPrimaryStudioScan";
+      studioStarBtn.className = "btn-xs gs-primary-star-btn";
+      studioStarBtn.style.cssText = "padding:0 6px;flex-shrink:0;";
+      studioStarBtn.addEventListener("click", (ev) => {
+        ev.preventDefault();
+        ev.stopPropagation();
+        const selSid = document.getElementById("studioScanSelect")?.value || STATE.activeScanId;
+        if (selSid) toggleScanPrimaryStatus(selSid);
+      });
+      renStudio.parentElement.insertBefore(studioStarBtn, renStudio);
+    }
+    if (studioStarBtn) {
+      const stSid = document.getElementById("studioScanSelect")?.value || STATE.activeScanId;
+      const stScan = (STATE.scans || []).find((s) => s.scan_id === stSid) || STATE.activeScan;
+      const isStPrim = Boolean(stScan && isScanPrimaryForSite(stScan));
+      if (!stScan || (!canEdit && !isStPrim)) {
+        studioStarBtn.style.display = "none";
+      } else {
+        studioStarBtn.style.display = "inline-flex";
+        studioStarBtn.disabled = !canEdit;
+        studioStarBtn.classList.toggle("is-primary", isStPrim);
+        const stTip = primaryTip(isStPrim);
+        studioStarBtn.title = stTip;
+        studioStarBtn.setAttribute("aria-label", stTip);
+        studioStarBtn.innerHTML = _renderStarSvg(isStPrim, 13);
+      }
+    }
+  }
+  window.syncPrimaryScanHeaderButtons = syncPrimaryScanHeaderButtons;
+
+  function _applyOptimisticPrimaryScanState(projectGroup, primaryScanId) {
+    const targetSid = String(primaryScanId || "").trim();
+    (STATE.scans || []).forEach((s) => {
+      if (_sameSiteGroupKey(s.project_group, projectGroup)) {
+        s.site_primary_scan_id = targetSid;
+        s.is_primary = Boolean(targetSid && String(s.scan_id).toLowerCase() === targetSid.toLowerCase());
+      }
+    });
+    (STATE.projects || []).forEach((p) => {
+      if (_sameSiteGroupKey(p.project_group, projectGroup)) {
+        p.primary_scan_id = targetSid;
+        if (targetSid && Array.isArray(p.scan_ids)) p.scan_ids = [targetSid, ...p.scan_ids.filter((id) => id !== targetSid)];
+      }
+    });
+  }
+
+  async function toggleScanPrimaryStatus(scanId) {
+    if (!scanId || _savingPrimaryScanBusy) return;
+    if (!canUserSetPrimaryScan()) {
+      showToast(tr("需要編輯者或管理員權限才能設定主掃描", "Editor or Admin permission required to set Primary Scan"));
+      return;
+    }
+    const scan = (STATE.scans || []).find((s) => s.scan_id === scanId);
+    if (!scan) return;
+    const grp = scan.project_group || STATE.activeProjectGroup || "";
+    const wasPrimary = isScanPrimaryForSite(scan);
+    const prevPrimaryId = getSitePrimaryScan(grp)?.scan_id || "";
+    const nextPrimaryId = wasPrimary ? "" : scan.scan_id;
+
+    _savingPrimaryScanBusy = true;
+    _applyOptimisticPrimaryScanState(grp, nextPrimaryId);
+    syncPrimaryScanHeaderButtons();
+
+    try {
+      const res = await apiPost("/api/site/primary-scan", { scan_id: scan.scan_id, project_group: grp, is_primary: !wasPrimary });
+      if (res && Array.isArray(res.scans)) STATE.scans = res.scans;
+      if (res && Array.isArray(res.projects)) STATE.projects = res.projects;
+      if (STATE.activeScanId) STATE.activeScan = STATE.scans.find((s) => s.scan_id === STATE.activeScanId) || STATE.activeScan;
+      try {
+        localStorage.setItem("gs_last_catalog_v1", JSON.stringify({ scans: STATE.scans, projects: STATE.projects, ts: Date.now() }));
+      } catch (_) {}
+      if (nextPrimaryId && typeof cacheLastViewedMapSiteAndScan === "function") cacheLastViewedMapSiteAndScan(grp, nextPrimaryId);
+
+      populateProjectScanDropdowns(STATE.activeProjectGroup, STATE.activeScanId);
+      if (STATE.siteTimelineOpen) openSiteTimeline(STATE.activeProjectGroup, STATE.selectedTimelineScanId || STATE.activeScanId, false);
+      const pop = document.getElementById("clusterHoverPopover");
+      if (pop && pop.classList.contains("active") && STATE.activeProjectGroup && STATE.activeProjectGroup !== "__all__") {
+        const activeGrpObj = getProjectGroupsList("", { includeLibrary: STATE.leftPaneMode === "library" }).find((g) =>
+          _sameSiteGroupKey(g.project_group, STATE.activeProjectGroup)
+        );
+        if (activeGrpObj) openClusterPopover(activeGrpObj, false);
+      }
+      if (typeof renderModelLibraryView === "function" && STATE.leftPaneMode === "library") renderModelLibraryView();
+      syncPrimaryScanHeaderButtons();
+
+      const dispGrp = typeof formatGroupDisplayName === "function" ? formatGroupDisplayName(grp, scan.project_name_zh) : grp;
+      showToast(
+        !wasPrimary
+          ? tr(`★ 已將「${scan.name}」設為「${dispGrp}」的主掃描（開啟工區時優先顯示）`, `★ Set "${scan.name}" as Primary Scan for "${dispGrp}" (shown first when opening site)`)
+          : tr(`已取消「${dispGrp}」的主掃描設定`, `Cleared Primary Scan for "${dispGrp}"`)
+      );
+    } catch (err) {
+      _applyOptimisticPrimaryScanState(grp, prevPrimaryId);
+      syncPrimaryScanHeaderButtons();
+      showToast(tr(`設定主掃描失敗：${err.message}`, `Failed to update Primary Scan: ${err.message}`));
+    } finally {
+      _savingPrimaryScanBusy = false;
+    }
+  }
+  window.toggleScanPrimaryStatus = toggleScanPrimaryStatus;
+
+  // Enhance populateProjectScanDropdowns & resolveInitialMapSiteAndScan so Studio, Compare, Map & Site Links honor Primary Scan
+  if (typeof populateProjectScanDropdowns === "function" && !populateProjectScanDropdowns._gsPrimaryWrapped) {
+    const _origPopulateProjectScanDropdowns = populateProjectScanDropdowns;
+    populateProjectScanDropdowns = function (projectGroup, preferredScanId = null) {
+      let effectivePreferred = preferredScanId;
+      if (!effectivePreferred && projectGroup && projectGroup !== "__all__") {
+        effectivePreferred = getPreferredScanForSite(projectGroup)?.scan_id || null;
+      }
+      const ret = _origPopulateProjectScanDropdowns(projectGroup, effectivePreferred);
+      const studioSel = document.getElementById("studioScanSelect");
+      if (studioSel && studioSel.options.length > 0) {
+        const curVal = studioSel.value;
+        let primOpt = null;
+        Array.from(studioSel.options).forEach((opt) => {
+          const sObj = (STATE.scans || []).find((s) => s.scan_id === opt.value);
+          const cleanTxt = String(opt.textContent || "").replace(/^★\s*/, "");
+          if (sObj && isScanPrimaryForSite(sObj)) {
+            primOpt = opt;
+            opt.textContent = `★ ${cleanTxt}`;
+          } else {
+            opt.textContent = cleanTxt;
+          }
+        });
+        if (primOpt && studioSel.firstChild !== primOpt) studioSel.insertBefore(primOpt, studioSel.firstChild);
+        if (curVal && Array.from(studioSel.options).some((o) => o.value === curVal)) studioSel.value = curVal;
+      }
+      syncPrimaryScanHeaderButtons();
+      return ret;
+    };
+    populateProjectScanDropdowns._gsPrimaryWrapped = true;
+    window.populateProjectScanDropdowns = populateProjectScanDropdowns;
+  }
+
+  if (typeof resolveInitialMapSiteAndScan === "function" && !resolveInitialMapSiteAndScan._gsPrimaryWrapped) {
+    const _origResolveInitialMapSiteAndScan = resolveInitialMapSiteAndScan;
+    resolveInitialMapSiteAndScan = function (scansList = STATE.scans) {
+      const mapScans = typeof getMapScansOnly === "function" ? getMapScansOnly(scansList) : scansList || [];
+      const readyMapScans = mapScans.filter((s) => s.status === "completed" || Boolean(s.stream_url));
+      const pool = readyMapScans.length > 0 ? readyMapScans : mapScans;
+      if (pool.length > 0) {
+        try {
+          const urlProj = new URLSearchParams(window.location.search || "").get("project") || "";
+          if (urlProj) {
+            const prefUrl = getPreferredScanForSite(urlProj, pool);
+            if (prefUrl) return { scan: prefUrl, projectGroup: prefUrl.project_group || urlProj };
+          }
+          if (STATE.shareToken && String(STATE.shareLinkInfo?.scope_type || "").toLowerCase() === "group" && STATE.shareLinkInfo?.target_id) {
+            const prefShare = getPreferredScanForSite(STATE.shareLinkInfo.target_id, pool);
+            if (prefShare) return { scan: prefShare, projectGroup: prefShare.project_group || STATE.shareLinkInfo.target_id };
+          }
+        } catch (_) {}
+      }
+      const baseRes = _origResolveInitialMapSiteAndScan(scansList);
+      if (baseRes && baseRes.projectGroup && pool.length > 0) {
+        const sitePrim = getSitePrimaryScan(baseRes.projectGroup, pool);
+        if (sitePrim) return { scan: sitePrim, projectGroup: sitePrim.project_group || baseRes.projectGroup };
+      }
+      return baseRes;
+    };
+    resolveInitialMapSiteAndScan._gsPrimaryWrapped = true;
+    window.resolveInitialMapSiteAndScan = resolveInitialMapSiteAndScan;
+  }
+
+  function bindPrimaryScanStudioControls() {
+    ensurePrimaryScanStylesInjected();
+    const stProjSel = document.getElementById("studioProjectSelect");
+    if (stProjSel && !stProjSel._gsPrimaryProjBound) {
+      stProjSel._gsPrimaryProjBound = true;
+      stProjSel.addEventListener("change", (e) => {
+        const newGrp = e.target.value;
+        if (!newGrp) return;
+        e.stopImmediatePropagation();
+        STATE.activeProjectGroup = newGrp;
+        const prefScan = getPreferredScanForSite(newGrp);
+        populateProjectScanDropdowns(newGrp, prefScan ? prefScan.scan_id : null);
+        if (prefScan && typeof loadScanIntoStudio === "function") {
+          loadScanIntoStudio(prefScan.scan_id);
+        }
+      });
+    }
+    const stScanSel = document.getElementById("studioScanSelect");
+    if (stScanSel && !stScanSel._gsPrimaryScanBound) {
+      stScanSel._gsPrimaryScanBound = true;
+      stScanSel.addEventListener("change", () => {
+        setTimeout(() => syncPrimaryScanHeaderButtons(), 0);
+      });
+    }
+    syncPrimaryScanHeaderButtons();
+  }
+  bindPrimaryScanStudioControls();
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", bindPrimaryScanStudioControls);
+  }
+
   function openClusterPopover(grp, userExplicit = false) {
     const pop = document.getElementById("clusterHoverPopover");
     if (!pop || !grp) return;
+    ensurePrimaryScanStylesInjected();
     pop.classList.add("active");
 
     // Scope active project to the selected cluster so Studio & Compare only list this project's scans (Fix #4)
+    const prevActiveGroup = STATE.activeProjectGroup;
+    const isOpeningSite = Boolean(userExplicit || !_sameSiteGroupKey(prevActiveGroup, grp.project_group));
     STATE.activeProjectGroup = grp.project_group;
     document.querySelectorAll(".scan-cluster-blob").forEach((b) => {
       b.classList.toggle("active-cluster", b.dataset.projectGroup === grp.project_group);
@@ -1090,6 +1456,8 @@
     const sortedScans = (grp.scans || [])
       .slice()
       .sort((a, b) => {
+        const pDiff = (isScanPrimaryForSite(b) ? 1 : 0) - (isScanPrimaryForSite(a) ? 1 : 0);
+        if (pDiff !== 0) return pDiff;
         const cmp = String(b.capture_date || "").localeCompare(String(a.capture_date || ""));
         if (cmp !== 0) return cmp;
         return Number(b.tileset_version || b.uploaded_at || 0) - Number(a.tileset_version || a.uploaded_at || 0);
@@ -1098,10 +1466,11 @@
     if (sortedScans.length > 0) {
       const currInGroup = sortedScans.find((s) => s.scan_id === STATE.activeScanId);
       const isPlayable = (s) => s.status === "completed" || Boolean(s.stream_url);
-      if (!currInGroup || (!isPlayable(currInGroup) && sortedScans.some(isPlayable))) {
-        const bestScan = sortedScans.find(isPlayable) || sortedScans[0];
+      if (isOpeningSite || !currInGroup || (!isPlayable(currInGroup) && sortedScans.some(isPlayable))) {
+        const bestScan = getPreferredScanForSite(grp.project_group, sortedScans) || sortedScans.find(isPlayable) || sortedScans[0];
         STATE.activeScanId = bestScan.scan_id;
         STATE.activeScan = bestScan;
+        if (isOpeningSite) STATE.selectedTimelineScanId = bestScan.scan_id;
       }
     }
     populateProjectScanDropdowns(grp.project_group, STATE.activeScanId);
@@ -1123,17 +1492,18 @@
         ? Boolean(userExplicit || STATE.siteTimelineOpen)
         : true);
     if (shouldOpenTimeline) {
-      openSiteTimeline(
-        grp.project_group,
-        STATE.selectedTimelineScanId || STATE.activeScanId || (sortedScans[0] ? sortedScans[0].scan_id : null),
-        false
-      );
+      const validTlId =
+        !isOpeningSite && sortedScans.some((s) => s.scan_id === STATE.selectedTimelineScanId)
+          ? STATE.selectedTimelineScanId
+          : STATE.activeScanId || (sortedScans[0] ? sortedScans[0].scan_id : null);
+      openSiteTimeline(grp.project_group, validTlId, false);
     }
 
     const btnOpenTimeline = document.getElementById("btnPopoverOpenTimeline");
     if (btnOpenTimeline) {
       btnOpenTimeline.onclick = () => {
-        openSiteTimeline(grp.project_group, STATE.activeScanId || (sortedScans[0] ? sortedScans[0].scan_id : null), true);
+        const prefOpen = getPreferredScanForSite(grp.project_group, sortedScans);
+        openSiteTimeline(grp.project_group, prefOpen ? prefOpen.scan_id : STATE.activeScanId, true);
       };
     }
 
@@ -1160,7 +1530,8 @@
     sortedScans.forEach((scan) => {
       const card = document.createElement("div");
       const isSelected = scan.scan_id === STATE.activeScanId;
-      card.className = "gs-scan-item-card" + (isSelected ? " active" : "");
+      const isPrimScan = isScanPrimaryForSite(scan);
+      card.className = "gs-scan-item-card" + (isSelected ? " active" : "") + (isPrimScan ? " is-primary-scan" : "");
       card.dataset.scanId = scan.scan_id;
       card.style.cursor = "pointer";
       const isCached = STATE.cachedScanIds.has(scan.scan_id);
@@ -1184,6 +1555,7 @@
       card.innerHTML = `
         <div class="gs-map-tile-thumb-wrap">
           <img class="gs-map-tile-thumb" data-scan-thumb="${safeId}" src="${safeThumbSrc}" alt="${safeName}" />
+          ${renderScanPrimaryCornerBadgeOrBtnHtml(scan)}
           <div class="gs-tile-badge-row">
             ${formatScanQueueStatusBadgeHtml(scan)}
             <span class="gs-tile-chip">${escapeHtml(polyShort)} · ${escapeHtml(texLabel)} · ${escapeHtml(sizeShort)}</span>
@@ -1253,7 +1625,8 @@
             }
             ${
               !STATE.shareToken && getCurrentUserRoleInfo().canEditNames
-                ? `<button type="button" class="btn-xs" data-action="rename" title="${tr("修改掃描名稱", "Edit Scan Name")}">
+                ? `<button type="button" class="btn-xs${isPrimScan ? " is-primary" : ""}" data-action="set-primary" title="${isPrimScan ? tr("主掃描 — 開啟此工區時優先顯示（點擊取消）", "Primary scan — shown first when opening this site (click to unset)") : tr("設為主掃描 — 開啟此工區時優先顯示", "Set as primary scan — shown first when opening this site")}" style="${isPrimScan ? "color:#f59e0b;border-color:rgba(245,158,11,0.7);" : ""}">${_renderStarSvg(isPrimScan, 13)}</button>
+                  <button type="button" class="btn-xs" data-action="rename" title="${tr("修改掃描名稱", "Edit Scan Name")}">
                     <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8">
                       <path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/>
                     </svg>
@@ -1309,6 +1682,13 @@
       if (shareBtn) {
         shareBtn.addEventListener("click", () => openSharingModal("scan", scan.scan_id));
       }
+      card.querySelectorAll('[data-action="set-primary"], [data-primary-scan-toggle]').forEach((starEl) => {
+        starEl.addEventListener("click", (ev) => {
+          ev.preventDefault();
+          ev.stopPropagation();
+          toggleScanPrimaryStatus(scan.scan_id);
+        });
+      });
       const renameBtn = card.querySelector('[data-action="rename"]');
       if (renameBtn) {
         renameBtn.addEventListener("click", (ev) => {
@@ -2165,6 +2545,7 @@
 
     const titleEl = document.getElementById("previewScanTitle");
     if (titleEl) titleEl.textContent = scan.name;
+    syncPrimaryScanHeaderButtons(scan);
     const metaEl = document.getElementById("previewScanMeta");
     if (metaEl) {
       if (typeof isLibraryScan === "function" && isLibraryScan(scan)) {
@@ -2253,6 +2634,10 @@
       loader.load(
         streamUrl,
         (gltf) => {
+          if (!previewThree || previewThree._loadingScanId !== scan.scan_id) {
+            if (gltf && gltf.scene) disposeObject3DResources(gltf.scene);
+            return;
+          }
           const model = gltf.scene;
           const box = new THREE.Box3().setFromObject(model);
           const sphere = new THREE.Sphere();
@@ -2294,6 +2679,7 @@
           finishScanLoader(previewThree, "preview", "100% · Interactive Preview Ready");
         },
         (xhr) => {
+          if (!previewThree || previewThree._loadingScanId !== scan.scan_id) return;
           const pct =
             xhr && xhr.total > 0
               ? Math.min(95, Math.max(12, Math.round((xhr.loaded / xhr.total) * 100)))
@@ -2302,6 +2688,7 @@
           updateScanLoader("preview", true, pct, `Loading Interactive Preview (${pct}%)...`);
         },
         () => {
+          if (!previewThree || previewThree._loadingScanId !== scan.scan_id) return;
           if (previewThree.fallbackGroup) previewThree.fallbackGroup.visible = true;
           finishScanLoader(previewThree, "preview", "Ready");
         }
@@ -2510,6 +2897,10 @@
     )
       .slice()
       .sort((a, b) => {
+        if (!isAllProjects) {
+          const pDiff = (isScanPrimaryForSite(b) ? 1 : 0) - (isScanPrimaryForSite(a) ? 1 : 0);
+          if (pDiff !== 0) return pDiff;
+        }
         const cmp = String(b.capture_date || "").localeCompare(String(a.capture_date || ""));
         if (cmp !== 0) return cmp;
         return Number(b.tileset_version || b.uploaded_at || 0) - Number(a.tileset_version || a.uploaded_at || 0);
@@ -2524,8 +2915,10 @@
         });
     }
 
+    const explicitPreferred = preferredScanId ? siteScans.find((s) => s.scan_id === preferredScanId) : null;
     const chosenScan =
-      (preferredScanId && siteScans.find((s) => s.scan_id === preferredScanId)) ||
+      explicitPreferred ||
+      (!isAllProjects ? getPreferredScanForSite(grpName, siteScans) : null) ||
       siteScans.find((s) => s.scan_id === STATE.activeScanId) ||
       siteScans[0];
 
@@ -2622,8 +3015,9 @@
       trackEl.innerHTML = "";
       siteScans.forEach((s) => {
         const isSelected = chosenScan && s.scan_id === chosenScan.scan_id;
+        const isPrimTile = isScanPrimaryForSite(s);
         const tile = document.createElement("div");
-        tile.className = "gs-timeline-tile" + (isSelected ? " active" : "");
+        tile.className = "gs-timeline-tile" + (isSelected ? " active" : "") + (isPrimTile ? " is-primary-scan" : "");
         tile.dataset.scanId = s.scan_id;
         const thumbSrc = s.thumbnail_url || `/api/scans/${encodeURIComponent(s.scan_id)}/thumbnail`;
         const texRes = Number(s.texture_resolution || 4096);
@@ -2642,6 +3036,7 @@
         tile.innerHTML = `
           <div class="gs-tile-thumb-wrap">
             <img class="gs-tile-thumb" data-scan-thumb="${escapeHtml(s.scan_id)}" src="${thumbSrc}" alt="${safeName}" />
+            ${renderScanPrimaryCornerBadgeOrBtnHtml(s)}
             <div class="gs-tile-badge-row">
               ${formatScanQueueStatusBadgeHtml(s)}
               <span class="gs-tile-chip" title="${tr("網格面數", "Polygons")}: ${escapeHtml(formatScanPolyCount(s))} · ${tr("貼圖解析度", "Texture")}: ${escapeHtml(formatScanTextureSize(s))} · ${tr("掃描大小", "Scan Size")}: ${escapeHtml(sizeShort)}">${escapeHtml(polyShort)} · ${escapeHtml(texLabel)} · ${escapeHtml(sizeShort)}</span>
@@ -2666,6 +3061,7 @@
             <div style="display:flex;align-items:center;justify-content:space-between;gap:4px;min-width:0;">
               <div class="gs-tile-name" title="${safeName}" style="flex:1;min-width:0;">${safeName}</div>
               <div class="gs-tile-edit-actions" style="display:${roleInfo.canEditNames ? "flex" : "none"};align-items:center;gap:2px;flex-shrink:0;">
+                <button type="button" class="btn-xs" data-star-tile="${escapeHtml(s.scan_id)}" title="${isPrimTile ? tr("主掃描 — 開啟此工區時優先顯示（點擊取消）", "Primary scan — shown first when opening this site (click to unset)") : tr("設為主掃描 — 開啟此工區時優先顯示", "Set as primary scan — shown first when opening this site")}" style="height:18px;padding:0 4px;${isPrimTile ? "color:#f59e0b;border-color:rgba(245,158,11,0.65);" : ""}">${_renderStarSvg(isPrimTile, 10)}</button>
                 <button type="button" class="btn-xs" data-move-tile="${escapeHtml(s.scan_id)}" title="${tr("移動至其他工區或 3D 模型庫資料夾", "Move to another Site or 3D Library Folder")}" style="height:18px;padding:0 4px;">
                   <svg viewBox="0 0 24 24" width="10" height="10" fill="none" stroke="currentColor" stroke-width="2">
                     <polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/>
@@ -2687,8 +3083,15 @@
         `;
 
         tile.addEventListener("click", (ev) => {
-          if (ev.target.closest("[data-move-tile]") || ev.target.closest("[data-rename-tile]") || ev.target.closest("[data-delete-tile]")) return;
+          if (ev.target.closest("[data-primary-scan-toggle], [data-star-tile], [data-move-tile], [data-rename-tile], [data-delete-tile]")) return;
           selectTimelineTile(s.scan_id);
+        });
+        tile.querySelectorAll("[data-primary-scan-toggle], [data-star-tile]").forEach((stBtn) => {
+          stBtn.addEventListener("click", (ev) => {
+            ev.preventDefault();
+            ev.stopPropagation();
+            toggleScanPrimaryStatus(s.scan_id);
+          });
         });
         const moveTileBtn = tile.querySelector("[data-move-tile]");
         if (moveTileBtn) {
@@ -3318,10 +3721,15 @@
       if (STATE.activeScan) {
         STATE.activeScan = STATE.scans.find((s) => s.scan_id === STATE.activeScan.scan_id) || STATE.activeScan;
       }
+      const dispNewSite = typeof formatGroupDisplayName === "function" ? formatGroupDisplayName(newGroup, newZh) : newGroup;
       const tlTitle = document.getElementById("timelineSiteTitle");
-      if (tlTitle) tlTitle.textContent = newGroup;
+      if (tlTitle) tlTitle.textContent = dispNewSite;
       const popTitle = document.getElementById("popoverGroupTitle");
-      if (popTitle) popTitle.textContent = newGroup;
+      if (popTitle) popTitle.textContent = dispNewSite;
+      try {
+        localStorage.setItem("gs_last_catalog_v1", JSON.stringify({ scans: STATE.scans, projects: STATE.projects, ts: Date.now() }));
+        if (localStorage.getItem("gs_last_map_site") === _renamingSiteGroup) localStorage.setItem("gs_last_map_site", newGroup);
+      } catch (_) {}
       populateProjectScanDropdowns(newGroup, STATE.activeScanId);
       renderMapClusters();
       if (STATE.siteTimelineOpen) {

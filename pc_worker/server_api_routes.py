@@ -12,7 +12,8 @@ import base64
 import shutil
 import threading
 import urllib.parse
-from typing import Dict, Any, Optional, Tuple
+from datetime import datetime, timezone
+from typing import Dict, Any, Optional, Tuple, List
 
 from pc_worker.config import (
     TUNNEL_SHARED_KEY,
@@ -69,6 +70,227 @@ from pc_worker.surveying.rust_accel import (
     get_rust_status,
 )
 
+
+PRIMARY_SCANS_PATH = os.path.join(DATA_DIR, "primary_scans.json")
+_PRIMARY_SCANS_LOCK = threading.RLock()
+PRIMARY_SCAN_API_PATHS = (
+    "/api/site/primary-scan",
+    "/api/sites/primary-scan",
+    "/api/projects/primary-scan",
+    "/api/scans/set-primary",
+    "/api/scans/primary",
+)
+
+
+def _norm_primary_group_key(group_name: str) -> str:
+    return str(group_name or "").strip().lower()
+
+
+def _parse_primary_sites_dict(raw_obj: Any) -> Dict[str, Dict[str, Any]]:
+    out: Dict[str, Dict[str, Any]] = {}
+    if not isinstance(raw_obj, dict):
+        return out
+    src = raw_obj.get("sites") if isinstance(raw_obj.get("sites"), dict) else raw_obj
+    for k, val in src.items():
+        if k in ("version", "updated_at") and not isinstance(val, dict):
+            continue
+        if isinstance(val, dict):
+            grp = str(val.get("project_group") or k or "").strip()
+            nk = _norm_primary_group_key(grp or k)
+            if not nk:
+                continue
+            out[nk] = {
+                "project_group": grp or str(k).strip(),
+                "scan_id": str(val.get("scan_id") or "").strip(),
+                "updated_at": float(val.get("updated_at") or 0.0),
+                "updated_by": str(val.get("updated_by") or ""),
+            }
+        elif isinstance(val, str):
+            grp = str(k).strip()
+            nk = _norm_primary_group_key(grp)
+            if nk:
+                out[nk] = {
+                    "project_group": grp,
+                    "scan_id": val.strip(),
+                    "updated_at": 0.0,
+                    "updated_by": "",
+                }
+    return out
+
+
+def merge_primary_scans_maps(*maps: Optional[Dict[str, Any]]) -> Dict[str, Dict[str, Any]]:
+    merged: Dict[str, Dict[str, Any]] = {}
+    for mp in maps:
+        parsed = _parse_primary_sites_dict(mp)
+        for nk, entry in parsed.items():
+            prev = merged.get(nk)
+            if prev is None or float(entry.get("updated_at") or 0.0) >= float(prev.get("updated_at") or 0.0):
+                merged[nk] = dict(entry)
+    return merged
+
+
+def load_primary_scans_map() -> Dict[str, Dict[str, Any]]:
+    with _PRIMARY_SCANS_LOCK:
+        disk_map: Dict[str, Dict[str, Any]] = {}
+        if os.path.isfile(PRIMARY_SCANS_PATH):
+            try:
+                with open(PRIMARY_SCANS_PATH, "r", encoding="utf-8") as f:
+                    disk_map = _parse_primary_sites_dict(json.load(f))
+            except Exception:
+                disk_map = {}
+        manifest_map: Dict[str, Dict[str, Any]] = {}
+        try:
+            c_man = _load_cloud_manifest()
+            if isinstance(c_man, dict) and isinstance(c_man.get("primary_scans"), dict):
+                manifest_map = _parse_primary_sites_dict(c_man.get("primary_scans"))
+        except Exception:
+            manifest_map = {}
+        return merge_primary_scans_maps(manifest_map, disk_map)
+
+
+def save_primary_scans_map(sites_map: Dict[str, Dict[str, Any]], sync_manifest: bool = True) -> None:
+    with _PRIMARY_SCANS_LOCK:
+        clean = _parse_primary_sites_dict(sites_map)
+        try:
+            os.makedirs(os.path.dirname(PRIMARY_SCANS_PATH), exist_ok=True)
+            tmp_path = f"{PRIMARY_SCANS_PATH}.tmp"
+            with open(tmp_path, "w", encoding="utf-8") as f:
+                json.dump(
+                    {"version": 1, "updated_at": round(time.time(), 3), "sites": clean},
+                    f,
+                    ensure_ascii=False,
+                    indent=2,
+                )
+            os.replace(tmp_path, PRIMARY_SCANS_PATH)
+        except Exception as e:
+            print(f"[GatheringScans] Warning saving primary_scans.json: {e}")
+        if sync_manifest:
+            try:
+                c_man = _load_cloud_manifest()
+                if isinstance(c_man, dict):
+                    c_man["primary_scans"] = clean
+                    scans_ref = c_man.get("scans")
+                    if isinstance(scans_ref, list):
+                        for s_m in scans_ref:
+                            if isinstance(s_m, dict):
+                                nk = _norm_primary_group_key(s_m.get("project_group") or "")
+                                psid = str((clean.get(nk) or {}).get("scan_id") or "").strip()
+                                sid_m = str(s_m.get("scan_id") or "").strip()
+                                s_m["is_primary"] = bool(sid_m and psid and sid_m.lower() == psid.lower())
+                                s_m["site_primary_scan_id"] = psid
+                    elif isinstance(scans_ref, dict):
+                        for sid_m, s_m in scans_ref.items():
+                            if isinstance(s_m, dict):
+                                nk = _norm_primary_group_key(s_m.get("project_group") or "")
+                                psid = str((clean.get(nk) or {}).get("scan_id") or "").strip()
+                                s_m["is_primary"] = bool(sid_m and psid and str(sid_m).lower() == psid.lower())
+                                s_m["site_primary_scan_id"] = psid
+                    _save_cloud_manifest(c_man)
+            except Exception:
+                pass
+
+
+def get_site_primary_scan_id(
+    project_group: str, sites_map: Optional[Dict[str, Dict[str, Any]]] = None
+) -> str:
+    nk = _norm_primary_group_key(project_group)
+    if not nk:
+        return ""
+    mp = sites_map if sites_map is not None else load_primary_scans_map()
+    entry = mp.get(nk)
+    return str((entry or {}).get("scan_id") or "").strip()
+
+
+def export_public_primary_scans_summary(
+    sites_map: Optional[Dict[str, Dict[str, Any]]] = None,
+) -> Dict[str, str]:
+    mp = sites_map if sites_map is not None else load_primary_scans_map()
+    out: Dict[str, str] = {}
+    for entry in mp.values():
+        grp = str(entry.get("project_group") or "").strip()
+        sid = str(entry.get("scan_id") or "").strip()
+        if grp and sid:
+            out[grp] = sid
+    return out
+
+
+def set_site_primary_scan(
+    project_group: str, scan_id: Optional[str], actor_email: str = ""
+) -> Dict[str, Any]:
+    grp = str(project_group or "").strip()
+    nk = _norm_primary_group_key(grp)
+    target_sid = str(scan_id or "").strip()
+    now_ts = round(time.time(), 3)
+    with _PRIMARY_SCANS_LOCK:
+        mp = load_primary_scans_map()
+        entry = {
+            "project_group": grp,
+            "scan_id": target_sid,
+            "updated_at": now_ts,
+            "updated_by": str(actor_email or ""),
+        }
+        if nk:
+            mp[nk] = entry
+            save_primary_scans_map(mp, sync_manifest=True)
+        # Also mirror is_primary into local project_dir/scan_meta.json when present on disk
+        try:
+            for s_row in DB.list_scans():
+                if _norm_primary_group_key(s_row.get("project_group") or "") != nk:
+                    continue
+                pdir = s_row.get("project_dir") or ""
+                if pdir and os.path.isdir(pdir):
+                    meta_p = os.path.join(pdir, "scan_meta.json")
+                    meta_d: Dict[str, Any] = {}
+                    if os.path.isfile(meta_p):
+                        with open(meta_p, "r", encoding="utf-8") as mf:
+                            loaded_m = json.load(mf)
+                            if isinstance(loaded_m, dict):
+                                meta_d = loaded_m
+                    is_prim = bool(target_sid and str(s_row.get("scan_id") or "").lower() == target_sid.lower())
+                    if meta_d.get("is_primary") != is_prim:
+                        meta_d["is_primary"] = is_prim
+                        with open(meta_p, "w", encoding="utf-8") as mf:
+                            json.dump(meta_d, mf, ensure_ascii=False, indent=2)
+        except Exception:
+            pass
+        return entry
+
+
+def migrate_primary_scan_group(old_group: str, new_group: str) -> None:
+    old_nk = _norm_primary_group_key(old_group)
+    new_nk = _norm_primary_group_key(new_group)
+    if not old_nk or not new_nk:
+        return
+    with _PRIMARY_SCANS_LOCK:
+        mp = load_primary_scans_map()
+        if old_nk not in mp:
+            return
+        entry = dict(mp.pop(old_nk))
+        entry["project_group"] = str(new_group).strip()
+        entry["updated_at"] = round(time.time(), 3)
+        mp[new_nk] = entry
+        save_primary_scans_map(mp, sync_manifest=True)
+
+
+def clear_primary_if_moved_scans(scan_ids: List[str], target_group: str) -> None:
+    moved_lower = {str(s or "").strip().lower() for s in (scan_ids or []) if str(s or "").strip()}
+    target_nk = _norm_primary_group_key(target_group)
+    if not moved_lower:
+        return
+    with _PRIMARY_SCANS_LOCK:
+        mp = load_primary_scans_map()
+        changed = False
+        now_ts = round(time.time(), 3)
+        for nk, entry in mp.items():
+            if nk == target_nk:
+                continue
+            cur_sid = str(entry.get("scan_id") or "").strip().lower()
+            if cur_sid and cur_sid in moved_lower:
+                entry["scan_id"] = ""
+                entry["updated_at"] = now_ts
+                changed = True
+        if changed:
+            save_primary_scans_map(mp, sync_manifest=True)
 
 
 class ServerWriteRoutesMixin:
@@ -180,6 +402,21 @@ class ServerWriteRoutesMixin:
                     self.send_json(self._build_cloud_manifest_status())
                     return
                 m_prev = _load_cloud_manifest()
+                merged_prim = merge_primary_scans_maps(
+                    m_prev.get("primary_scans") if isinstance(m_prev, dict) else None,
+                    load_primary_scans_map(),
+                    m_in.get("primary_scans"),
+                )
+                m_in["primary_scans"] = merged_prim
+                save_primary_scans_map(merged_prim, sync_manifest=False)
+                for s_in_prim in (m_in.get("scans") or []):
+                    if isinstance(s_in_prim, dict) and s_in_prim.get("scan_id"):
+                        nk_p = _norm_primary_group_key(s_in_prim.get("project_group") or "")
+                        psid_p = str((merged_prim.get(nk_p) or {}).get("scan_id") or "").strip()
+                        s_in_prim["is_primary"] = bool(
+                            psid_p and str(s_in_prim["scan_id"]).strip().lower() == psid_p.lower()
+                        )
+                        s_in_prim["site_primary_scan_id"] = psid_p
                 if os.name != "nt":
                     prev_hv_by_id = {
                         str(s.get("scan_id") or "").lower(): s.get("home_view")
@@ -413,8 +650,28 @@ class ServerWriteRoutesMixin:
                                         if vps_new_thumb_url:
                                             s_m_vps["thumbnail_url"] = vps_new_thumb_url
                                 _save_cloud_manifest(c_man)
-                            with _VPS_RAM_FALLBACK_LOCK:
-                                _VPS_RAM_FALLBACK_CACHE.clear()
+                            _VPS_RAM_FALLBACK_CACHE.clear()
+                except Exception:
+                    pass
+            if path in PRIMARY_SCAN_API_PATHS or (path.startswith("/api/scans/") and path.endswith("/primary")):
+                try:
+                    actor_email_vps, _, actor_perms_vps = self._resolve_request_role(payload, query, share_token)
+                    if not share_token and (actor_perms_vps.get("can_edit_names") or actor_perms_vps.get("can_manage_users")):
+                        ps_scan_id = str(payload.get("scan_id") or "").strip()
+                        if not ps_scan_id and path.startswith("/api/scans/") and path.endswith("/primary"):
+                            ps_scan_id = re.sub(r"[^a-zA-Z0-9_\-]", "", path[len("/api/scans/") : -len("/primary")].strip("/"))
+                        ps_group = str(payload.get("project_group") or payload.get("site") or "").strip()
+                        if not ps_group and ps_scan_id:
+                            c_scans_vps = (_load_cloud_manifest().get("scans") or [])
+                            for s_cv in (c_scans_vps.values() if isinstance(c_scans_vps, dict) else c_scans_vps):
+                                if isinstance(s_cv, dict) and str(s_cv.get("scan_id") or "").lower() == ps_scan_id.lower():
+                                    ps_group = str(s_cv.get("project_group") or "").strip()
+                                    ps_scan_id = str(s_cv.get("scan_id") or ps_scan_id).strip()
+                                    break
+                        want_prim_vps = bool(payload.get("is_primary", True)) and not bool(payload.get("clear", False))
+                        if ps_group:
+                            set_site_primary_scan(ps_group, ps_scan_id if want_prim_vps else "", actor_email=actor_email_vps)
+                            _VPS_RAM_FALLBACK_CACHE.clear()
                 except Exception:
                     pass
             if self._proxy_via_pc_tunnel_if_vps("POST", path, body):
@@ -701,6 +958,89 @@ class ServerWriteRoutesMixin:
                 )
                 return
 
+            # 1c-1c. Set or Clear Site Primary Scan (/api/site/primary-scan, /api/scans/set-primary, /api/scans/<id>/primary)
+            if path in PRIMARY_SCAN_API_PATHS or (path.startswith("/api/scans/") and path.endswith("/primary")):
+                if share_token or not (actor_perms.get("can_edit_names") or actor_perms.get("can_manage_users")):
+                    self.send_json(
+                        {"error": f"Role '{actor_role}' cannot set Primary Scan (Editor, Admin, or Owner required)."},
+                        status=403,
+                    )
+                    return
+                req_scan_id = str(payload.get("scan_id") or (query.get("scan_id") or [""])[0] or "").strip()
+                if not req_scan_id and path.startswith("/api/scans/") and path.endswith("/primary"):
+                    req_scan_id = re.sub(r"[^a-zA-Z0-9_\-]", "", path[len("/api/scans/") : -len("/primary")].strip("/"))
+                req_group = str(
+                    payload.get("project_group")
+                    or payload.get("site")
+                    or (query.get("project_group") or [""])[0]
+                    or ""
+                ).strip()
+                explicit_clear = bool(payload.get("clear", False)) or (payload.get("is_primary") is False)
+                want_primary = (not explicit_clear) and bool(req_scan_id)
+
+                catalog_scans = DB.list_scans()
+                if not catalog_scans and os.name != "nt":
+                    raw_c = _load_cloud_manifest().get("scans") or []
+                    catalog_scans = list(raw_c.values()) if isinstance(raw_c, dict) else list(raw_c)
+
+                matched_scan: Optional[Dict[str, Any]] = None
+                if req_scan_id:
+                    matched_scan = next(
+                        (s for s in catalog_scans if isinstance(s, dict) and str(s.get("scan_id") or "").lower() == req_scan_id.lower()),
+                        None,
+                    )
+                    if matched_scan is None:
+                        matched_scan = DB.get_scan(req_scan_id)
+                if want_primary and not matched_scan:
+                    self.send_json({"error": f"Scan not found: {req_scan_id}"}, status=404)
+                    return
+
+                if matched_scan:
+                    canonical_sid = str(matched_scan.get("scan_id") or req_scan_id).strip()
+                    scan_group = str(matched_scan.get("project_group") or "").strip()
+                    if scan_group:
+                        req_group = scan_group
+                else:
+                    canonical_sid = ""
+
+                if not req_group:
+                    self.send_json({"error": "project_group or valid scan_id is required"}, status=400)
+                    return
+
+                target_primary_id = canonical_sid if want_primary else ""
+                saved_entry = set_site_primary_scan(req_group, target_primary_id, actor_email=actor_email)
+                _VPS_RAM_FALLBACK_CACHE.clear()
+                if os.name == "nt":
+                    def _bg_sync_primary_scan():
+                        try:
+                            from pc_worker.gdrive_cloud_sync import sync_all_scans_to_gdrive_and_vps
+                            sync_all_scans_to_gdrive_and_vps(DB, AUTH_SHARE, force=False)
+                        except Exception:
+                            pass
+                    threading.Thread(target=_bg_sync_primary_scan, daemon=True).start()
+
+                primary_map_now = load_primary_scans_map()
+                raw_out_scans = DB.list_scans()
+                if not raw_out_scans and os.name != "nt":
+                    raw_c2 = _load_cloud_manifest().get("scans") or []
+                    raw_out_scans = list(raw_c2.values()) if isinstance(raw_c2, dict) else list(raw_c2)
+                all_scans = [self._enrich_scan_urls(s) for s in raw_out_scans if isinstance(s, dict)]
+                self.send_json(
+                    {
+                        "status": "ok",
+                        "ok": True,
+                        "project_group": saved_entry.get("project_group") or req_group,
+                        "primary_scan_id": target_primary_id,
+                        "is_primary": bool(target_primary_id),
+                        "updated_at": saved_entry.get("updated_at"),
+                        "updated_by": saved_entry.get("updated_by"),
+                        "primary_scans": export_public_primary_scans_summary(primary_map_now),
+                        "scans": all_scans,
+                        "projects": self._build_projects_summary(all_scans),
+                    }
+                )
+                return
+
             # 1c-2. Move Scan to Recycle Bin (/api/scans/delete or /api/scans/bin/trash)
             if path in ("/api/scans/delete", "/api/scans/bin/trash") or (path.startswith("/api/scans/") and path.endswith("/delete")):
                 if not actor_perms.get("can_edit_names"):
@@ -851,6 +1191,7 @@ class ServerWriteRoutesMixin:
                 if isinstance(res_rename, dict) and not res_rename.get("ok", True):
                     self.send_json({"error": res_rename.get("error", "Failed to rename site")}, status=404)
                     return
+                migrate_primary_scan_group(old_group, new_group)
                 updated_list = res_rename if isinstance(res_rename, list) else res_rename.get("updated_scans", [])
                 for ck in list(_VPS_RAM_FALLBACK_CACHE.keys()):
                     if ck.startswith("/api/scans") or ck.startswith("/api/projects"):
@@ -891,6 +1232,7 @@ class ServerWriteRoutesMixin:
                     self.send_json({"error": "scan_ids (or scan_id) and target_group are required"}, status=400)
                     return
                 moved_scans = DB.move_scans_to_group(scan_ids, target_group, target_zh, target_type=target_type)
+                clear_primary_if_moved_scans(scan_ids, target_group)
                 _VPS_RAM_FALLBACK_CACHE.clear()
                 if os.name == "nt":
                     def _bg_sync_after_move():
@@ -931,6 +1273,7 @@ class ServerWriteRoutesMixin:
                         self.send_json({"error": "old_folder_name and new_folder_name are required"}, status=400)
                         return
                     folders = DB.rename_library_folder(old_fname, new_fname, folder_zh, icon=icon)
+                    migrate_primary_scan_group(old_fname, new_fname)
                 elif action in ("delete", "remove"):
                     if not folder_name:
                         self.send_json({"error": "folder_name is required"}, status=400)
