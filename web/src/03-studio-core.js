@@ -89,26 +89,22 @@
 
     if (!mat.userData.PassUniforms) {
       mat.userData.PassUniforms = {
-        uBrightness: { value: effB },
-        uElevationHeatmap: { value: heatmapFlag },
-        uElevMin: { value: elevMin },
-        uElevMax: { value: elevMax },
-        uBaseElevMap: { value: baseTex },
-        uBaseBounds: { value: baseBounds },
-        uBaseYRange: { value: baseYRange },
-        uBaseMeanY: { value: baseMeanY },
-        uBaseGridN: { value: baseGridN },
+        uBrightness: { value: effB }, uElevationHeatmap: { value: heatmapFlag },
+        uElevMin: { value: elevMin }, uElevMax: { value: elevMax },
+        uBaseElevMap: { value: baseTex }, uBaseBounds: { value: baseBounds },
+        uBaseYRange: { value: baseYRange }, uBaseMeanY: { value: baseMeanY }, uBaseGridN: { value: baseGridN },
       };
     } else {
-      if (mat.userData.PassUniforms.uBrightness) mat.userData.PassUniforms.uBrightness.value = effB;
-      if (mat.userData.PassUniforms.uElevationHeatmap) mat.userData.PassUniforms.uElevationHeatmap.value = heatmapFlag;
-      if (mat.userData.PassUniforms.uElevMin) mat.userData.PassUniforms.uElevMin.value = elevMin;
-      if (mat.userData.PassUniforms.uElevMax) mat.userData.PassUniforms.uElevMax.value = elevMax;
-      if (mat.userData.PassUniforms.uBaseElevMap) mat.userData.PassUniforms.uBaseElevMap.value = baseTex;
-      if (mat.userData.PassUniforms.uBaseBounds) mat.userData.PassUniforms.uBaseBounds.value = baseBounds;
-      if (mat.userData.PassUniforms.uBaseYRange) mat.userData.PassUniforms.uBaseYRange.value = baseYRange;
-      if (mat.userData.PassUniforms.uBaseMeanY) mat.userData.PassUniforms.uBaseMeanY.value = baseMeanY;
-      if (mat.userData.PassUniforms.uBaseGridN) mat.userData.PassUniforms.uBaseGridN.value = baseGridN;
+      const pu = mat.userData.PassUniforms;
+      if (pu.uBrightness) pu.uBrightness.value = effB;
+      if (pu.uElevationHeatmap) pu.uElevationHeatmap.value = heatmapFlag;
+      if (pu.uElevMin) pu.uElevMin.value = elevMin;
+      if (pu.uElevMax) pu.uElevMax.value = elevMax;
+      if (pu.uBaseElevMap) pu.uBaseElevMap.value = baseTex;
+      if (pu.uBaseBounds) pu.uBaseBounds.value = baseBounds;
+      if (pu.uBaseYRange) pu.uBaseYRange.value = baseYRange;
+      if (pu.uBaseMeanY) pu.uBaseMeanY.value = baseMeanY;
+      if (pu.uBaseGridN) pu.uBaseGridN.value = baseGridN;
     }
 
     if (!mat.userData._hasBrightnessShader) {
@@ -269,16 +265,39 @@
     showToast("Scan brightness reset to 1.0x");
   });
 
+  function syncDetachedSceneWorld(obj, parentMw) {
+    if (!obj) return;
+    obj.updateMatrix();
+    obj.matrixWorld.multiplyMatrices(parentMw, obj.matrix);
+    const ch = obj.children;
+    for (let i = 0; i < ch.length; i++) syncDetachedSceneWorld(ch[i], obj.matrixWorld);
+  }
+
   function installSurfaceAwareOrbitZoom(domEl, getViewerFn, opts = {}) {
     if (!domEl || domEl._surfaceZoomBound) return;
     domEl._surfaceZoomBound = true;
     const ray = new THREE.Raycaster();
     ray.firstHitOnly = true;
     const ndc = new THREE.Vector2();
-    let lastRayMs = 0;
-    let lastSurfDist = NaN;
-    const lastCamPos = new THREE.Vector3();
-    const lastViewDir = new THREE.Vector3();
+    let lastRayMs = 0, lastSurfDist = NaN, cachedRect = null, cachedRectMs = 0;
+    const lastCamPos = new THREE.Vector3(), lastViewDir = new THREE.Vector3();
+    const viewDir = new THREE.Vector3(), tmpDelta = new THREE.Vector3();
+    const collectFastCoarseTargets = (v) => {
+      if (v?.tilesRenderer?._gsPinnedCoarseSet?.size > 0 && v?.modelPivot?.visible !== false && v.tilesRenderer.group) {
+        const fastList = [];
+        v.tilesRenderer.group.updateMatrixWorld(false);
+        const grpMw = v.tilesRenderer.group.matrixWorld;
+        v.tilesRenderer._gsPinnedCoarseSet.forEach((t) => {
+          const sc = t?.engineData?.scene;
+          if (sc && t.internal?.loadingState === 4) {
+            if (!sc.parent) syncDetachedSceneWorld(sc, grpMw);
+            fastList.push(sc);
+          }
+        });
+        if (fastList.length > 0) return fastList;
+      }
+      return null;
+    };
     const collectRaycastTargets = (v) => {
       const list = [];
       const addSide = (s) => {
@@ -331,112 +350,644 @@
       }
     };
 
-    domEl.addEventListener(
-      "wheel",
-      (e) => {
-        const v = typeof getViewerFn === "function" ? getViewerFn() : null;
-        const cam = v?.camera || v?.left?.camera;
-        const ctrls = v?.controls;
-        if (!cam || !ctrls || !ctrls.enabled || ctrls.enableZoom === false) return;
-        if (opts.isStudio && (STATE.fpMode?.active || STATE.activeView !== "studio")) return;
-        if (e.deltaY >= 0) {
-          lastRayMs = 0;
-          return; // Zoom-out works normally
-        }
+    domEl.addEventListener("wheel", (e) => {
+      const v = typeof getViewerFn === "function" ? getViewerFn() : null;
+      const cam = v?.camera || v?.left?.camera;
+      const ctrls = v?.controls;
+      if (!cam || !ctrls || !ctrls.enabled || ctrls.enableZoom === false) return;
+      if (opts.isStudio && (STATE.fpMode?.active || STATE.activeView !== "studio")) return;
+      const now = performance.now();
+      if (opts.isStudio) markStudioCameraActivity(now);
+      if (e.deltaY >= 0) {
+        lastRayMs = 0;
+        return; // Zoom-out works normally
+      }
 
-        const viewDir = new THREE.Vector3().subVectors(ctrls.target, cam.position);
-        const curTargetDist = viewDir.length();
-        if (curTargetDist > 1e-6) viewDir.divideScalar(curTargetDist);
-        else cam.getWorldDirection(viewDir);
+      viewDir.subVectors(ctrls.target, cam.position);
+      const curTargetDist = viewDir.length();
+      if (curTargetDist > 1e-6) viewDir.divideScalar(curTargetDist);
+      else cam.getWorldDirection(viewDir);
 
-        const now = performance.now();
-        let surfDist = NaN;
-        const sameRay = lastViewDir.dot(viewDir) > 0.9995;
-        const cacheTtl = sameRay && lastSurfDist > 1.2 ? 800 : 120;
-        if (now - lastRayMs < cacheTtl && Number.isFinite(lastSurfDist) && lastViewDir.dot(viewDir) > 0.998) {
-          const camDelta = new THREE.Vector3().subVectors(cam.position, lastCamPos).dot(viewDir);
-          const est = lastSurfDist - camDelta;
-          if (est > 0.05) surfDist = est;
+      let surfDist = NaN;
+      const sameRay = lastViewDir.dot(viewDir) > 0.9992;
+      const cacheTtl = sameRay && lastSurfDist > 1.2 ? 900 : 220;
+      if (now - lastRayMs < cacheTtl && Number.isFinite(lastSurfDist) && lastViewDir.dot(viewDir) > 0.996) {
+        const camDelta = tmpDelta.subVectors(cam.position, lastCamPos).dot(viewDir);
+        const est = lastSurfDist - camDelta;
+        if (est > 0.05) surfDist = est;
+      }
+
+      if (!Number.isFinite(surfDist)) {
+        const fastCoarse = collectFastCoarseTargets(v);
+        let targets = fastCoarse || collectRaycastTargets(v);
+        if (!targets.length) return;
+        const sbEval = opts.isStudio && typeof isSectionBoxClippingActive === "function" && isSectionBoxClippingActive()
+          ? parseSectionBoxForEval(STATE.sectionBoxState) : null;
+        ray.firstHitOnly = !sbEval;
+        ray.far = Math.min(600, Math.max(80, curTargetDist * 3.0));
+        ray.set(cam.position, viewDir);
+        let hit0 = filterValidHit(ray.intersectObjects(targets, true), sbEval);
+        if (!hit0 && fastCoarse) {
+          const fullTargets = collectRaycastTargets(v);
+          if (fullTargets.length) { targets = fullTargets; hit0 = filterValidHit(ray.intersectObjects(targets, true), sbEval); }
         }
+        surfDist = hit0 ? hit0.distance : NaN;
 
         if (!Number.isFinite(surfDist)) {
-          const targets = collectRaycastTargets(v);
-          if (!targets.length) return;
-          const sbEval =
-            opts.isStudio && typeof isSectionBoxClippingActive === "function" && isSectionBoxClippingActive()
-              ? parseSectionBoxForEval(STATE.sectionBoxState)
-              : null;
-          ray.firstHitOnly = !sbEval;
-          ray.far = Math.min(600, Math.max(80, curTargetDist * 3.0));
-          ray.set(cam.position, viewDir);
-          const hit0 = filterValidHit(ray.intersectObjects(targets, true), sbEval);
-          surfDist = hit0 ? hit0.distance : NaN;
-
-          if (!Number.isFinite(surfDist)) {
-            const rect = domEl.getBoundingClientRect();
-            if (rect.width > 0 && rect.height > 0) {
-              ndc.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
-              ndc.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
-              if (Number.isFinite(ndc.x) && Math.abs(ndc.x) <= 1.05 && Math.abs(ndc.y) <= 1.05) {
-                ray.setFromCamera(ndc, cam);
-                const cHit = filterValidHit(ray.intersectObjects(targets, true), sbEval);
-                if (cHit) {
-                  const proj = new THREE.Vector3().subVectors(cHit.point, cam.position).dot(viewDir);
-                  if (proj > 0.15) surfDist = proj;
-                }
+          if (!cachedRect || now - cachedRectMs > 400) { cachedRect = domEl.getBoundingClientRect(); cachedRectMs = now; }
+          const rect = cachedRect;
+          if (rect.width > 0 && rect.height > 0) {
+            ndc.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
+            ndc.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
+            if (Number.isFinite(ndc.x) && Math.abs(ndc.x) <= 1.05 && Math.abs(ndc.y) <= 1.05) {
+              ray.setFromCamera(ndc, cam);
+              const cHit = filterValidHit(ray.intersectObjects(targets, true), sbEval);
+              if (cHit) {
+                const proj = tmpDelta.subVectors(cHit.point, cam.position).dot(viewDir);
+                if (proj > 0.15) surfDist = proj;
               }
             }
           }
-          if (Number.isFinite(surfDist)) {
-            lastRayMs = now;
-            lastSurfDist = surfDist;
-            lastCamPos.copy(cam.position);
-            lastViewDir.copy(viewDir);
-          }
         }
+        if (Number.isFinite(surfDist)) {
+          lastRayMs = now;
+          lastSurfDist = surfDist;
+          lastCamPos.copy(cam.position);
+          lastViewDir.copy(viewDir);
+        }
+      }
 
-        const minSurfDist = 0.25;
-        if (!Number.isFinite(surfDist)) {
-          if (curTargetDist < 0.6) {
-            const savedQuat = cam.quaternion.clone();
-            ctrls.target.copy(cam.position).addScaledVector(viewDir, Math.max(1.5, curTargetDist * 1.5));
-            cam.quaternion.copy(savedQuat);
-            syncExtraCams(v);
-          }
-          return;
-        }
-        if (surfDist <= minSurfDist) {
-          if (curTargetDist > surfDist || curTargetDist < 0.15) {
-            const savedQuat = cam.quaternion.clone();
-            ctrls.target.copy(cam.position).addScaledVector(viewDir, Math.max(0.18, surfDist));
-            cam.quaternion.copy(savedQuat);
-            syncExtraCams(v);
-          }
-          e.stopImmediatePropagation();
-          e.preventDefault();
-          return;
-        }
-
-        let desiredTargetDist = curTargetDist;
-        if (surfDist < 3.0 && curTargetDist > surfDist) {
-          desiredTargetDist = Math.max(minSurfDist, surfDist * 0.95);
-        } else if (curTargetDist < 1.2 && surfDist > curTargetDist + 0.25) {
-          desiredTargetDist = Math.min(
-            surfDist * 0.92,
-            Math.max(curTargetDist * 1.5, curTargetDist + Math.min(2.5, (surfDist - curTargetDist) * 0.5))
-          );
-        }
-        if (Math.abs(desiredTargetDist - curTargetDist) > 1e-3) {
+      const minSurfDist = 0.25;
+      if (!Number.isFinite(surfDist)) {
+        if (curTargetDist < 0.6) {
           const savedQuat = cam.quaternion.clone();
-          ctrls.target.copy(cam.position).addScaledVector(viewDir, Math.max(minSurfDist, desiredTargetDist));
+          ctrls.target.copy(cam.position).addScaledVector(viewDir, Math.max(1.5, curTargetDist * 1.5));
           cam.quaternion.copy(savedQuat);
           syncExtraCams(v);
         }
-      },
-      { passive: false, capture: true }
-    );
+        return;
+      }
+      if (surfDist <= minSurfDist) {
+        if (curTargetDist > surfDist || curTargetDist < 0.15) {
+          const savedQuat = cam.quaternion.clone();
+          ctrls.target.copy(cam.position).addScaledVector(viewDir, Math.max(0.18, surfDist));
+          cam.quaternion.copy(savedQuat);
+          syncExtraCams(v);
+        }
+        e.stopImmediatePropagation();
+        e.preventDefault();
+        return;
+      }
+
+      let desiredTargetDist = curTargetDist;
+      if (surfDist < 3.0 && curTargetDist > surfDist) {
+        desiredTargetDist = Math.max(minSurfDist, surfDist * 0.95);
+      } else if (curTargetDist < 1.2 && surfDist > curTargetDist + 0.25) {
+        desiredTargetDist = Math.min(surfDist * 0.92, Math.max(curTargetDist * 1.5, curTargetDist + Math.min(2.5, (surfDist - curTargetDist) * 0.5)));
+      }
+      if (Math.abs(desiredTargetDist - curTargetDist) > 1e-3) {
+        const savedQuat = cam.quaternion.clone();
+        ctrls.target.copy(cam.position).addScaledVector(viewDir, Math.max(minSurfDist, desiredTargetDist));
+        cam.quaternion.copy(savedQuat);
+        syncExtraCams(v);
+      }
+    }, { passive: false, capture: true });
   }
   window.installSurfaceAwareOrbitZoom = installSurfaceAwareOrbitZoom;
+
+  // =========================================================================
+  // STUDIO SMART LOD, PINNED COARSE BASE, CAMERA-IDLE GATE & BOUNDED HD GPU LRU
+  // =========================================================================
+  const STUDIO_HD_IDLE_DELAY_MS = 260;
+  const TILE_STATE_UNLOADED = 0, TILE_STATE_QUEUED = 1, TILE_STATE_LOADING = 2, TILE_STATE_PARSING = 3, TILE_STATE_LOADED = 4;
+
+  function getStudioTargetPixelRatio() {
+    const isIOS = typeof isIOSOrIPadDevice === "function" && isIOSOrIPadDevice();
+    return Math.min(window.devicePixelRatio || 1, isIOS ? 1.5 : 2);
+  }
+
+  function disposeMaterialWithTextures(mat) {
+    if (!mat) return;
+    const list = Array.isArray(mat) ? mat : [mat];
+    for (let i = 0; i < list.length; i++) {
+      const m = list[i];
+      if (!m) continue;
+      for (const k in m) {
+        const v = m[k];
+        if (v && v.isTexture && v !== _defaultBaseElevTex) {
+          try { if (v.image && typeof v.image.close === "function") v.image.close(); } catch (_) {}
+          try { v.dispose(); } catch (_) {}
+        }
+      }
+      try { m.dispose(); } catch (_) {}
+    }
+  }
+
+  function disposeObjectGpuDeep(rootObj) {
+    if (!rootObj || typeof rootObj.traverse !== "function") return;
+    rootObj.traverse((obj) => {
+      if (obj.userData?.meshFeatures?.dispose) try { obj.userData.meshFeatures.dispose(); } catch (_) {}
+      if (obj.userData?.structuralMetadata?.dispose) try { obj.userData.structuralMetadata.dispose(); } catch (_) {}
+      if (obj.geometry) try { obj.geometry.dispose(); } catch (_) {}
+      if (obj.material) disposeMaterialWithTextures(obj.material);
+    });
+  }
+
+  function disposeClearGroup(grp) {
+    if (!grp) return;
+    while (grp.children.length > 0) {
+      const c = grp.children[0];
+      disposeObjectGpuDeep(c);
+      grp.remove(c);
+    }
+  }
+
+  function estimateTileSceneGpuBytes(scene) {
+    if (!scene || typeof scene.traverse !== "function") return 0;
+    let bytes = 0;
+    const seenGeoms = new Set(), seenArrays = new Set(), seenTex = new Set();
+    scene.traverse((obj) => {
+      const g = obj.geometry;
+      if (g && !seenGeoms.has(g)) {
+        seenGeoms.add(g);
+        const idxArr = g.index?.array;
+        if (idxArr && !seenArrays.has(idxArr)) { seenArrays.add(idxArr); bytes += idxArr.byteLength || 0; }
+        const attrs = g.attributes;
+        if (attrs) {
+          for (const k in attrs) {
+            const arr = attrs[k]?.data?.array || attrs[k]?.array;
+            if (arr && !seenArrays.has(arr)) { seenArrays.add(arr); bytes += arr.byteLength || 0; }
+          }
+        }
+      }
+      if (obj.material) {
+        const mats = Array.isArray(obj.material) ? obj.material : [obj.material];
+        for (let mi = 0; mi < mats.length; mi++) {
+          const m = mats[mi];
+          if (!m) continue;
+          for (const k in m) {
+            const t = m[k];
+            if (t && t.isTexture && !seenTex.has(t) && t !== _defaultBaseElevTex) {
+              seenTex.add(t);
+              if (t.isCompressedTexture && Array.isArray(t.mipmaps) && t.mipmaps.length > 0) {
+                for (let j = 0; j < t.mipmaps.length; j++) bytes += t.mipmaps[j]?.data?.byteLength || 0;
+              } else {
+                const im = t.image;
+                const w = Number(im?.width || im?.videoWidth || im?.naturalWidth || 0);
+                const h = Number(im?.height || im?.videoHeight || im?.naturalHeight || 0);
+                if (w > 0 && h > 0) bytes += Math.round(w * h * 4 * (t.generateMipmaps ? 1.3334 : 1.0));
+              }
+            }
+          }
+        }
+      }
+    });
+    return Math.max(bytes, 196608);
+  }
+  window.estimateTileSceneGpuBytes = estimateTileSceneGpuBytes;
+
+  if (typeof window !== "undefined" && window.TilesRenderer?.prototype && !window.TilesRenderer.prototype.__gsAccurateBytesPatched) {
+    window.TilesRenderer.prototype.__gsAccurateBytesPatched = true;
+    window.TilesRenderer.prototype.calculateBytesUsed = function (tile, scene) {
+      if (tile?.__gsPinnedCoarse || tile?.__gsPinnedContainer) return 0;
+      const map = this._bytesUsed;
+      if (map && !map.has(tile) && scene) map.set(tile, estimateTileSceneGpuBytes(scene));
+      return map ? (map.get(tile) ?? 0) : (scene ? estimateTileSceneGpuBytes(scene) : 0);
+    };
+  }
+
+  function getStudioHdTileBudget(lodMode) {
+    const isIOS = typeof isIOSOrIPadDevice === "function" && isIOSOrIPadDevice();
+    const isPhone = typeof isIPhoneOrMobilePhone === "function" && isIPhoneOrMobilePhone();
+    const isMobOrTab = isIOS || isPhone || (typeof isMobileOrTabletDevice === "function" && isMobileOrTabletDevice());
+    const MB = 1024 * 1024;
+    if (lodMode === "rough") return { maxHdBytes: 32 * MB, maxHdTiles: 8 };
+    if (isIOS || isPhone) {
+      return lodMode === "max" ? { maxHdBytes: 176 * MB, maxHdTiles: 32 } : { maxHdBytes: 128 * MB, maxHdTiles: 22 };
+    }
+    if (isMobOrTab) {
+      return lodMode === "max" ? { maxHdBytes: 256 * MB, maxHdTiles: 48 } : { maxHdBytes: 192 * MB, maxHdTiles: 34 };
+    }
+    return lodMode === "max" ? { maxHdBytes: 896 * MB, maxHdTiles: 280 } : { maxHdBytes: 480 * MB, maxHdTiles: 140 };
+  }
+  window.getStudioHdTileBudget = getStudioHdTileBudget;
+
+  function setTileSceneVisibleImmediate(tr, tile, visible) {
+    if (!tr || !tile) return;
+    const sc = tile.engineData?.scene;
+    if (!sc || !tr.group) return;
+    if (visible) {
+      if (sc.parent !== tr.group) {
+        tr.group.add(sc);
+        sc.updateMatrixWorld(true);
+      }
+      sc.visible = true;
+      if (tile.traversal) { tile.traversal.visible = true; tile.traversal.wasSetVisible = true; tile.traversal.active = true; }
+      tr.visibleTiles?.add(tile);
+      tr.activeTiles?.add(tile);
+    } else {
+      if (sc.parent === tr.group) tr.group.remove(sc);
+      if (tile.traversal) { tile.traversal.visible = false; tile.traversal.wasSetVisible = false; }
+      tr.visibleTiles?.delete(tile);
+    }
+  }
+
+  function applyPinnedCoarseMaterialOffset(scene) {
+    if (!scene || typeof scene.traverse !== "function") return;
+    scene.traverse((c) => {
+      if (c.isMesh && c.material) {
+        const mats = Array.isArray(c.material) ? c.material : [c.material];
+        for (let i = 0; i < mats.length; i++) {
+          const m = mats[i];
+          if (m && !m.polygonOffset) {
+            m.polygonOffset = true;
+            m.polygonOffsetFactor = 1.5;
+            m.polygonOffsetUnits = 1.5;
+            m.needsUpdate = true;
+          }
+        }
+      }
+    });
+  }
+
+  function identifyAndPinCoarseBaseTiles(tr) {
+    if (!tr || !tr.root) return;
+    if (!tr._gsPinnedCoarseSet) tr._gsPinnedCoarseSet = new Set();
+    const candidates = [];
+    const walkShallowestRenderable = (node, depth) => {
+      if (!node || depth > 8) return;
+      if (typeof tr.ensureChildrenArePreprocessed === "function") tr.ensureChildrenArePreprocessed(node, true);
+      const intr = node.internal;
+      if (!intr) return;
+      if (intr.hasUnrenderableContent) {
+        node.__gsPinnedContainer = true;
+        node.priority = 1e9;
+        if (intr.loadingState === TILE_STATE_UNLOADED && tr._gsOrigRequestTileContents) {
+          tr._gsOrigRequestTileContents.call(tr, node);
+        }
+        const ch = node.children || [];
+        for (let i = 0; i < ch.length; i++) walkShallowestRenderable(ch[i], depth + 1);
+        return;
+      }
+      if (intr.hasRenderableContent) {
+        candidates.push(node);
+        return;
+      }
+      const ch = node.children || [];
+      for (let i = 0; i < ch.length; i++) walkShallowestRenderable(ch[i], depth + 1);
+    };
+    walkShallowestRenderable(tr.root, 0);
+    candidates.sort((a, b) => (a.internal.depth - b.internal.depth) || ((b.geometricError || 0) - (a.geometricError || 0)));
+    const limit = Math.min(candidates.length, 48);
+    for (let i = 0; i < limit; i++) {
+      const t = candidates[i];
+      t.__gsPinnedCoarse = true;
+      t.priority = 1e9;
+      let anc = t.parent;
+      while (anc) { anc.__gsPinnedContainer = true; anc = anc.parent; }
+      tr._gsPinnedCoarseSet.add(t);
+      if (t.engineData?.scene) applyPinnedCoarseMaterialOffset(t.engineData.scene);
+      if (t.internal.loadingState === TILE_STATE_UNLOADED && tr._gsOrigRequestTileContents) {
+        tr._gsOrigRequestTileContents.call(tr, t);
+      }
+      if (tr.lruCache?.has(t)) tr.lruCache.markUsed(t);
+    }
+  }
+
+  function abortInFlightHdTiles(tr) {
+    if (!tr || !tr.loadingTiles || tr.loadingTiles.size === 0) return 0;
+    const removeFn = tr._gsOrigLruRemove || tr.lruCache?.remove;
+    if (!removeFn || !tr.lruCache) return 0;
+    const snap = Array.from(tr.loadingTiles);
+    let aborted = 0;
+    for (let i = 0; i < snap.length; i++) {
+      const t = snap[i];
+      if (!t || t.__gsPinnedCoarse || t.__gsPinnedContainer) continue;
+      const st = t.internal?.loadingState;
+      if (st === TILE_STATE_QUEUED || st === TILE_STATE_LOADING || st === TILE_STATE_PARSING) {
+        if (removeFn.call(tr.lruCache, t)) aborted++;
+      }
+    }
+    if (tr.queuedTiles && tr.queuedTiles.length > 0) {
+      tr.queuedTiles = tr.queuedTiles.filter((t) => Boolean(t && (t.__gsPinnedCoarse || t.__gsPinnedContainer)));
+    }
+    return aborted;
+  }
+  window.abortInFlightHdTiles = abortInFlightHdTiles;
+
+  function isSubtreeCoveredByResidentHd(tr, node, requireAllBranches) {
+    if (!node) return false;
+    const isLoadedScene = node.internal?.hasRenderableContent && node.internal?.loadingState === TILE_STATE_LOADED && node.engineData?.scene?.parent === tr.group && node.engineData.scene.visible !== false;
+    if (!node.__gsPinnedCoarse && isLoadedScene) return true;
+    const ch = node.children;
+    if (!ch || ch.length === 0) return Boolean(!node.__gsPinnedCoarse && isLoadedScene);
+    let checked = 0;
+    for (let i = 0; i < ch.length; i++) {
+      const child = ch[i];
+      if (!child?.traversal) { if (requireAllBranches) return false; continue; }
+      const relevant = requireAllBranches || (child.traversal.lastFrameVisited === tr.frameCount && child.traversal.inFrustum);
+      if (!relevant) continue;
+      checked++;
+      if (!isSubtreeCoveredByResidentHd(tr, child, requireAllBranches)) return false;
+    }
+    return checked > 0;
+  }
+
+  function ensureZeroGapCoarseCoverage(tr, isMoving = false) {
+    if (!tr || !tr._gsPinnedCoarseSet || tr._gsPinnedCoarseSet.size === 0) return;
+    let anyVisible = (tr.visibleTiles?.size || 0) > 0;
+    tr._gsPinnedCoarseSet.forEach((coarse) => {
+      if (!coarse || coarse.internal?.loadingState !== TILE_STATE_LOADED || !coarse.engineData?.scene) return;
+      if (tr.lruCache?.has(coarse)) tr.lruCache.markUsed(coarse);
+      const hasChildren = Array.isArray(coarse.children) && coarse.children.length > 0;
+      if (!hasChildren || coarse.refine === "ADD") {
+        const inView = isMoving || coarse.traversal?.lastFrameVisited !== tr.frameCount || coarse.traversal?.inFrustum !== false;
+        if (inView) { setTileSceneVisibleImmediate(tr, coarse, true); anyVisible = true; }
+        return;
+      }
+      // Keep coarse base tile pinned & visible until all relevant child branches have resident HD coverage
+      const fullyCovered = isSubtreeCoveredByResidentHd(tr, coarse, isMoving || tr.errorTarget <= 12);
+      if (fullyCovered) {
+        setTileSceneVisibleImmediate(tr, coarse, false);
+        anyVisible = true;
+      } else {
+        const inView = isMoving || coarse.traversal?.lastFrameVisited !== tr.frameCount || coarse.traversal?.inFrustum !== false;
+        if (inView) { setTileSceneVisibleImmediate(tr, coarse, true); anyVisible = true; }
+      }
+    });
+    if (!anyVisible) {
+      tr._gsPinnedCoarseSet.forEach((coarse) => {
+        if (coarse?.internal?.loadingState === TILE_STATE_LOADED && coarse.engineData?.scene) {
+          setTileSceneVisibleImmediate(tr, coarse, true);
+        }
+      });
+    }
+  }
+
+  function unhideNearestLoadedAncestor(tr, tile) {
+    let anc = tile?.parent;
+    while (anc) {
+      if (anc.internal?.hasRenderableContent && anc.internal?.loadingState === TILE_STATE_LOADED && anc.engineData?.scene) {
+        setTileSceneVisibleImmediate(tr, anc, true);
+        return anc;
+      }
+      anc = anc.parent;
+    }
+    return null;
+  }
+
+  function evictHdTileCleanly(tr, tile) {
+    if (!tr || !tile || tile.__gsPinnedCoarse || tile.__gsPinnedContainer) return false;
+    const wasInView = Boolean(tile.traversal?.visible || tile.traversal?.inFrustum || tile.engineData?.scene?.parent === tr.group);
+    const sc = tile.engineData?.scene;
+    if (sc) {
+      if (sc.parent) sc.parent.remove(sc);
+      disposeObjectGpuDeep(sc);
+    }
+    tr._gsHdTileMeta?.delete(tile);
+    const removeFn = tr._gsOrigLruRemove || tr.lruCache?.remove;
+    if (removeFn && tr.lruCache) removeFn.call(tr.lruCache, tile);
+    if (wasInView) unhideNearestLoadedAncestor(tr, tile);
+    return true;
+  }
+
+  function enforceStudioHdGpuBudget(tr) {
+    if (!tr || !tr._gsHdTileMeta) return 0;
+    const budget = getStudioHdTileBudget(tr._gsLodMode || STATE.scanLodMode || "auto");
+    const nowMs = performance.now();
+    let totalBytes = 0, totalCount = 0;
+    const stale = [];
+    tr._gsHdTileMeta.forEach((meta, tile) => {
+      if (!tile || tile.internal?.loadingState !== TILE_STATE_LOADED || !tile.engineData?.scene) {
+        stale.push(tile);
+        return;
+      }
+      if (tile.traversal?.visible || (tile.traversal?.lastFrameVisited === tr.frameCount && tile.traversal?.inFrustum)) {
+        meta.lastUsedFrame = tr.frameCount;
+        meta.lastUsedMs = nowMs;
+      }
+      totalBytes += meta.bytes;
+      totalCount++;
+    });
+    for (let i = 0; i < stale.length; i++) tr._gsHdTileMeta.delete(stale[i]);
+    tr._gsHdResidentBytes = totalBytes;
+    tr._gsHdResidentCount = totalCount;
+    if (totalBytes <= budget.maxHdBytes && totalCount <= budget.maxHdTiles) return 0;
+
+    const entries = Array.from(tr._gsHdTileMeta.entries());
+    entries.sort((a, b) => {
+      const tA = a[0], mA = a[1], tB = b[0], mB = b[1];
+      const visA = Boolean(tA.traversal?.visible && tA.engineData?.scene?.parent === tr.group);
+      const visB = Boolean(tB.traversal?.visible && tB.engineData?.scene?.parent === tr.group);
+      if (visA !== visB) return visA ? 1 : -1;
+      const frA = Boolean(tA.traversal?.lastFrameVisited === tr.frameCount && tA.traversal?.inFrustum);
+      const frB = Boolean(tB.traversal?.lastFrameVisited === tr.frameCount && tB.traversal?.inFrustum);
+      if (frA !== frB) return frA ? 1 : -1;
+      if (!visA && mA.lastUsedFrame !== mB.lastUsedFrame) return mA.lastUsedFrame - mB.lastUsedFrame;
+      const dA = tA.internal?.depth || 0, dB = tB.internal?.depth || 0;
+      if (dA !== dB) return dB - dA;
+      return (tB.traversal?.distanceFromCamera || 0) - (tA.traversal?.distanceFromCamera || 0);
+    });
+
+    let evicted = 0, evictedVisible = false;
+    for (let i = 0; i < entries.length && (totalBytes > budget.maxHdBytes || totalCount > budget.maxHdTiles); i++) {
+      const [victim, meta] = entries[i];
+      const isVis = Boolean(victim.traversal?.visible || (victim.traversal?.lastFrameVisited === tr.frameCount && victim.traversal?.inFrustum));
+      if (isVis && totalCount <= 2) break;
+      if (evictHdTileCleanly(tr, victim)) {
+        totalBytes = Math.max(0, totalBytes - meta.bytes);
+        totalCount = Math.max(0, totalCount - 1);
+        evicted++;
+        if (isVis) evictedVisible = true;
+      }
+    }
+    tr._gsHdResidentBytes = totalBytes;
+    tr._gsHdResidentCount = totalCount;
+    if (evictedVisible && studioThree) {
+      tr._gsBudgetSaturatedCamSig = studioThree._lastCamSig || "saturated";
+      abortInFlightHdTiles(tr);
+    }
+    if (evicted > 0) ensureZeroGapCoarseCoverage(tr, Boolean(studioThree?._camMoving));
+    return evicted;
+  }
+  window.enforceStudioHdGpuBudget = enforceStudioHdGpuBudget;
+
+  function syncStudioTilesLruLimits(tr, lodMode) {
+    if (!tr) return;
+    tr._gsLodMode = lodMode || "auto";
+    const budget = getStudioHdTileBudget(tr._gsLodMode);
+    if (tr.lruCache) {
+      const headroom = 48 * 1024 * 1024;
+      tr.lruCache.minBytesSize = Math.round(budget.maxHdBytes * 0.82);
+      tr.lruCache.maxBytesSize = budget.maxHdBytes + headroom;
+      tr.lruCache.minSize = Math.max(48, budget.maxHdTiles + 32);
+      tr.lruCache.maxSize = Math.max(96, budget.maxHdTiles + 72);
+    }
+  }
+
+  function installStudioSmartLodEngine(tr, lodMode) {
+    if (!tr || tr._gsSmartLodInstalled) {
+      if (tr) syncStudioTilesLruLimits(tr, lodMode);
+      return;
+    }
+    tr._gsSmartLodInstalled = true;
+    tr._gsDisposing = false;
+    tr._gsPinnedCoarseSet = new Set();
+    tr._gsHdTileMeta = new Map();
+    tr._gsNeedsUpdate = true;
+    tr._gsHdResidentBytes = 0;
+    tr._gsHdResidentCount = 0;
+    syncStudioTilesLruLimits(tr, lodMode);
+
+    if (tr.lruCache && typeof tr.lruCache.remove === "function") {
+      const origRemove = tr.lruCache.remove.bind(tr.lruCache);
+      tr._gsOrigLruRemove = origRemove;
+      tr.lruCache.remove = function (tile) {
+        if (tile && (tile.__gsPinnedCoarse || tile.__gsPinnedContainer) && !tr._gsDisposing) {
+          tr.lruCache.markUsed(tile);
+          return false;
+        }
+        tr._gsHdTileMeta?.delete(tile);
+        return origRemove(tile);
+      };
+    }
+
+    const origDisposeTile = tr.disposeTile.bind(tr);
+    tr.disposeTile = function (tile) {
+      if (tile && (tile.__gsPinnedCoarse || tile.__gsPinnedContainer) && !tr._gsDisposing) return;
+      const wasVis = Boolean(tile?.traversal?.visible || tile?.engineData?.scene?.parent === tr.group);
+      const sc = tile?.engineData?.scene;
+      if (sc) disposeObjectGpuDeep(sc);
+      tr._gsHdTileMeta?.delete(tile);
+      origDisposeTile(tile);
+      if (wasVis && !tr._gsDisposing) unhideNearestLoadedAncestor(tr, tile);
+    };
+
+    const origRequest = tr.requestTileContents.bind(tr);
+    tr._gsOrigRequestTileContents = origRequest;
+    tr.requestTileContents = function (tile) {
+      if (!tile) return;
+      const isPinned = Boolean(tile.__gsPinnedCoarse || tile.__gsPinnedContainer || tile.internal?.hasUnrenderableContent);
+      if (!isPinned) {
+        if (studioThree?._camMoving) return;
+        if (tr._gsBudgetSaturatedCamSig && studioThree && tr._gsBudgetSaturatedCamSig === studioThree._lastCamSig) return;
+        const budget = getStudioHdTileBudget(tr._gsLodMode || "auto");
+        if ((tr._gsHdResidentBytes || 0) >= budget.maxHdBytes && (tr._gsHdResidentCount || 0) >= 2) {
+          enforceStudioHdGpuBudget(tr);
+          if ((tr._gsHdResidentBytes || 0) >= budget.maxHdBytes) return;
+        }
+      }
+      return origRequest(tile);
+    };
+
+    const markDirty = () => { tr._gsNeedsUpdate = true; };
+    tr.addEventListener("needs-update", markDirty);
+    tr.addEventListener("load-content", markDirty);
+    tr.addEventListener("load-tileset", () => {
+      identifyAndPinCoarseBaseTiles(tr);
+      tr._gsNeedsUpdate = true;
+    });
+    tr.addEventListener("load-model", (ev) => {
+      const tile = ev?.tile, scene = ev?.scene;
+      if (!tile || !scene) return;
+      if (tile.__gsPinnedCoarse) {
+        applyPinnedCoarseMaterialOffset(scene);
+        if (tr.lruCache?.has(tile)) tr.lruCache.markUsed(tile);
+      } else if (!tile.__gsPinnedContainer) {
+        const bytes = estimateTileSceneGpuBytes(scene);
+        tr._gsHdTileMeta.set(tile, { bytes, lastUsedFrame: tr.frameCount, lastUsedMs: performance.now() });
+        if (tr.lruCache?.has(tile)) tr.lruCache.setMemoryUsage(tile, bytes);
+        enforceStudioHdGpuBudget(tr);
+      }
+      tr._gsNeedsUpdate = true;
+    });
+    if (tr.root) identifyAndPinCoarseBaseTiles(tr);
+  }
+  window.installStudioSmartLodEngine = installStudioSmartLodEngine;
+
+  function disposeTilesRendererCleanly(tr, parentGroup) {
+    if (!tr) return;
+    tr._gsDisposing = true;
+    try {
+      abortInFlightHdTiles(tr);
+      if (tr.group) {
+        disposeObjectGpuDeep(tr.group);
+        if (parentGroup) parentGroup.remove(tr.group);
+      }
+      if (tr._gsPinnedCoarseSet) {
+        tr._gsPinnedCoarseSet.forEach((t) => { if (t?.engineData?.scene) disposeObjectGpuDeep(t.engineData.scene); });
+        tr._gsPinnedCoarseSet.clear();
+      }
+      tr._gsHdTileMeta?.clear();
+      tr.dispose();
+    } catch (_) {}
+  }
+
+  function markStudioCameraActivity(nowMs = performance.now()) {
+    if (!studioThree) return;
+    studioThree._camMoving = true;
+    studioThree._camIdleAtMs = nowMs + STUDIO_HD_IDLE_DELAY_MS;
+    const tr = studioThree.tilesRenderer;
+    if (tr) {
+      tr._gsBudgetSaturatedCamSig = null;
+      if (tr.loadingTiles && tr.loadingTiles.size > 0) abortInFlightHdTiles(tr);
+    }
+  }
+  window.markStudioCameraActivity = markStudioCameraActivity;
+
+  function computeCameraPoseSig(cam) {
+    const p = cam.position, q = cam.quaternion;
+    return `${p.x.toFixed(3)}_${p.y.toFixed(3)}_${p.z.toFixed(3)}_${q.x.toFixed(4)}_${q.y.toFixed(4)}_${q.z.toFixed(4)}_${q.w.toFixed(4)}_${cam.fov.toFixed(2)}_${cam.aspect.toFixed(3)}`;
+  }
+
+  function stepStudioTilesStreaming(nowMs) {
+    if (!studioThree || !studioThree.tilesRenderer || !studioThree.modelPivot?.visible) return;
+    const tr = studioThree.tilesRenderer;
+    const cam = studioThree.camera;
+    const sig = computeCameraPoseSig(cam);
+    const poseChanged = studioThree._lastCamSig !== undefined && studioThree._lastCamSig !== sig;
+    studioThree._lastCamSig = sig;
+
+    if (poseChanged) {
+      markStudioCameraActivity(nowMs);
+    } else if (studioThree._camMoving && nowMs >= (studioThree._camIdleAtMs || 0) && !studioThree._orbitInteracting) {
+      studioThree._camMoving = false;
+      tr._gsNeedsUpdate = true;
+    }
+
+    const isMoving = Boolean(studioThree._camMoving);
+    if (isMoving) {
+      if (tr.loadingTiles && tr.loadingTiles.size > 0) abortInFlightHdTiles(tr);
+      if (poseChanged || tr._gsNeedsUpdate) {
+        tr._gsNeedsUpdate = false;
+        tr.update();
+        ensureZeroGapCoarseCoverage(tr, true);
+      }
+    } else if (tr._gsNeedsUpdate || studioThree._lastSettledCamSig !== sig) {
+      tr._gsNeedsUpdate = false;
+      studioThree._lastSettledCamSig = sig;
+      if (tr._gsPinnedCoarseSet && tr._gsPinnedCoarseSet.size === 0 && tr.root) identifyAndPinCoarseBaseTiles(tr);
+      tr.update();
+      enforceStudioHdGpuBudget(tr);
+      ensureZeroGapCoarseCoverage(tr, false);
+    }
+
+    const st = tr.stats || {};
+    const statsSig = `${st.loaded || 0}_${st.downloading || 0}_${st.parsing || 0}_${st.queued || 0}_${st.failed || 0}_${studioThree._loadingDone ? 1 : 0}`;
+    if (studioThree._lastLoaderStatsSig !== statsSig || !studioThree._loadingDone) {
+      studioThree._lastLoaderStatsSig = statsSig;
+      syncTilesLoaderProgress(studioThree, "studio");
+    }
+    if (studioThree._lastAppliedBrightness !== STATE.scanBrightness && tr.group) {
+      studioThree._lastAppliedBrightness = STATE.scanBrightness;
+      tr.group.traverse((child) => {
+        if (child.isMesh && child.material) {
+          const mats = Array.isArray(child.material) ? child.material : [child.material];
+          mats.forEach((m) => m && applyBrightnessToMaterial(m, STATE.scanBrightness));
+        }
+      });
+    }
+  }
 
   function initStudio3D() {
     if (studioThree) return studioThree;
@@ -447,12 +998,9 @@
     const scene = new THREE.Scene();
     scene.background = new THREE.Color(isDark ? 0x0b0f19 : 0xe2e8f0);
 
-    const camera = new THREE.PerspectiveCamera(
-      50,
-      Math.max(1, container.clientWidth) / Math.max(1, container.clientHeight),
-      0.03,
-      10000
-    );
+    const initW = Math.max(1, container.clientWidth || window.innerWidth || 800);
+    const initH = Math.max(1, container.clientHeight || window.innerHeight || 600);
+    const camera = new THREE.PerspectiveCamera(50, initW / initH, 0.03, 10000);
     camera.position.set(45, 38, 55);
 
     const isIOS = typeof isIOSOrIPadDevice === "function" && isIOSOrIPadDevice();
@@ -460,11 +1008,8 @@
       antialias: !isIOS,
       powerPreference: isIOS ? "default" : "high-performance",
     });
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, isIOS ? 1.5 : 2));
-    renderer.setSize(
-      Math.max(1, container.clientWidth || window.innerWidth || 800),
-      Math.max(1, container.clientHeight || window.innerHeight || 600)
-    );
+    renderer.setPixelRatio(getStudioTargetPixelRatio());
+    renderer.setSize(initW, initH);
     renderer.toneMapping = THREE.NoToneMapping;
     renderer.toneMappingExposure = 1.0;
     renderer.localClippingEnabled = true;
@@ -480,12 +1025,18 @@
             if (rw > 4 && rh > 4 && (rw !== studioThree._lastRoW || rh !== studioThree._lastRoH)) {
               studioThree._lastRoW = rw;
               studioThree._lastRoH = rh;
+              studioThree._viewW = rw;
+              studioThree._viewH = rh;
+              studioThree._canvasRect = null;
+              studioThree._badgeLayoutDirty = true;
+              studioThree._zoomInvariantDirty = true;
               studioThree.camera.aspect = rw / rh;
               studioThree.camera.updateProjectionMatrix();
+              studioThree.renderer.setPixelRatio(getStudioTargetPixelRatio());
               studioThree.renderer.setSize(rw, rh);
               if (studioThree.tilesRenderer) {
                 studioThree.tilesRenderer.setResolutionFromRenderer(studioThree.camera, studioThree.renderer);
-                studioThree.tilesRenderer.update();
+                studioThree.tilesRenderer._gsNeedsUpdate = true;
               }
             }
           }
@@ -494,30 +1045,22 @@
       } catch (_) {}
     }
 
-    renderer.domElement.addEventListener(
-      "webglcontextlost",
-      (ev) => {
-        ev.preventDefault();
-        if (studioThree) {
-          studioThree._contextLost = true;
-          studioThree._forceLowMemStream = true;
-          renderer.setPixelRatio(1);
+    renderer.domElement.addEventListener("webglcontextlost", (ev) => {
+      ev.preventDefault();
+      if (studioThree) {
+        studioThree._contextLost = true;
+        if (studioThree.tilesRenderer) abortInFlightHdTiles(studioThree.tilesRenderer);
+      }
+    }, false);
+    renderer.domElement.addEventListener("webglcontextrestored", () => {
+      if (studioThree) {
+        studioThree._contextLost = false;
+        renderer.setPixelRatio(getStudioTargetPixelRatio());
+        if (STATE.activeView === "studio" && STATE.activeScanId) {
+          loadScanIntoStudio(STATE.activeScanId, { preserveCamera: true, preserveTools: true });
         }
-      },
-      false
-    );
-    renderer.domElement.addEventListener(
-      "webglcontextrestored",
-      () => {
-        if (studioThree) {
-          studioThree._contextLost = false;
-          if (STATE.activeView === "studio" && STATE.activeScanId) {
-            loadScanIntoStudio(STATE.activeScanId, { preserveCamera: true, preserveTools: true });
-          }
-        }
-      },
-      false
-    );
+      }
+    }, false);
 
     const controls = new THREE.OrbitControls(camera, renderer.domElement);
     controls.enableDamping = true;
@@ -531,7 +1074,13 @@
     installSurfaceAwareOrbitZoom(renderer.domElement, () => studioThree, { isStudio: true });
     controls.mouseButtons = { LEFT: THREE.MOUSE.ROTATE, MIDDLE: THREE.MOUSE.ROTATE, RIGHT: THREE.MOUSE.PAN };
     controls.touches = { ONE: THREE.TOUCH.ROTATE, TWO: THREE.TOUCH.DOLLY_PAN };
-    controls.addEventListener("end", () => SHARE_TELEMETRY.recordCameraInteraction("studio"));
+    controls.addEventListener("start", () => {
+      if (studioThree) { studioThree._orbitInteracting = true; markStudioCameraActivity(); }
+    });
+    controls.addEventListener("end", () => {
+      if (studioThree) { studioThree._orbitInteracting = false; markStudioCameraActivity(); }
+      SHARE_TELEMETRY.recordCameraInteraction("studio");
+    });
     renderer.domElement.addEventListener("mousedown", (e) => { if (e.button === 1) e.preventDefault(); });
     renderer.domElement.addEventListener("auxclick", (e) => { if (e.button === 1) e.preventDefault(); });
 
@@ -561,6 +1110,9 @@
       tilesRenderer: null, loadedMesh: null, boundingSphere: null,
       tilesCenter: [0, 0, 0], tileUpMatrix: new THREE.Matrix4(),
       _cancelLassoDrag: null, _lassoHighlightTimer: null,
+      _viewW: initW, _viewH: initH, _lastRoW: initW, _lastRoH: initH,
+      _camMoving: false, _camIdleAtMs: 0, _orbitInteracting: false, _scanLoadSeq: 0,
+      _badgeLayoutDirty: true, _zoomInvariantDirty: true,
     };
     window.studioThree = studioThree;
 
@@ -668,11 +1220,9 @@
 
     const applyChordedMiddleOrbitDelta = (dx, dy) => {
       if (!dx && !dy) return;
-      const el = renderer.domElement;
-      const h = Math.max(1, el.clientHeight || 600);
+      const h = Math.max(1, studioThree._viewH || renderer.domElement.clientHeight || 600);
       const rotSpeed = 2 * Math.PI * (controls.rotateSpeed || 1.0);
-      const dTheta = -(dx / h) * rotSpeed;
-      const dPhi = -(dy / h) * rotSpeed;
+      const dTheta = -(dx / h) * rotSpeed, dPhi = -(dy / h) * rotSpeed;
       const offset = camera.position.clone().sub(controls.target);
       const sph = new THREE.Spherical().setFromVector3(offset);
       sph.theta += dTheta;
@@ -681,6 +1231,7 @@
       camera.position.copy(controls.target).add(offset);
       camera.lookAt(controls.target);
       controls.update();
+      markStudioCameraActivity();
     };
 
     // Suppress right-click context menu on canvas while First-Person Mode is active, or right-click to delete an editable vertex
@@ -701,19 +1252,14 @@
     });
 
     // Mouse Wheel adjusts First-Person movement speed smoothly (Unreal / Blender style)
-    renderer.domElement.addEventListener(
-      "wheel",
-      (e) => {
-        if (STATE.activeView !== "studio" || !STATE.fpMode.active) return;
-        e.preventDefault();
-        e.stopPropagation();
-        const factor = e.deltaY < 0 ? 1.16 : 1 / 1.16;
-        const nextSpeed = Math.max(0.5, Math.min(60.0, Number((STATE.fpMode.baseSpeed * factor).toFixed(2))));
-        STATE.fpMode.baseSpeed = nextSpeed;
-        syncFirstPersonHudUI();
-      },
-      { passive: false }
-    );
+    renderer.domElement.addEventListener("wheel", (e) => {
+      if (STATE.activeView !== "studio" || !STATE.fpMode.active) return;
+      e.preventDefault();
+      e.stopPropagation();
+      const factor = e.deltaY < 0 ? 1.16 : 1 / 1.16;
+      STATE.fpMode.baseSpeed = Math.max(0.5, Math.min(60.0, Number((STATE.fpMode.baseSpeed * factor).toFixed(2))));
+      syncFirstPersonHudUI();
+    }, { passive: false });
 
     // Double-click on 3D surface in First-Person Mode teleports smoothly above that point
     renderer.domElement.addEventListener("dblclick", (e) => {
@@ -726,10 +1272,9 @@
       if (hit && hit.rawPoint) {
         const hOffset = STATE.fpMode.locomotion === "walk" ? STATE.fpMode.eyeHeight : 1.75;
         camera.position.set(hit.rawPoint.x, hit.rawPoint.y + hOffset, hit.rawPoint.z);
-        STATE.fpMode.velX = 0;
-        STATE.fpMode.velY = 0;
-        STATE.fpMode.velZ = 0;
+        STATE.fpMode.velX = 0; STATE.fpMode.velY = 0; STATE.fpMode.velZ = 0;
         if (STATE.fpMode.locomotion === "walk") STATE.fpMode.onGround = true;
+        markStudioCameraActivity();
         showToast(tr("已瞬移至目標位置", "Teleported to target position"));
       }
     });
@@ -738,41 +1283,45 @@
     let downPos = { x: 0, y: 0 };
     const activeTouchPointers = new Set();
     let lastMultiTouchTime = 0;
+    const abortSingleFingerToolForPinch = () => {
+      lastMultiTouchTime = performance.now();
+      markStudioCameraActivity(lastMultiTouchTime);
+      if (_lassoState.dragging) cancelActiveLassoDrag();
+      if (studioThree._pendingVertexDrag) {
+        studioThree._pendingVertexDrag = null;
+        syncStudioControlsForTool();
+      }
+      if (STATE.movingVertex?.dragMode) {
+        if (STATE.movingVertex.pointerId != null) {
+          try { renderer.domElement.releasePointerCapture(STATE.movingVertex.pointerId); } catch (_) {}
+        }
+        if (typeof cancelStudioVertexMove === "function") cancelStudioVertexMove(false);
+        syncStudioControlsForTool();
+      }
+      if (STATE.fpMode?.dragLooking) {
+        if (STATE.fpMode.lookPointerId != null) {
+          try { renderer.domElement.releasePointerCapture(STATE.fpMode.lookPointerId); } catch (_) {}
+        }
+        STATE.fpMode.dragLooking = false;
+        STATE.fpMode.lookPointerId = null;
+      }
+    };
+    window.addEventListener("blur", () => { activeTouchPointers.clear(); if (studioThree) studioThree._orbitInteracting = false; });
 
-    renderer.domElement.addEventListener(
-      "touchstart",
-      (te) => {
-        if (te.touches && te.touches.length >= 2) {
-          lastMultiTouchTime = performance.now();
-          if (_lassoState.dragging) {
-            cancelActiveLassoDrag();
-          }
-        }
-      },
-      { passive: true }
-    );
-    renderer.domElement.addEventListener(
-      "touchmove",
-      (te) => {
-        if (te.touches && te.touches.length >= 2) {
-          lastMultiTouchTime = performance.now();
-          if (_lassoState.dragging) {
-            cancelActiveLassoDrag();
-          }
-        }
-      },
-      { passive: true }
-    );
+    renderer.domElement.addEventListener("touchstart", (te) => {
+      if (te.touches && te.touches.length >= 2) abortSingleFingerToolForPinch();
+    }, { passive: true });
+    renderer.domElement.addEventListener("touchmove", (te) => {
+      if (te.touches && te.touches.length >= 2) abortSingleFingerToolForPinch();
+      else if (te.touches && te.touches.length === 1 && STATE.activeTool !== "crop" && STATE.activeTool !== "crop_delete") markStudioCameraActivity();
+    }, { passive: true });
 
     renderer.domElement.addEventListener("pointerdown", (e) => {
       document.querySelectorAll(".gs-scan-comment-pin.mobile-open").forEach((el) => el.classList.remove("mobile-open"));
       if (e.pointerType === "touch") {
         activeTouchPointers.add(e.pointerId);
         if (activeTouchPointers.size >= 2) {
-          lastMultiTouchTime = performance.now();
-          if (_lassoState.dragging) {
-            cancelActiveLassoDrag(e);
-          }
+          abortSingleFingerToolForPinch();
           return;
         }
       }
@@ -1270,9 +1819,10 @@
     });
 
     const animate = (nowMs) => {
-      requestAnimationFrame(animate);
-      if (STATE.activeView !== "studio") return;
-      if (STATE.fpMode.active) updateFirstPersonCamera(nowMs || performance.now());
+      studioThree._rafId = requestAnimationFrame(animate);
+      if (STATE.activeView !== "studio" || studioThree._contextLost) return;
+      const ts = nowMs || performance.now();
+      if (STATE.fpMode.active) updateFirstPersonCamera(ts);
       else controls.update();
       camera.updateMatrixWorld();
       if (studioThree.tilesRenderer && !STATE.multiAlign?.active) {
@@ -1280,73 +1830,54 @@
         if (studioThree.tilesRenderer.group) studioThree.tilesRenderer.group.visible = true;
       }
       if (studioThree.tilesRenderer && studioThree.modelPivot.visible) {
-        studioThree.tilesRenderer.update();
-        syncTilesLoaderProgress(studioThree, "studio");
-        if (studioThree._lastAppliedBrightness !== STATE.scanBrightness) {
-          studioThree._lastAppliedBrightness = STATE.scanBrightness;
-          studioThree.tilesRenderer.group.traverse((child) => {
-            if (child.isMesh && child.material) {
-              const mats = Array.isArray(child.material) ? child.material : [child.material];
-              mats.forEach((m) => m && applyBrightnessToMaterial(m, STATE.scanBrightness));
-            }
-          });
-        }
+        stepStudioTilesStreaming(ts);
       }
       if (typeof updateGaussianSplatForContext === "function") updateGaussianSplatForContext(studioThree, "studio");
       if (STATE.multiAlign.active && studioThree.multiAlignGroup.visible) {
         updateMultiAlignLayersEachFrame();
       }
       updateStudioTransformGizmo();
-      updateZoomInvariantElements();
+      updateZoomInvariantElements(true);
       updateNorthArrowCompass(camera);
       renderer.render(scene, camera);
-      update2DBadgePositions();
+      update2DBadgePositions(true);
     };
-    requestAnimationFrame(animate);
+    studioThree._rafId = requestAnimationFrame(animate);
 
     return studioThree;
   }
 
   const _northCompassDir = new THREE.Vector3();
+  let _northRotorEl = null, _lastNorthTransform = "";
   function updateNorthArrowCompass(overrideCam = null) {
-    const rotor = document.getElementById("gsNorthArrowRotor");
+    const rotor = _northRotorEl && _northRotorEl.isConnected ? _northRotorEl : (_northRotorEl = document.getElementById("gsNorthArrowRotor"));
     if (!rotor) return;
     let cam = overrideCam;
     if (!cam) {
-      if (STATE.activeView === "studio" && studioThree?.camera) {
-        cam = studioThree.camera;
-      } else if (STATE.activeView === "compare" && typeof compareCtx !== "undefined" && compareCtx?.left?.camera) {
-        cam = compareCtx.left.camera;
-      } else if (STATE.activeView === "map" && STATE.siteTimelineOpen && typeof previewThree !== "undefined" && previewThree?.camera) {
-        cam = previewThree.camera;
-      }
+      if (STATE.activeView === "studio" && studioThree?.camera) cam = studioThree.camera;
+      else if (STATE.activeView === "compare" && typeof compareCtx !== "undefined" && compareCtx?.left?.camera) cam = compareCtx.left.camera;
+      else if (STATE.activeView === "map" && STATE.siteTimelineOpen && typeof previewThree !== "undefined" && previewThree?.camera) cam = previewThree.camera;
     }
     if (!cam) {
-      rotor.setAttribute("transform", "rotate(0 18 18)");
+      if (_lastNorthTransform !== "rotate(0 18 18)") { _lastNorthTransform = "rotate(0 18 18)"; rotor.setAttribute("transform", _lastNorthTransform); }
       return;
     }
     cam.getWorldDirection(_northCompassDir);
     const camAzDeg = (Math.atan2(_northCompassDir.x, -_northCompassDir.z) * 180) / Math.PI;
     if (Number.isFinite(camAzDeg)) {
-      rotor.setAttribute("transform", `rotate(${(-camAzDeg).toFixed(1)} 18 18)`);
+      const tf = `rotate(${(-camAzDeg).toFixed(1)} 18 18)`;
+      if (tf !== _lastNorthTransform) { _lastNorthTransform = tf; rotor.setAttribute("transform", tf); }
     }
   }
   window.updateNorthArrowCompass = updateNorthArrowCompass;
 
   function alignActiveCameraToNorth() {
     let ctx = null;
-    if (STATE.activeView === "studio" && studioThree) {
-      ctx = studioThree;
-    } else if (STATE.activeView === "map" && typeof previewThree !== "undefined" && previewThree) {
-      ctx = previewThree;
-    } else if (STATE.activeView === "compare" && typeof compareCtx !== "undefined" && compareCtx?.left) {
-      ctx = compareCtx.left;
-    }
+    if (STATE.activeView === "studio" && studioThree) ctx = studioThree;
+    else if (STATE.activeView === "map" && typeof previewThree !== "undefined" && previewThree) ctx = previewThree;
+    else if (STATE.activeView === "compare" && typeof compareCtx !== "undefined" && compareCtx?.left) ctx = compareCtx.left;
     if (!ctx || !ctx.camera) return;
-    if (STATE.activeView === "studio" && STATE.fpMode?.active) {
-      STATE.fpMode.yaw = 0;
-      return;
-    }
+    if (STATE.activeView === "studio" && STATE.fpMode?.active) { STATE.fpMode.yaw = 0; return; }
     if (ctx.controls && ctx.controls.target) {
       const tgt = ctx.controls.target;
       const offset = ctx.camera.position.clone().sub(tgt);
@@ -1365,24 +1896,16 @@
   });
 
   function buildReferenceTerrainMesh(ctx) {
-    while (ctx.fallbackGroup.children.length > 0) {
-      ctx.fallbackGroup.remove(ctx.fallbackGroup.children[0]);
-    }
+    disposeClearGroup(ctx.fallbackGroup);
     const geom = new THREE.PlaneGeometry(140, 140, 70, 70);
     geom.rotateX(-Math.PI / 2);
     const pos = geom.attributes.position;
     const colors = [];
     for (let i = 0; i < pos.count; i++) {
-      const x = pos.getX(i);
-      const z = pos.getZ(i);
+      const x = pos.getX(i), z = pos.getZ(i);
       const r2 = (x * x + z * z) / (18 * 18);
-      const y =
-        0.015 * x -
-        0.011 * z +
-        0.35 * Math.sin(x * 0.08) * Math.cos(z * 0.08) +
-        (r2 < 2.5 ? 2.65 * Math.exp(-1.8 * r2) : 0.0);
+      const y = 0.015 * x - 0.011 * z + 0.35 * Math.sin(x * 0.08) * Math.cos(z * 0.08) + (r2 < 2.5 ? 2.65 * Math.exp(-1.8 * r2) : 0.0);
       pos.setY(i, y);
-
       const t = Math.min(1, Math.max(0, (y + 1.0) / 4.2));
       colors.push(0.22 + 0.35 * t, 0.34 + 0.28 * t, 0.28 + 0.15 * (1 - t));
     }
@@ -1390,17 +1913,46 @@
     geom.computeVertexNormals();
 
     const mat = new THREE.MeshStandardMaterial({
-      vertexColors: true,
-      roughness: 0.92,
-      metalness: 0.0,
-      side: THREE.DoubleSide,
-      transparent: true,
-      opacity: 0.35,
+      vertexColors: true, roughness: 0.92, metalness: 0.0, side: THREE.DoubleSide, transparent: true, opacity: 0.35,
     });
     applyBrightnessToMaterial(mat, STATE.scanBrightness);
     const mesh = new THREE.Mesh(geom, mat);
     mesh.name = "referenceTerrain";
     ctx.fallbackGroup.add(mesh);
+  }
+
+  function applyPreservedCameraOrFrameStudio(preserveCamera, prevCamPos, prevCamTarget, prevTilesCenter, sphere) {
+    const canKeepCam = preserveCamera && prevCamPos && prevCamTarget && prevTilesCenter &&
+      Math.hypot(sphere.center.x - prevTilesCenter[0], sphere.center.y - prevTilesCenter[1], sphere.center.z - prevTilesCenter[2]) < 5000;
+    if (canKeepCam) {
+      const dx = sphere.center.x - prevTilesCenter[0], dy = sphere.center.y - prevTilesCenter[1], dz = sphere.center.z - prevTilesCenter[2];
+      // modelPivot rotates -90 deg around X: Z-up delta (dx, dy, dz) -> world delta (dx, dz, -dy)
+      studioThree.camera.position.set(prevCamPos.x - dx, prevCamPos.y - dz, prevCamPos.z + dy);
+      studioThree.controls.target.set(prevCamTarget.x - dx, prevCamTarget.y - dz, prevCamTarget.z + dy);
+      studioThree.controls.update();
+    } else {
+      frameStudioCamera();
+    }
+  }
+
+  function restoreActivePhotoToolAfterScanLoad(scan) {
+    if ((STATE.activeTool === "photos" || STATE.activeTool === "rtk") && typeof loadAndRenderScanCameraTrajectory3D === "function") {
+      loadAndRenderScanCameraTrajectory3D(scan.scan_id, true);
+    }
+    if (
+      (STATE.activeTool === "photos" || STATE.activeTool === "rtk") &&
+      STATE.lastInspectedPhotoTargetTwd &&
+      STATE.lastInspectedPhotos?.length &&
+      typeof twd97ToStudioLocalVec === "function"
+    ) {
+      STATE.lastInspectedPhotoTargetPt = twd97ToStudioLocalVec(
+        STATE.lastInspectedPhotoTargetTwd.e, STATE.lastInspectedPhotoTargetTwd.n, STATE.lastInspectedPhotoTargetTwd.h, null, null
+      );
+      if (typeof placePhotoTargetMarker3D === "function") placePhotoTargetMarker3D(STATE.lastInspectedPhotoTargetPt);
+      if (typeof renderRtkPhotoFrustums3D === "function") {
+        renderRtkPhotoFrustums3D(STATE.lastInspectedPhotos, STATE.lastInspectedPhotoTargetPt, STATE.lastInspectedPhotoTargetTwd);
+      }
+    }
   }
 
   function loadScanIntoStudio(scanId, opts = {}) {
@@ -1410,26 +1962,20 @@
     const preserveCamera = Boolean(opts && opts.preserveCamera);
     const preserveTools = Boolean(opts && opts.preserveTools);
     const bustCache = Boolean(opts && opts.bustCache);
+    const loadSeq = (studioThree._scanLoadSeq = (studioThree._scanLoadSeq || 0) + 1);
 
-    if (STATE.fpMode?.active && typeof exitFirstPersonMode === "function") {
-      exitFirstPersonMode(true);
-    }
-    if (STATE.multiAlign?.active && typeof exitMultiScanAlignMode === "function") {
-      exitMultiScanAlignMode(false);
-    }
+    if (typeof studioThree._gsCamGlideCancel === "function") studioThree._gsCamGlideCancel();
+    if (STATE.fpMode?.active && typeof exitFirstPersonMode === "function") exitFirstPersonMode(true);
+    if (STATE.multiAlign?.active && typeof exitMultiScanAlignMode === "function") exitMultiScanAlignMode(false);
 
     const prevScanId = STATE.activeScanId;
     STATE.activeScanId = scan.scan_id;
     STATE.activeScan = scan;
-    if (prevScanId && prevScanId !== scan.scan_id) {
-      STATE.targetAttachCommentId = null;
-    }
+    if (prevScanId && prevScanId !== scan.scan_id) STATE.targetAttachCommentId = null;
 
     // Cancel any running background volume calculation and clean up all tool visuals & panels when switching/loading scans
     STATE._volumeCalcSeq = (STATE._volumeCalcSeq || 0) + 1;
-    if (typeof hideVolumeProgressHudPill === "function") {
-      hideVolumeProgressHudPill();
-    }
+    if (typeof hideVolumeProgressHudPill === "function") hideVolumeProgressHudPill();
     if (!preserveTools) {
       STATE.lastVolumeResult = null;
       STATE.lastContoursResult = null;
@@ -1441,14 +1987,7 @@
       STATE.sectionBoxState = null;
       STATE.keepSectionBoxClip = true;
       studioThree._laserSpatialIndex = null;
-      if (studioThree.contourGroup) {
-        while (studioThree.contourGroup.children.length > 0) {
-          const c = studioThree.contourGroup.children[0];
-          if (c.geometry) c.geometry.dispose();
-          if (c.material) c.material.dispose();
-          studioThree.contourGroup.remove(c);
-        }
-      }
+      disposeClearGroup(studioThree.contourGroup);
       if (typeof clearMeasurements === "function") clearMeasurements();
       if (typeof clearProfileVisualsOnly === "function") clearProfileVisualsOnly();
       if (typeof clearSectionBoxClippingIfNotKept === "function") clearSectionBoxClippingIfNotKept();
@@ -1458,31 +1997,21 @@
       if (typeof clearPhotoTargetVisuals3D === "function") clearPhotoTargetVisuals3D(true);
       STATE.categorizeOverlayVisible = false;
       STATE.categorizeLabelsVisible = true;
-      if (typeof hideCategorizeOverlaysAndLabels === "function") {
-        hideCategorizeOverlaysAndLabels();
-      } else if (typeof clearCategorizeVisualsOnly === "function") {
-        clearCategorizeVisualsOnly();
-      }
-      if (typeof closeSidePanel === "function") {
-        closeSidePanel();
-      }
+      if (typeof hideCategorizeOverlaysAndLabels === "function") hideCategorizeOverlaysAndLabels();
+      else if (typeof clearCategorizeVisualsOnly === "function") clearCategorizeVisualsOnly();
+      if (typeof closeSidePanel === "function") closeSidePanel();
       if (!STATE.isEmbedded) STATE.studioAutoRotateEnabled = false;
-      if (typeof setActiveStudioTool === "function") {
-        setActiveStudioTool("orbit");
-      }
+      if (typeof setActiveStudioTool === "function") setActiveStudioTool("orbit");
       if (typeof syncAutoRotateUI === "function") syncAutoRotateUI();
     }
     SHARE_TELEMETRY.recordScanViewed(scan, "studio");
-    if (STATE.activeProjectGroup !== "__all__") {
-      STATE.activeProjectGroup = scan.project_group || "Unassigned Site";
-    }
+    if (STATE.activeProjectGroup !== "__all__") STATE.activeProjectGroup = scan.project_group || "Unassigned Site";
 
     // Filter active scan dropdown strictly to this project's scans (Fix #4)
     populateProjectScanDropdowns(scan.project_group || "Unassigned Site", scan.scan_id);
 
     const sel = document.getElementById("studioScanSelect");
     if (sel) sel.value = scan.scan_id;
-
     updateStudioScanMetricsReadout(scan);
 
     const pickedEl = document.getElementById("lblLastPickedCoord");
@@ -1490,65 +2019,32 @@
       if (inferActiveScanCrsCode(scan) === "LOCAL_ORIGIN") {
         pickedEl.textContent = tr("局部原點 · 點擊 3D 表面以檢視座標", "Local Origin · Click 3D surface to inspect");
       } else {
-        pickedEl.textContent = formatScanCoordReadout(
-          {
-            e: Number(scan.twd97_e || 0),
-            n: Number(scan.twd97_n || 0),
-            h: Number(scan.twd97_h || 0),
-          },
-          scan
-        );
+        pickedEl.textContent = formatScanCoordReadout({ e: Number(scan.twd97_e || 0), n: Number(scan.twd97_n || 0), h: Number(scan.twd97_h || 0) }, scan);
       }
     }
 
     const dlBtn = document.getElementById("btnStudioDownloadObj");
-    if (dlBtn) {
-      dlBtn.href = appendAuthToDownloadUrl(
-        scan.download_obj_url || `/api/download?scan_id=${encodeURIComponent(scan.scan_id)}&type=obj`
-      );
-    }
-    if (typeof closeQuickSingleScanSharePopover === "function") {
-      closeQuickSingleScanSharePopover();
-    }
+    if (dlBtn) dlBtn.href = appendAuthToDownloadUrl(scan.download_obj_url || `/api/download?scan_id=${encodeURIComponent(scan.scan_id)}&type=obj`);
+    if (typeof closeQuickSingleScanSharePopover === "function") closeQuickSingleScanSharePopover();
 
     // Clear any stale scan-editing lasso selection & staged preview when loading a scan
-    if (typeof clearLassoSelectionState === "function") {
-      clearLassoSelectionState();
-    }
-    if (typeof clearPhotoTargetVisuals3D === "function") {
-      clearPhotoTargetVisuals3D(true);
-    }
+    if (typeof clearLassoSelectionState === "function") clearLassoSelectionState();
+    if (typeof clearPhotoTargetVisuals3D === "function") clearPhotoTargetVisuals3D(true);
     STATE.lastInspectedPhotos = [];
     STATE.lastInspectedPhotoTargetPt = null;
     STATE.lastInspectedPhotoTargetTwd = null;
     STATE.categorizeOverlayVisible = STATE.activeTool === "categorize";
-    if (STATE.categorizeLabelsVisible === undefined || STATE.categorizeLabelsVisible === null) {
-      STATE.categorizeLabelsVisible = true;
-    }
-    if (typeof clearCategorizeVisualsOnly === "function") {
-      clearCategorizeVisualsOnly();
-    }
-    if (typeof syncCategorizeVisibilityUI === "function") {
-      syncCategorizeVisibilityUI();
-    }
+    if (STATE.categorizeLabelsVisible === undefined || STATE.categorizeLabelsVisible === null) STATE.categorizeLabelsVisible = true;
+    if (typeof clearCategorizeVisualsOnly === "function") clearCategorizeVisualsOnly();
+    if (typeof syncCategorizeVisibilityUI === "function") syncCategorizeVisibilityUI();
     if (typeof preloadSavedCategorizationForScan === "function") {
       preloadSavedCategorizationForScan(scan.scan_id, scan, { renderWhenLoaded: STATE.activeTool === "categorize" });
     }
-    if (typeof resetStagedEditsForScan === "function") {
-      resetStagedEditsForScan(scan);
-    }
-    if (typeof cacheLastViewedMapSiteAndScan === "function") {
-      cacheLastViewedMapSiteAndScan(scan.project_group, scan.scan_id);
-    }
+    if (typeof resetStagedEditsForScan === "function") resetStagedEditsForScan(scan);
+    if (typeof cacheLastViewedMapSiteAndScan === "function") cacheLastViewedMapSiteAndScan(scan.project_group, scan.scan_id);
 
-    const hasValidPrevCenter =
-      preserveCamera &&
-      Array.isArray(studioThree.tilesCenter) &&
-      Math.hypot(
-        Number(studioThree.tilesCenter[0]) || 0,
-        Number(studioThree.tilesCenter[1]) || 0,
-        Number(studioThree.tilesCenter[2]) || 0
-      ) > 1e-3;
+    const hasValidPrevCenter = preserveCamera && Array.isArray(studioThree.tilesCenter) &&
+      Math.hypot(Number(studioThree.tilesCenter[0]) || 0, Number(studioThree.tilesCenter[1]) || 0, Number(studioThree.tilesCenter[2]) || 0) > 1e-3;
     const prevTilesCenter = hasValidPrevCenter ? studioThree.tilesCenter.slice() : null;
     const prevCamPos = hasValidPrevCenter && studioThree.camera ? studioThree.camera.position.clone() : null;
     const prevCamTarget = hasValidPrevCenter && studioThree.controls ? studioThree.controls.target.clone() : null;
@@ -1559,8 +2055,7 @@
     }
     if (typeof disposeGaussianSplatFromContext === "function") disposeGaussianSplatFromContext(studioThree);
     if (studioThree.tilesRenderer) {
-      studioThree.modelPivot.remove(studioThree.tilesRenderer.group);
-      studioThree.tilesRenderer.dispose();
+      disposeTilesRendererCleanly(studioThree.tilesRenderer, studioThree.modelPivot);
       studioThree.tilesRenderer = null;
     }
     disposeObject3DResources(studioThree.modelPivot);
@@ -1571,29 +2066,29 @@
     studioThree.modelPivot.updateMatrixWorld(true);
     studioThree.tilesCenter = [0, 0, 0];
     studioThree.tileUpMatrix = new THREE.Matrix4();
+    studioThree._lastCamSig = undefined;
+    studioThree._lastSettledCamSig = undefined;
+    studioThree._camMoving = false;
+    studioThree._lastLoaderStatsSig = "";
+    studioThree._zoomInvariantDirty = true;
+    studioThree._badgeLayoutDirty = true;
     if (studioThree.fallbackGroup) studioThree.fallbackGroup.visible = false;
 
     if (scan.status && scan.status !== "completed" && !scan.stream_url) {
       if (studioThree.fallbackGroup) studioThree.fallbackGroup.visible = true;
       frameStudioCamera();
       const pendingMsg =
-        scan.status === "processing"
-          ? `Processing in PIX4Dmatic (${Math.round(scan.progress_pct || 0)}%) — ${scan.stage_label || ""}`
-          : scan.status === "queued"
-          ? `Queued for PIX4Dmatic — ${scan.stage_label || "Waiting in Queue"}`
-          : scan.status === "waiting_parts"
-          ? `Waiting for Split Upload Parts — ${scan.stage_label || ""}`
-          : typeof window.formatPendingScanStatusMessage === "function"
-          ? window.formatPendingScanStatusMessage(scan)
-          : `Status: ${scan.status}`;
+        scan.status === "processing" ? `Processing in PIX4Dmatic (${Math.round(scan.progress_pct || 0)}%) — ${scan.stage_label || ""}`
+        : scan.status === "queued" ? `Queued for PIX4Dmatic — ${scan.stage_label || "Waiting in Queue"}`
+        : scan.status === "waiting_parts" ? `Waiting for Split Upload Parts — ${scan.stage_label || ""}`
+        : typeof window.formatPendingScanStatusMessage === "function" ? window.formatPendingScanStatusMessage(scan)
+        : `Status: ${scan.status}`;
       finishScanLoader(studioThree, "studio", pendingMsg);
       return;
     }
 
     startScanLoader(studioThree, "studio", scan.name, scan.scan_id);
 
-    const isIOS = typeof isIOSOrIPadDevice === "function" && isIOSOrIPadDevice();
-    const isMobOrTab = isIOS || (typeof isMobileOrTabletDevice === "function" && isMobileOrTabletDevice());
     const lodMode = STATE.scanLodMode || "auto";
     const useLowMemTileset = !opts.forceFullRes && (Boolean(studioThree._forceLowMemStream) || lodMode === "rough");
 
@@ -1609,9 +2104,7 @@
     if (bustCache) {
       const baseNoQ = streamUrl.split("?")[0];
       streamUrl = `${baseNoQ}?v=${scan.tileset_version || Date.now()}`;
-      if (STATE.shareToken && !streamUrl.includes("share=")) {
-        streamUrl += `&share=${encodeURIComponent(STATE.shareToken)}`;
-      }
+      if (STATE.shareToken && !streamUrl.includes("share=")) streamUrl += `&share=${encodeURIComponent(STATE.shareToken)}`;
     }
 
     if (scan.stream_type === "glb" || streamUrl.toLowerCase().endsWith(".glb")) {
@@ -1623,6 +2116,10 @@
       loader.load(
         streamUrl,
         (gltf) => {
+          if (!studioThree || studioThree._scanLoadSeq !== loadSeq || STATE.activeScanId !== scan.scan_id) {
+            if (gltf?.scene) disposeObjectGpuDeep(gltf.scene);
+            return;
+          }
           const model = gltf.scene;
           const box = new THREE.Box3().setFromObject(model);
           const sphere = new THREE.Sphere();
@@ -1630,103 +2127,42 @@
           if (sphere.radius > 0) {
             model.position.set(-sphere.center.x, -sphere.center.y, -sphere.center.z);
             studioThree.tilesCenter = [sphere.center.x, sphere.center.y, sphere.center.z];
-        if (typeof renderCommentPins3D === "function") renderCommentPins3D();
-        if (typeof loadAndRenderScanCameraTrajectory3D === "function" && scan && scan.scan_id) {
-          loadAndRenderScanCameraTrajectory3D(scan.scan_id, true);
-        }
+            if (typeof renderCommentPins3D === "function") renderCommentPins3D();
+            if (typeof loadAndRenderScanCameraTrajectory3D === "function" && scan && scan.scan_id) {
+              loadAndRenderScanCameraTrajectory3D(scan.scan_id, true);
+            }
           }
           studioThree.tileUpMatrix = new THREE.Matrix4();
           if (studioThree.grid) {
-            studioThree.grid.position.y = Number.isFinite(box.min.y)
-              ? box.min.y - sphere.center.y - 0.3
-              : -0.2;
+            studioThree.grid.position.y = Number.isFinite(box.min.y) ? box.min.y - sphere.center.y - 0.3 : -0.2;
           }
           model.traverse((c) => {
             if (c.isMesh && c.material) {
               const mats = Array.isArray(c.material) ? c.material : [c.material];
               mats.forEach((m) => {
-                if (m && typeof m.metalness === "number" && m.metalness > 0) {
-                  m.metalness = 0.0;
-                  m.roughness = 1.0;
-                }
-                if (m && m.side !== THREE.DoubleSide) {
-                  m.side = THREE.DoubleSide;
-                }
+                if (m && typeof m.metalness === "number" && m.metalness > 0) { m.metalness = 0.0; m.roughness = 1.0; }
+                if (m && m.side !== THREE.DoubleSide) m.side = THREE.DoubleSide;
                 applyBrightnessToMaterial(m, STATE.scanBrightness);
               });
             }
           });
           studioThree.modelPivot.add(model);
           studioThree.boundingSphere = sphere;
-          if (typeof updateScanGoogleMap3DLayer === "function") {
-            updateScanGoogleMap3DLayer(studioThree, scan);
-          }
-          if (typeof scheduleScanGoogleMapCoverageUpdate === "function") {
-            scheduleScanGoogleMapCoverageUpdate(studioThree, scan, 30);
-          }
-          const canKeepCam =
-            preserveCamera &&
-            prevCamPos &&
-            prevCamTarget &&
-            prevTilesCenter &&
-            Math.hypot(
-              sphere.center.x - prevTilesCenter[0],
-              sphere.center.y - prevTilesCenter[1],
-              sphere.center.z - prevTilesCenter[2]
-            ) < 5000;
-          if (canKeepCam) {
-            const dx = sphere.center.x - prevTilesCenter[0];
-            const dy = sphere.center.y - prevTilesCenter[1];
-            const dz = sphere.center.z - prevTilesCenter[2];
-            // modelPivot rotates -90 deg around X: Z-up delta (dx, dy, dz) -> world delta (dx, dz, -dy)
-            studioThree.camera.position.set(prevCamPos.x - dx, prevCamPos.y - dz, prevCamPos.z + dy);
-            studioThree.controls.target.set(prevCamTarget.x - dx, prevCamTarget.y - dz, prevCamTarget.z + dy);
-            studioThree.controls.update();
-          } else {
-            frameStudioCamera();
-          }
-          if (
-            (STATE.activeTool === "photos" || STATE.activeTool === "rtk") &&
-            typeof loadAndRenderScanCameraTrajectory3D === "function"
-          ) {
-            loadAndRenderScanCameraTrajectory3D(scan.scan_id, true);
-          }
-          if (
-            (STATE.activeTool === "photos" || STATE.activeTool === "rtk") &&
-            STATE.lastInspectedPhotoTargetTwd &&
-            STATE.lastInspectedPhotos?.length &&
-            typeof twd97ToStudioLocalVec === "function"
-          ) {
-            STATE.lastInspectedPhotoTargetPt = twd97ToStudioLocalVec(
-              STATE.lastInspectedPhotoTargetTwd.e,
-              STATE.lastInspectedPhotoTargetTwd.n,
-              STATE.lastInspectedPhotoTargetTwd.h,
-              null,
-              null
-            );
-            if (typeof placePhotoTargetMarker3D === "function") {
-              placePhotoTargetMarker3D(STATE.lastInspectedPhotoTargetPt);
-            }
-            if (typeof renderRtkPhotoFrustums3D === "function") {
-              renderRtkPhotoFrustums3D(
-                STATE.lastInspectedPhotos,
-                STATE.lastInspectedPhotoTargetPt,
-                STATE.lastInspectedPhotoTargetTwd
-              );
-            }
-          }
+          if (typeof updateScanGoogleMap3DLayer === "function") updateScanGoogleMap3DLayer(studioThree, scan);
+          if (typeof scheduleScanGoogleMapCoverageUpdate === "function") scheduleScanGoogleMapCoverageUpdate(studioThree, scan, 30);
+          applyPreservedCameraOrFrameStudio(preserveCamera, prevCamPos, prevCamTarget, prevTilesCenter, sphere);
+          restoreActivePhotoToolAfterScanLoad(scan);
           _lastBadgeOcclusionCamSig = "";
           finishScanLoader(studioThree, "studio", "100% · 3D Mesh Ready");
         },
         (xhr) => {
-          const pct =
-            xhr && xhr.total > 0
-              ? Math.min(95, Math.max(12, Math.round((xhr.loaded / xhr.total) * 100)))
-              : Math.min(88, (studioThree._maxPct || 12) + 8);
+          if (!studioThree || studioThree._scanLoadSeq !== loadSeq) return;
+          const pct = xhr && xhr.total > 0 ? Math.min(95, Math.max(12, Math.round((xhr.loaded / xhr.total) * 100))) : Math.min(88, (studioThree._maxPct || 12) + 8);
           studioThree._maxPct = pct;
           updateScanLoader("studio", true, pct, `Loading 3D Mesh (${pct}%)...`);
         },
         (err) => {
+          if (!studioThree || studioThree._scanLoadSeq !== loadSeq) return;
           if (studioThree.fallbackGroup) studioThree.fallbackGroup.visible = true;
           finishScanLoader(studioThree, "studio", "Ready");
           console.warn("[GatheringScans] Using reference terrain surface for GLB:", err);
@@ -1734,6 +2170,8 @@
       );
     } else if (window.TilesRenderer) {
       const tr = new window.TilesRenderer(streamUrl);
+      tr._loadedTilesetUrl = streamUrl;
+      tr._isPreviewTileset = Boolean(useLowMemTileset);
       tr.fetchOptions = { mode: "cors" };
       tr.preprocessURL = (uri) => preprocessTileStreamUrl(uri, streamUrl);
       tr.setCamera(studioThree.camera);
@@ -1747,6 +2185,11 @@
 
       tr.addEventListener("load-tileset", () => {
         if (studioThree.tilesRenderer !== tr) return;
+        if (typeof configureTilesRendererLodAndCaps === "function") {
+          configureTilesRendererLodAndCaps(tr, STATE.scanLodMode || lodMode, "studio");
+        }
+        installStudioSmartLodEngine(tr, STATE.scanLodMode || lodMode);
+        identifyAndPinCoarseBaseTiles(tr);
         if (tr._rootCentered) return;
         tr._rootCentered = true;
         studioThree._tilesetReady = true;
@@ -1757,54 +2200,27 @@
         if (computeTilesetContentSphere(tr, sphere)) {
           tr.group.position.set(-sphere.center.x, -sphere.center.y, -sphere.center.z);
           studioThree.tilesCenter = [sphere.center.x, sphere.center.y, sphere.center.z];
-        if (typeof renderCommentPins3D === "function") renderCommentPins3D();
-        if (typeof loadAndRenderScanCameraTrajectory3D === "function" && scan && scan.scan_id) {
-          loadAndRenderScanCameraTrajectory3D(scan.scan_id, true);
-        }
+          if (typeof renderCommentPins3D === "function") renderCommentPins3D();
+          if (typeof loadAndRenderScanCameraTrajectory3D === "function" && scan && scan.scan_id) {
+            loadAndRenderScanCameraTrajectory3D(scan.scan_id, true);
+          }
           studioThree.tileUpMatrix = tr._upRotationMatrix ? tr._upRotationMatrix.clone() : new THREE.Matrix4();
           // Z-up TWD97 tilesets: rotate -90 deg on X so elevation points +Y
           studioThree.modelPivot.rotation.set(THREE.MathUtils.degToRad(270), 0, 0);
           studioThree.modelPivot.updateMatrixWorld(true);
           studioThree.boundingSphere = sphere;
           if (studioThree.grid) {
-            if (Number.isFinite(scan._resolvedGroundH)) {
-              studioThree.grid.position.y = scan._resolvedGroundH - sphere.center.z - 0.19;
-            } else {
-              studioThree.grid.position.y = Number.isFinite(sphere._groundOffsetY)
-                ? sphere._groundOffsetY
-                : -8.0;
-            }
+            studioThree.grid.position.y = Number.isFinite(scan._resolvedGroundH)
+              ? scan._resolvedGroundH - sphere.center.z - 0.19
+              : Number.isFinite(sphere._groundOffsetY) ? sphere._groundOffsetY : -8.0;
           }
-          if (typeof updateScanGoogleMap3DLayer === "function") {
-            updateScanGoogleMap3DLayer(studioThree, scan);
-          }
-          const canKeepCam =
-            preserveCamera &&
-            prevCamPos &&
-            prevCamTarget &&
-            prevTilesCenter &&
-            Math.hypot(
-              sphere.center.x - prevTilesCenter[0],
-              sphere.center.y - prevTilesCenter[1],
-              sphere.center.z - prevTilesCenter[2]
-            ) < 5000;
-          if (canKeepCam) {
-            const dx = sphere.center.x - prevTilesCenter[0];
-            const dy = sphere.center.y - prevTilesCenter[1];
-            const dz = sphere.center.z - prevTilesCenter[2];
-            // modelPivot rotates -90 deg around X: Z-up delta (dx, dy, dz) -> world delta (dx, dz, -dy)
-            studioThree.camera.position.set(prevCamPos.x - dx, prevCamPos.y - dz, prevCamPos.z + dy);
-            studioThree.controls.target.set(prevCamTarget.x - dx, prevCamTarget.y - dz, prevCamTarget.z + dy);
-            studioThree.controls.update();
-          } else {
-            frameStudioCamera();
-          }
+          if (typeof updateScanGoogleMap3DLayer === "function") updateScanGoogleMap3DLayer(studioThree, scan);
+          applyPreservedCameraOrFrameStudio(preserveCamera, prevCamPos, prevCamTarget, prevTilesCenter, sphere);
           studioThree.currentScanId = scan.scan_id;
           studioThree.qualityMode = lodMode;
-          const isGsplat =
-            typeof isScanOrTilesetGaussianSplat === "function"
-              ? isScanOrTilesetGaussianSplat(scan, tr)
-              : Boolean(scan.is_gaussian_splat || tr.root?.extras?.is_gaussian_splat || tr.root?.parent?.extras?.is_gaussian_splat);
+          const isGsplat = typeof isScanOrTilesetGaussianSplat === "function"
+            ? isScanOrTilesetGaussianSplat(scan, tr)
+            : Boolean(scan.is_gaussian_splat || tr.root?.extras?.is_gaussian_splat || tr.root?.parent?.extras?.is_gaussian_splat);
           const hasGsplatLayer = isGsplat || (typeof hasScanOrTilesetGaussianSplatLayer === "function" && hasScanOrTilesetGaussianSplatLayer(scan, tr));
           if ((isGsplat || (STATE.studioGaussianSplatMode && hasGsplatLayer)) && typeof loadGaussianSplatIntoContext === "function") {
             if (isGsplat) scan.is_gaussian_splat = true;
@@ -1813,46 +2229,17 @@
               finishScanLoader(studioThree, "studio", tr("100% · 3D 高斯潑濺已就緒", "100% · 3D Gaussian Splat Ready"));
             });
           }
-          if (
-            STATE.categorizeOverlayVisible &&
-            STATE.lastCategorizeResult &&
-            STATE.lastCategorizeResult.scan_id === scan.scan_id
-          ) {
+          if (STATE.categorizeOverlayVisible && STATE.lastCategorizeResult && STATE.lastCategorizeResult.scan_id === scan.scan_id) {
             renderCategorize3DOverlays(STATE.lastCategorizeResult);
           }
-          if (
-            (STATE.activeTool === "photos" || STATE.activeTool === "rtk") &&
-            typeof loadAndRenderScanCameraTrajectory3D === "function"
-          ) {
-            loadAndRenderScanCameraTrajectory3D(scan.scan_id, true);
-          }
-          if (
-            (STATE.activeTool === "photos" || STATE.activeTool === "rtk") &&
-            STATE.lastInspectedPhotoTargetTwd &&
-            STATE.lastInspectedPhotos?.length &&
-            typeof twd97ToStudioLocalVec === "function"
-          ) {
-            STATE.lastInspectedPhotoTargetPt = twd97ToStudioLocalVec(
-              STATE.lastInspectedPhotoTargetTwd.e,
-              STATE.lastInspectedPhotoTargetTwd.n,
-              STATE.lastInspectedPhotoTargetTwd.h,
-              null,
-              null
-            );
-            if (typeof placePhotoTargetMarker3D === "function") {
-              placePhotoTargetMarker3D(STATE.lastInspectedPhotoTargetPt);
-            }
-            if (typeof renderRtkPhotoFrustums3D === "function") {
-              renderRtkPhotoFrustums3D(
-                STATE.lastInspectedPhotos,
-                STATE.lastInspectedPhotoTargetPt,
-                STATE.lastInspectedPhotoTargetTwd
-              );
-            }
-          }
+          restoreActivePhotoToolAfterScanLoad(scan);
         }
         studioThree.camera.updateMatrixWorld();
+        studioThree._lastCamSig = computeCameraPoseSig(studioThree.camera);
+        studioThree._camMoving = false;
+        tr._gsNeedsUpdate = true;
         tr.update();
+        ensureZeroGapCoarseCoverage(tr, false);
       });
 
       tr.addEventListener("tile-visibility-change", (ev) => {
@@ -1874,10 +2261,9 @@
         if (ev && ev.scene) {
           _lastBadgeOcclusionCamSig = "";
           if (studioThree.fallbackGroup) studioThree.fallbackGroup.visible = false;
-          const isGsplat =
-            typeof isScanOrTilesetGaussianSplat === "function"
-              ? isScanOrTilesetGaussianSplat(scan, tr)
-              : Boolean(scan.is_gaussian_splat || tr.root?.extras?.is_gaussian_splat || tr.root?.parent?.extras?.is_gaussian_splat);
+          const isGsplat = typeof isScanOrTilesetGaussianSplat === "function"
+            ? isScanOrTilesetGaussianSplat(scan, tr)
+            : Boolean(scan.is_gaussian_splat || tr.root?.extras?.is_gaussian_splat || tr.root?.parent?.extras?.is_gaussian_splat);
           const hideForSplat = isGsplat || Boolean(studioThree.gsplatState);
           ev.scene.traverse((c) => {
             if (c.isMesh && c.material) {
@@ -1898,14 +2284,9 @@
             (Array.isArray(STATE.cropPolygonPoints) && STATE.cropPolygonPoints.length >= 3)
           ) {
             clearTimeout(studioThree._lassoHighlightTimer);
-            studioThree._lassoHighlightTimer = setTimeout(() => {
-              rebuildLassoHighlight3D();
-            }, 80);
+            studioThree._lassoHighlightTimer = setTimeout(() => rebuildLassoHighlight3D(), 80);
           }
-          if (
-            STATE.activeTool === "drainage" &&
-            typeof renderDrainageAndSlopeVisuals3D === "function"
-          ) {
+          if (STATE.activeTool === "drainage" && typeof renderDrainageAndSlopeVisuals3D === "function") {
             clearTimeout(studioThree._drainageLodRefreshTimer);
             studioThree._drainageLodRefreshTimer = setTimeout(() => {
               if (STATE.activeTool === "drainage") {
@@ -1923,12 +2304,7 @@
       });
 
       tr.addEventListener("load-error", () => {
-        if (
-          useLowMemTileset &&
-          !opts.forceFullRes &&
-          studioThree.tilesRenderer === tr &&
-          Number(tr.stats?.loaded || 0) === 0
-        ) {
+        if (useLowMemTileset && !opts.forceFullRes && studioThree.tilesRenderer === tr && Number(tr.stats?.loaded || 0) === 0) {
           console.warn("[GatheringScans] Studio preview_tileset.json failed to load; falling back to full tileset.json");
           loadScanIntoStudio(scan.scan_id, Object.assign({}, opts, { forceFullRes: true }));
         }
@@ -1937,6 +2313,7 @@
       if (typeof configureTilesRendererLodAndCaps === "function") {
         configureTilesRendererLodAndCaps(tr, lodMode, "studio");
       }
+      installStudioSmartLodEngine(tr, lodMode);
       studioThree.modelPivot.add(tr.group);
       studioThree.tilesRenderer = tr;
       studioThree.camera.updateMatrixWorld();
@@ -1948,16 +2325,15 @@
 
   function suspendStudio3DResources() {
     if (!studioThree) return;
+    studioThree._scanLoadSeq = (studioThree._scanLoadSeq || 0) + 1;
+    if (typeof studioThree._gsCamGlideCancel === "function") studioThree._gsCamGlideCancel();
     if (studioThree._loaderHideTimer) {
       clearTimeout(studioThree._loaderHideTimer);
       studioThree._loaderHideTimer = null;
     }
     if (typeof disposeGaussianSplatFromContext === "function") disposeGaussianSplatFromContext(studioThree);
     if (studioThree.tilesRenderer) {
-      try {
-        studioThree.modelPivot.remove(studioThree.tilesRenderer.group);
-        studioThree.tilesRenderer.dispose();
-      } catch (_) {}
+      disposeTilesRendererCleanly(studioThree.tilesRenderer, studioThree.modelPivot);
       studioThree.tilesRenderer = null;
     }
     if (studioThree.modelPivot) {
@@ -2589,22 +2965,18 @@
   function findNearestSnappableToolVertex(clientX, clientY, maxPx = 24, excludeMovingVertex = STATE.movingVertex, onlyEditable = false) {
     if (!studioThree || !studioThree.camera || !studioThree.renderer?.domElement) return null;
     const rect = studioThree.renderer.domElement.getBoundingClientRect();
-    const w = Math.max(1, rect.width);
-    const h = Math.max(1, rect.height);
-    const localX = clientX - rect.left;
-    const localY = clientY - rect.top;
+    const w = Math.max(1, rect.width), h = Math.max(1, rect.height);
+    const localX = clientX - rect.left, localY = clientY - rect.top;
     const cam = studioThree.camera;
     const candidates = getAllSnappableToolVertices(excludeMovingVertex, onlyEditable);
-    let best = null;
-    let bestDistPx = maxPx;
+    let best = null, bestDistPx = maxPx;
 
     for (let i = 0; i < candidates.length; i++) {
       const c = candidates[i];
       if (onlyEditable && !c.editable) continue;
-      const proj = c.point.clone().project(cam);
-      if (proj.z < -1.0 || proj.z > 1.0) continue;
-      const sx = (proj.x * 0.5 + 0.5) * w;
-      const sy = (-proj.y * 0.5 + 0.5) * h;
+      _tmpBadgeProj.copy(c.point).project(cam);
+      if (_tmpBadgeProj.z < -1.0 || _tmpBadgeProj.z > 1.0) continue;
+      const sx = (_tmpBadgeProj.x * 0.5 + 0.5) * w, sy = (-_tmpBadgeProj.y * 0.5 + 0.5) * h;
       const dPx = Math.hypot(localX - sx, localY - sy);
       if (!onlyEditable && !excludeMovingVertex && c.source === "measurePoints" && c.pointIndex === 0 && dPx <= maxPx) {
         return Object.assign({}, c, { screenDistPx: dPx, screenX: sx, screenY: sy });
@@ -2631,33 +3003,23 @@
       return;
     }
     if (!ring) {
-      const rGeo = new THREE.RingGeometry(0.95, 1.42, 32);
       const rMat = new THREE.MeshBasicMaterial({
-        color: 0x10b981,
-        side: THREE.DoubleSide,
-        depthTest: false,
-        depthWrite: false,
-        transparent: true,
-        opacity: 0.96,
+        color: 0x10b981, side: THREE.DoubleSide, depthTest: false, depthWrite: false, transparent: true, opacity: 0.96,
       });
-      ring = new THREE.Mesh(rGeo, rMat);
+      ring = new THREE.Mesh(new THREE.RingGeometry(0.95, 1.42, 32), rMat);
       ring.userData.isZoomInvariantRing = true;
       ring.userData.isSnapIndicator = true;
       ring.userData.pixelRadius = 11.5;
       ring.renderOrder = 1005;
       studioThree._snapIndicatorRing = ring;
     }
-    if (!ring.parent) {
-      studioThree.overlayGroup.add(ring);
-    }
+    if (!ring.parent) studioThree.overlayGroup.add(ring);
     ring.visible = true;
     ring.position.copy(worldPt);
-    if (studioThree.camera) {
-      ring.quaternion.copy(studioThree.camera.quaternion);
-    }
+    if (studioThree.camera) ring.quaternion.copy(studioThree.camera.quaternion);
+    markStudioZoomInvariantDirty();
     updateZoomInvariantElements();
   }
-
   window.updateStudioSnapIndicator = updateStudioSnapIndicator;
 
   function updateStudioMovingVertexIndicator(worldPt) {
@@ -2668,33 +3030,23 @@
       return;
     }
     if (!ring) {
-      const rGeo = new THREE.RingGeometry(1.05, 1.58, 32);
       const rMat = new THREE.MeshBasicMaterial({
-        color: 0xf59e0b,
-        side: THREE.DoubleSide,
-        depthTest: false,
-        depthWrite: false,
-        transparent: true,
-        opacity: 0.98,
+        color: 0xf59e0b, side: THREE.DoubleSide, depthTest: false, depthWrite: false, transparent: true, opacity: 0.98,
       });
-      ring = new THREE.Mesh(rGeo, rMat);
+      ring = new THREE.Mesh(new THREE.RingGeometry(1.05, 1.58, 32), rMat);
       ring.userData.isZoomInvariantRing = true;
       ring.userData.isMovingVertexIndicator = true;
       ring.userData.pixelRadius = 13.0;
       ring.renderOrder = 1006;
       studioThree._movingVertexRing = ring;
     }
-    if (!ring.parent) {
-      studioThree.overlayGroup.add(ring);
-    }
+    if (!ring.parent) studioThree.overlayGroup.add(ring);
     ring.visible = true;
     ring.position.copy(worldPt);
-    if (studioThree.camera) {
-      ring.quaternion.copy(studioThree.camera.quaternion);
-    }
+    if (studioThree.camera) ring.quaternion.copy(studioThree.camera.quaternion);
+    markStudioZoomInvariantDirty();
     updateZoomInvariantElements();
   }
-
   window.updateStudioMovingVertexIndicator = updateStudioMovingVertexIndicator;
 
   function pickStudio3DPoint(clientX, clientY) {
@@ -2703,10 +3055,20 @@
   }
 
   const _tmpZoomWorldPos = new THREE.Vector3();
-  const _badgeOcclusionRaycaster = new THREE.Raycaster();
-  const _badgeOcclusionDir = new THREE.Vector3();
-  let _lastBadgeOcclusionCheckMs = 0;
+  const _tmpBadgeProj = new THREE.Vector3();
   let _lastBadgeOcclusionCamSig = "";
+
+  function markStudioZoomInvariantDirty() {
+    if (studioThree) studioThree._zoomInvariantDirty = true;
+  }
+  function markStudioBadgeListDirty() {
+    if (studioThree) { studioThree._badgeListDirty = true; studioThree._badgeLayoutDirty = true; }
+  }
+  function setBadgeStyleIfChanged(el, disp, leftStr = null, topStr = null) {
+    if (el.style.display !== disp) el.style.display = disp;
+    if (leftStr !== null && el.style.left !== leftStr) el.style.left = leftStr;
+    if (topStr !== null && el.style.top !== topStr) el.style.top = topStr;
+  }
 
   function add3DPinMarker(pt, colorHex = 0x0084ff, targetGroup = null, onAddMesh = null) {
     if (!studioThree) return null;
@@ -2714,46 +3076,32 @@
     const emit = typeof onAddMesh === "function" ? onAddMesh : (m) => grp.add(m);
     const isCommentMarker = grp === studioThree.commentPinsGroup;
 
-    const sphereGeo = new THREE.SphereGeometry(1, 16, 16);
     const sphereMat = new THREE.MeshBasicMaterial({
-      color: colorHex,
-      depthTest: !isCommentMarker,
-      depthWrite: false,
-      polygonOffset: !isCommentMarker,
-      polygonOffsetFactor: -2,
-      polygonOffsetUnits: -2,
-      transparent: true,
-      opacity: 0.95,
+      color: colorHex, depthTest: !isCommentMarker, depthWrite: false,
+      polygonOffset: !isCommentMarker, polygonOffsetFactor: -2, polygonOffsetUnits: -2,
+      transparent: true, opacity: 0.95,
     });
-    const innerMesh = new THREE.Mesh(sphereGeo, sphereMat);
+    const innerMesh = new THREE.Mesh(new THREE.SphereGeometry(1, 16, 16), sphereMat);
     innerMesh.position.set(pt.x, pt.y + 0.03, pt.z);
     innerMesh.userData.isZoomInvariantMarker = true;
     innerMesh.userData.pixelRadius = 5.5;
     innerMesh.renderOrder = 1002;
     emit(innerMesh);
 
-    const ringGeo = new THREE.RingGeometry(0.72, 1.08, 32);
     const ringMat = new THREE.MeshBasicMaterial({
-      color: 0xffffff,
-      side: THREE.DoubleSide,
-      depthTest: !isCommentMarker,
-      depthWrite: false,
-      polygonOffset: !isCommentMarker,
-      polygonOffsetFactor: -2,
-      polygonOffsetUnits: -2,
-      transparent: true,
-      opacity: 0.95,
+      color: 0xffffff, side: THREE.DoubleSide, depthTest: !isCommentMarker, depthWrite: false,
+      polygonOffset: !isCommentMarker, polygonOffsetFactor: -2, polygonOffsetUnits: -2,
+      transparent: true, opacity: 0.95,
     });
-    const outerRing = new THREE.Mesh(ringGeo, ringMat);
+    const outerRing = new THREE.Mesh(new THREE.RingGeometry(0.72, 1.08, 32), ringMat);
     outerRing.position.set(pt.x, pt.y + 0.03, pt.z);
     outerRing.userData.isZoomInvariantRing = true;
     outerRing.userData.pixelRadius = 8.5;
-    if (studioThree.camera) {
-      outerRing.quaternion.copy(studioThree.camera.quaternion);
-    }
+    if (studioThree.camera) outerRing.quaternion.copy(studioThree.camera.quaternion);
     outerRing.renderOrder = 1001;
     emit(outerRing);
 
+    markStudioZoomInvariantDirty();
     updateZoomInvariantElements();
     return innerMesh;
   }
@@ -2765,8 +3113,7 @@
     }
     const container = document.getElementById("studioOverlay2D");
     if (!container) return null;
-    const translatedHtml =
-      typeof window.translateDynamicHtml === "function" ? window.translateDynamicHtml(String(htmlText || "")) : String(htmlText || "");
+    const translatedHtml = typeof window.translateDynamicHtml === "function" ? window.translateDynamicHtml(String(htmlText || "")) : String(htmlText || "");
     const el = document.createElement("div");
     const clonedPt = worldPt.clone();
     if (options.rawHtml) {
@@ -2778,24 +3125,16 @@
         if (options.isCategorize) firstChild.classList.add("is-categorize-badge");
         container.appendChild(firstChild);
         const badgeObj = {
-          el: firstChild,
-          worldPt: clonedPt,
-          worldPos: clonedPt,
-          offsetX: options.offsetX || 0,
-          offsetY: options.offsetY || 0,
-          isVolume: !!options.isVolume,
-          isArea: !!options.isArea,
-          isLassoHighlight: !!options.isLassoHighlight,
-          isProfile: !!options.isProfile,
-          isCategorize: !!options.isCategorize,
-          isCommentPin: !!options.isCommentPin,
-          folderKey: options.folderKey || "",
-          isTempDistance: !!options.isTempDistance,
+          el: firstChild, worldPt: clonedPt, worldPos: clonedPt,
+          offsetX: options.offsetX || 0, offsetY: options.offsetY || 0,
+          isVolume: !!options.isVolume, isArea: !!options.isArea, isLassoHighlight: !!options.isLassoHighlight,
+          isProfile: !!options.isProfile, isCategorize: !!options.isCategorize, isCommentPin: !!options.isCommentPin,
+          folderKey: options.folderKey || "", isTempDistance: !!options.isTempDistance,
           priority: options.priority !== undefined ? Number(options.priority) : 50,
-          featureId: options.featureId || "",
-          isFocused: !!options.isFocused,
+          featureId: options.featureId || "", isFocused: !!options.isFocused,
         };
         STATE.badges2D.push(badgeObj);
+        markStudioBadgeListDirty();
         update2DBadgePositions();
         if (!options.isTempDistance && !options.isCategorize && !options.isLassoHighlight && !options.isCommentPin) {
           SHARE_TELEMETRY.recordMeasurement(firstChild.textContent || "");
@@ -2816,8 +3155,7 @@
     if (delBtn) {
       delBtn.addEventListener("click", (ev) => {
         ev.stopPropagation();
-        const fid = delBtn.getAttribute("data-cat-badge-del");
-        const ctype = delBtn.getAttribute("data-cat-badge-type");
+        const fid = delBtn.getAttribute("data-cat-badge-del"), ctype = delBtn.getAttribute("data-cat-badge-type");
         const catMap = { water: "water_bodies", roads: "roads", walls: "walls", trees: "trees" };
         if (fid && ctype && typeof submitCategorizeManualEdit === "function") {
           submitCategorizeManualEdit("manual_remove", catMap[ctype] || ctype, fid);
@@ -2826,26 +3164,16 @@
     }
     container.appendChild(el);
     const badgeObj = {
-      el,
-      worldPt: clonedPt,
-      worldPos: clonedPt,
-      offsetX: options.offsetX || 0,
-      offsetY: options.offsetY !== undefined ? options.offsetY : -10,
-      isVolume: !!options.isVolume,
-      isArea: !!options.isArea,
-      isLassoHighlight: !!options.isLassoHighlight,
-      isProfile: !!options.isProfile,
-      isCategorize: !!options.isCategorize,
-      isSurveyToolBadge: !!options.isSurveyToolBadge,
-      surveyTool: options.surveyTool || "",
-      folderKey: options.folderKey || "",
-      isTempDistance: !!options.isTempDistance,
+      el, worldPt: clonedPt, worldPos: clonedPt,
+      offsetX: options.offsetX || 0, offsetY: options.offsetY !== undefined ? options.offsetY : -10,
+      isVolume: !!options.isVolume, isArea: !!options.isArea, isLassoHighlight: !!options.isLassoHighlight,
+      isProfile: !!options.isProfile, isCategorize: !!options.isCategorize, isSurveyToolBadge: !!options.isSurveyToolBadge,
+      surveyTool: options.surveyTool || "", folderKey: options.folderKey || "", isTempDistance: !!options.isTempDistance,
       priority: options.priority !== undefined ? Number(options.priority) : 50,
-      featureId: options.featureId || "",
-      catKey: options.catKey || "",
-      isFocused: !!options.isFocused,
+      featureId: options.featureId || "", catKey: options.catKey || "", isFocused: !!options.isFocused,
     };
     STATE.badges2D.push(badgeObj);
+    markStudioBadgeListDirty();
     update2DBadgePositions();
     if (!options.isTempDistance && !options.isCategorize && !options.isLassoHighlight) {
       SHARE_TELEMETRY.recordMeasurement(el.textContent || "");
@@ -2854,71 +3182,102 @@
   }
   window.localToTwd97 = localToTwd97; window.add3DPinMarker = add3DPinMarker; window.add2DBadge = add2DBadge; window.update2DBadgePositions = update2DBadgePositions;
 
-  function update2DBadgePositions() {
-    if (!studioThree || !studioThree.camera || !studioThree.renderer) return;
-    const w = studioThree.renderer.domElement.clientWidth;
-    const h = studioThree.renderer.domElement.clientHeight;
+  const _BADGE_CANDIDATE_OFFSETS = [[0, 0], [0, -28], [0, 28], [-36, -20], [36, 20]];
+
+  function getStudioSafeBadgeInsets(w, h, forceMeasure) {
+    const now = performance.now();
     const isMobile = w <= 768;
-    const panelEl = document.getElementById("studioSidePanel");
+    const panelEl = studioThree._panelEl && studioThree._panelEl.isConnected
+      ? studioThree._panelEl : (studioThree._panelEl = document.getElementById("studioSidePanel"));
+    const mobHudEl = studioThree._mobHudEl && studioThree._mobHudEl.isConnected
+      ? studioThree._mobHudEl : (studioThree._mobHudEl = document.getElementById("studioMobileToolHud"));
     const panelOpen = Boolean(panelEl && (panelEl.classList.contains("open") || panelEl.classList.contains("active")) && !panelEl.classList.contains("hidden"));
     const panelMinimized = Boolean(panelEl && panelEl.classList.contains("mobile-minimized"));
-    const mobHudEl = document.getElementById("studioMobileToolHud");
-    const mobHudOpen = Boolean(isMobile && mobHudEl && mobHudEl.style.display !== "none" && mobHudEl.offsetHeight > 0);
-    const rightSafeX = isMobile ? w - 8 : w - (panelOpen ? (panelEl.offsetWidth || 380) + 16 : 14);
-    const leftSafeX = isMobile ? 8 : 86;
-    const topSafeY = isMobile ? (mobHudOpen ? 116 : 74) : 68;
-    const bottomSafeY = isMobile
-      ? h - (panelOpen && !panelMinimized ? Math.min(240, (panelEl.offsetHeight || 180) + 96) : 102)
-      : h - 108;
-    const placedRects = [];
-    const candidateOffsets = [
-      [0, 0],
-      [0, -28],
-      [0, 28],
-      [-36, -20],
-      [36, 20],
-    ];
+    const mobHudShown = Boolean(isMobile && mobHudEl && mobHudEl.style.display !== "none");
+    const stateSig = `${w}x${h}:${panelOpen ? 1 : 0}:${panelMinimized ? 1 : 0}:${mobHudShown ? 1 : 0}`;
+    if (!forceMeasure && studioThree._cachedSafeInsets && studioThree._cachedSafeInsets.sig === stateSig && now - studioThree._cachedSafeInsets.ts < 300) {
+      return studioThree._cachedSafeInsets;
+    }
+    const panelW = panelOpen && !isMobile ? (panelEl.offsetWidth || 380) : 0;
+    const panelH = panelOpen && isMobile && !panelMinimized ? (panelEl.offsetHeight || 180) : 0;
+    const mobHudOpen = Boolean(mobHudShown && mobHudEl.offsetHeight > 0);
+    const insets = {
+      sig: stateSig, ts: now, isMobile, panelOpen, mobHudOpen,
+      rightSafeX: isMobile ? w - 8 : w - (panelOpen ? panelW + 16 : 14),
+      leftSafeX: isMobile ? 8 : 86,
+      topSafeY: isMobile ? (mobHudOpen ? 116 : 74) : 68,
+      bottomSafeY: isMobile ? h - (panelOpen && !panelMinimized ? Math.min(240, panelH + 96) : 102) : h - 108,
+    };
+    studioThree._cachedSafeInsets = insets;
+    return insets;
+  }
 
-    const orderedBadges = STATE.badges2D.slice().sort((a, b) => {
-      const aCat = Boolean(a.isCategorize || a.el?.classList?.contains("is-categorize-badge"));
-      const bCat = Boolean(b.isCategorize || b.el?.classList?.contains("is-categorize-badge"));
-      if (aCat !== bCat) return aCat ? 1 : -1;
-      const aPri = (a.isFocused ? 200 : 0) + Number(a.priority ?? 50);
-      const bPri = (b.isFocused ? 200 : 0) + Number(b.priority ?? 50);
-      return bPri - aPri;
-    });
+  function update2DBadgePositions(fromRenderLoop = false) {
+    if (!studioThree || !studioThree.camera || !studioThree.renderer) return;
+    if (!STATE.badges2D || STATE.badges2D.length === 0) {
+      studioThree._badgeLayoutDirty = false;
+      return;
+    }
+    const camSig = studioThree._lastCamSig || computeCameraPoseSig(studioThree.camera);
+    const lblFlag = STATE.categorizeLabelsVisible === false ? 0 : 1;
+    if (
+      fromRenderLoop &&
+      !studioThree._badgeLayoutDirty &&
+      !studioThree._badgeListDirty &&
+      studioThree._lastBadgeCamSig === camSig &&
+      studioThree._lastBadgeLblFlag === lblFlag &&
+      studioThree._lastBadgeCount === STATE.badges2D.length
+    ) {
+      return;
+    }
+    studioThree._lastBadgeCamSig = camSig;
+    studioThree._lastBadgeLblFlag = lblFlag;
+    studioThree._lastBadgeCount = STATE.badges2D.length;
+
+    const w = studioThree._viewW || studioThree.renderer.domElement.clientWidth || 1;
+    const h = studioThree._viewH || studioThree.renderer.domElement.clientHeight || 1;
+    const insets = getStudioSafeBadgeInsets(w, h, Boolean(studioThree._badgeLayoutDirty || !fromRenderLoop));
+    studioThree._badgeLayoutDirty = false;
+    const { isMobile, panelOpen, mobHudOpen, rightSafeX, leftSafeX, topSafeY, bottomSafeY } = insets;
+    const placedRects = [];
+
+    if (studioThree._badgeListDirty || !studioThree._orderedBadgesCache || studioThree._orderedBadgesCache.length !== STATE.badges2D.length) {
+      studioThree._orderedBadgesCache = STATE.badges2D.slice().sort((a, b) => {
+        const aCat = Boolean(a.isCategorize || a.el?.classList?.contains("is-categorize-badge"));
+        const bCat = Boolean(b.isCategorize || b.el?.classList?.contains("is-categorize-badge"));
+        if (aCat !== bCat) return aCat ? 1 : -1;
+        const aPri = (a.isFocused ? 200 : 0) + Number(a.priority ?? 50);
+        const bPri = (b.isFocused ? 200 : 0) + Number(b.priority ?? 50);
+        return bPri - aPri;
+      });
+      studioThree._badgeListDirty = false;
+    }
 
     let visibleCatBadges = 0;
-    orderedBadges.forEach((b) => {
+    studioThree._orderedBadgesCache.forEach((b) => {
       const anchorPt = b.worldPt || b.worldPos;
       if (!b.el || !anchorPt) return;
-      const v = anchorPt.clone().project(studioThree.camera);
-      if (v.z > 1 || Math.abs(v.x) > 1.22 || Math.abs(v.y) > 1.22) {
-        b.el.style.display = "none";
+      _tmpBadgeProj.copy(anchorPt).project(studioThree.camera);
+      if (_tmpBadgeProj.z > 1 || Math.abs(_tmpBadgeProj.x) > 1.22 || Math.abs(_tmpBadgeProj.y) > 1.22) {
+        setBadgeStyleIfChanged(b.el, "none");
         return;
       }
 
-      const x = (v.x * 0.5 + 0.5) * w + (b.offsetX || 0);
-      const y = (-(v.y * 0.5) + 0.5) * h + (b.offsetY || 0);
-      const dispMode = b.el.classList.contains("autodesk-delta-badge")
-        ? "flex"
-        : b.el.classList.contains("autodesk-flex-badge")
-        ? "inline-flex"
-        : "block";
-
+      const x = (_tmpBadgeProj.x * 0.5 + 0.5) * w + (b.offsetX || 0);
+      const y = (-(_tmpBadgeProj.y * 0.5) + 0.5) * h + (b.offsetY || 0);
+      const dispMode = b._dispMode || (b._dispMode = b.el.classList.contains("autodesk-delta-badge")
+        ? "flex" : b.el.classList.contains("autodesk-flex-badge") ? "inline-flex" : "block");
       const isCat = Boolean(b.isCategorize || b.el.classList.contains("is-categorize-badge"));
       if (b.isCommentPin) {
         if (b.folderKey && STATE.hiddenCommentFolders && STATE.hiddenCommentFolders[b.folderKey]) {
-          b.el.style.display = "none";
+          setBadgeStyleIfChanged(b.el, "none");
           return;
         }
         if (STATE.categorizeLabelsVisible === false) {
           b.el.style.display = "none";
           return;
         }
-        b.el.style.display = "inline-flex";
-        b.el.style.left = `${Math.round(x)}px`;
-        b.el.style.top = `${Math.round(y)}px`;
+        setBadgeStyleIfChanged(b.el, "inline-flex", `${Math.round(x)}px`, `${Math.round(y)}px`);
         b.el.classList.toggle("flip-left", x > w - 245);
         b.el.classList.toggle("flip-down", y < 95);
         placedRects.push([x - 36, y - 20, x + 36, y + 20]);
@@ -2926,19 +3285,18 @@
       }
       if (!isCat) {
         if (b.isSurveyToolBadge) {
-          if (panelOpen && !isMobile && x > rightSafeX + 120) {
-            b.el.style.display = "none";
-            return;
-          }
+          if (panelOpen && !isMobile && x > rightSafeX + 120) { setBadgeStyleIfChanged(b.el, "none"); return; }
         } else if ((STATE.categorizeLabelsVisible === false || (panelOpen && !isMobile && x > rightSafeX - 8)) && !b.isTempDistance && !b.isLassoHighlight) {
-          b.el.style.display = "none";
+          setBadgeStyleIfChanged(b.el, "none");
           return;
         }
-        b.el.style.display = dispMode;
-        const bw = b.el.offsetWidth || 160;
-        const bh = b.el.offsetHeight || 36;
-        const halfW = Math.min(bw * 0.5, Math.max(16, w * 0.5 - 8));
-        const halfH = bh * 0.5;
+        if (!b._cachedW || !b._cachedH) {
+          setBadgeStyleIfChanged(b.el, dispMode);
+          b._cachedW = b.el.offsetWidth || 160;
+          b._cachedH = b.el.offsetHeight || 36;
+        }
+        const bw = b._cachedW, bh = b._cachedH;
+        const halfW = Math.min(bw * 0.5, Math.max(16, w * 0.5 - 8)), halfH = bh * 0.5;
         const minX = isMobile ? Math.max(24, halfW + 8) : halfW + 8;
         const maxX = isMobile ? Math.min(w - 24, w - halfW - 8) : rightSafeX - halfW - 8;
         const clampedX = Math.max(minX, Math.min(Math.max(minX, maxX), x));
@@ -2949,212 +3307,134 @@
         // Screen-space de-overlapping pass so pinned measurement badges (P1, P2, P3, Laser, Angle) never stack
         const nudgeStep = Math.max(26, bh + 6);
         const nudgeCandidates = [0, -nudgeStep, nudgeStep, -2 * nudgeStep, 2 * nudgeStep];
-        for (const dy of nudgeCandidates) {
+        for (let ni = 0; ni < nudgeCandidates.length; ni++) {
+          const dy = nudgeCandidates[ni];
           const testY = h > 160 ? Math.max(minY, Math.min(Math.max(minY, maxY), clampedY + dy)) : clampedY + dy;
-          const r0 = clampedX - halfW - 2;
-          const r1 = testY - halfH - 2;
-          const r2 = clampedX + halfW + 2;
-          const r3 = testY + halfH + 2;
-          const hasOverlap = placedRects.some((pr) => !(r2 < pr[0] || r0 > pr[2] || r3 < pr[1] || r1 > pr[3]));
-          if (!hasOverlap) {
-            clampedY = testY;
-            break;
+          const r0 = clampedX - halfW - 2, r1 = testY - halfH - 2, r2 = clampedX + halfW + 2, r3 = testY + halfH + 2;
+          let hasOverlap = false;
+          for (let ri = 0; ri < placedRects.length; ri++) {
+            const pr = placedRects[ri];
+            if (!(r2 < pr[0] || r0 > pr[2] || r3 < pr[1] || r1 > pr[3])) { hasOverlap = true; break; }
           }
+          if (!hasOverlap) { clampedY = testY; break; }
         }
 
-        b.el.style.left = `${clampedX}px`;
-        b.el.style.top = `${clampedY}px`;
+        setBadgeStyleIfChanged(b.el, dispMode, `${Math.round(clampedX)}px`, `${Math.round(clampedY)}px`);
         placedRects.push([clampedX - halfW - 4, clampedY - halfH - 4, clampedX + halfW + 4, clampedY + halfH + 4]);
         return;
       }
 
-      if (STATE.categorizeLabelsVisible === false) {
-        b.el.style.display = "none";
+      if (STATE.categorizeLabelsVisible === false || visibleCatBadges >= 16) {
+        setBadgeStyleIfChanged(b.el, "none");
         return;
       }
-
-      if (visibleCatBadges >= 16) {
-        b.el.style.display = "none";
-        return;
-      }
-
-      // Measure dimensions for categorize badge
       if (!b._cachedW || !b._cachedH) {
-        b.el.style.display = dispMode;
+        setBadgeStyleIfChanged(b.el, dispMode);
         b._cachedW = b.el.offsetWidth || 152;
         b._cachedH = b.el.offsetHeight || 24;
       }
-      const bw = b._cachedW;
-      const bh = b._cachedH;
-      const halfW = bw * 0.5;
-      const halfH = bh * 0.5;
-
-      // Hide categorize badge if its raw projected anchor falls far outside the safe viewport (or behind #studioSidePanel)
-      if (
-        x < leftSafeX + halfW - 24 ||
-        x > rightSafeX - halfW + 16 ||
-        y < topSafeY + halfH - 28 ||
-        y > bottomSafeY - halfH + 24
-      ) {
-        b.el.style.display = "none";
+      const halfW = b._cachedW * 0.5, halfH = b._cachedH * 0.5;
+      if (x < leftSafeX + halfW - 24 || x > rightSafeX - halfW + 16 || y < topSafeY + halfH - 28 || y > bottomSafeY - halfH + 24) {
+        setBadgeStyleIfChanged(b.el, "none");
         return;
       }
       const baseClampedX = Math.max(leftSafeX + halfW, Math.min(rightSafeX - halfW, x));
       const baseClampedY = Math.max(topSafeY + halfH, Math.min(bottomSafeY - halfH, y));
 
-      // 2D Screen-Space AABB Collision Avoidance across candidate offsets
-      let chosenPos = null;
-      let chosenRect = null;
-      for (let oi = 0; oi < candidateOffsets.length; oi++) {
-        const cx = baseClampedX + candidateOffsets[oi][0];
-        const cy = baseClampedY + candidateOffsets[oi][1];
-        if (
-          cx - halfW < leftSafeX ||
-          cx + halfW > rightSafeX ||
-          cy - halfH < topSafeY ||
-          cy + halfH > bottomSafeY
-        ) {
-          continue;
-        }
+      let chosenPos = null, chosenRect = null;
+      for (let oi = 0; oi < _BADGE_CANDIDATE_OFFSETS.length; oi++) {
+        const cx = baseClampedX + _BADGE_CANDIDATE_OFFSETS[oi][0];
+        const cy = baseClampedY + _BADGE_CANDIDATE_OFFSETS[oi][1];
+        if (cx - halfW < leftSafeX || cx + halfW > rightSafeX || cy - halfH < topSafeY || cy + halfH > bottomSafeY) continue;
         const candRect = [cx - halfW - 6, cy - halfH - 5, cx + halfW + 6, cy + halfH + 5];
         let collides = false;
         for (let ri = 0; ri < placedRects.length; ri++) {
           const r = placedRects[ri];
-          if (!(candRect[2] < r[0] || candRect[0] > r[2] || candRect[3] < r[1] || candRect[1] > r[3])) {
-            collides = true;
-            break;
-          }
+          if (!(candRect[2] < r[0] || candRect[0] > r[2] || candRect[3] < r[1] || candRect[1] > r[3])) { collides = true; break; }
         }
-        if (!collides) {
-          chosenPos = [cx, cy];
-          chosenRect = candRect;
-          break;
-        }
+        if (!collides) { chosenPos = [cx, cy]; chosenRect = candRect; break; }
       }
-
-      if (!chosenPos) {
-        b.el.style.display = "none";
-        return;
-      }
+      if (!chosenPos) { setBadgeStyleIfChanged(b.el, "none"); return; }
 
       visibleCatBadges++;
       placedRects.push(chosenRect);
-      b.el.style.display = dispMode;
-      b.el.style.left = `${Math.round(chosenPos[0])}px`;
-      b.el.style.top = `${Math.round(chosenPos[1])}px`;
+      setBadgeStyleIfChanged(b.el, dispMode, `${Math.round(chosenPos[0])}px`, `${Math.round(chosenPos[1])}px`);
     });
   }
 
   // Screen-space zoom-invariant scaling for Gathering Cloud distance & surveying tool markers & rods (Fix #5)
-  function updateZoomInvariantElements() {
-    if (!studioThree) return;
+  function updateZoomInvariantElements(fromRenderLoop = false) {
+    if (!studioThree || !studioThree.camera) return;
     const cam = studioThree.camera;
-    const h = Math.max(1, studioThree.renderer.domElement.clientHeight);
-    const fovRad = THREE.MathUtils.degToRad(cam.fov);
+    const camSig = studioThree._lastCamSig || computeCameraPoseSig(cam);
+    if (fromRenderLoop && !studioThree._zoomInvariantDirty && studioThree._lastZoomCamSig === camSig) return;
+    studioThree._lastZoomCamSig = camSig;
+    studioThree._zoomInvariantDirty = false;
 
+    const h = Math.max(1, studioThree._viewH || studioThree.renderer.domElement.clientHeight);
+    const pixelFactor = (2 * Math.tan(THREE.MathUtils.degToRad(cam.fov) * 0.5) * 0.55) / h;
     const groups = [
-      studioThree.overlayGroup,
-      studioThree.volumeGroup,
-      studioThree.polyPreviewGroup,
-      studioThree.contourGroup,
-      studioThree.categoryGroup,
-      studioThree.commentPinsGroup,
-    ].filter(Boolean);
-
-    groups.forEach((grp) => {
+      studioThree.overlayGroup, studioThree.volumeGroup, studioThree.polyPreviewGroup,
+      studioThree.contourGroup, studioThree.categoryGroup, studioThree.commentPinsGroup,
+    ];
+    for (let gi = 0; gi < groups.length; gi++) {
+      const grp = groups[gi];
+      if (!grp || !grp.visible || grp.children.length === 0) continue;
       grp.traverse((obj) => {
-        if (!obj.userData) return;
-        if (obj.userData.isZoomInvariantMarker || obj.userData.isZoomInvariantRing) {
+        const ud = obj.userData;
+        if (!ud || obj.visible === false) return;
+        if (ud.isZoomInvariantMarker || ud.isZoomInvariantRing) {
           obj.getWorldPosition(_tmpZoomWorldPos);
           const dist = Math.max(0.1, cam.position.distanceTo(_tmpZoomWorldPos));
-          const worldPerPixel = (2 * Math.tan(fovRad / 2) * dist) / h;
-          const r = (obj.userData.pixelRadius || 5.5) * worldPerPixel * 0.55;
-          obj.scale.setScalar(Math.max(0.0025, r));
-          if (obj.userData.isZoomInvariantRing) {
-            obj.quaternion.copy(cam.quaternion);
-          }
-        } else if (obj.userData.isZoomInvariantRod) {
+          obj.scale.setScalar(Math.max(0.0025, (ud.pixelRadius || 5.5) * pixelFactor * dist));
+          if (ud.isZoomInvariantRing) obj.quaternion.copy(cam.quaternion);
+        } else if (ud.isZoomInvariantRod) {
           obj.getWorldPosition(_tmpZoomWorldPos);
           const dist = Math.max(0.1, cam.position.distanceTo(_tmpZoomWorldPos));
-          const worldPerPixel = (2 * Math.tan(fovRad / 2) * dist) / h;
-          const rad = Math.max(0.002, (obj.userData.pixelRadius || 1.35) * worldPerPixel * 0.55);
+          const rad = Math.max(0.002, (ud.pixelRadius || 1.35) * pixelFactor * dist);
           obj.scale.set(rad, 1, rad);
-        } else if (obj.userData.isTreeCamBiasElement && obj.userData.baseAnchorPt) {
-          const bp = obj.userData.baseAnchorPt;
-          const dx = cam.position.x - bp.x;
-          const dz = cam.position.z - bp.z;
+        } else if (ud.isTreeCamBiasElement && ud.baseAnchorPt) {
+          const bp = ud.baseAnchorPt;
+          const dx = cam.position.x - bp.x, dz = cam.position.z - bp.z;
           const len = Math.hypot(dx, dz);
-          if (len > 1e-3) {
-            obj.position.set(bp.x + (dx / len) * 0.14, bp.y, bp.z + (dz / len) * 0.14);
-          }
+          if (len > 1e-3) obj.position.set(bp.x + (dx / len) * 0.14, bp.y, bp.z + (dz / len) * 0.14);
         }
       });
-    });
+    }
   }
 
   function syncStudioControlsForTool() {
     if (!studioThree || !studioThree.controls) return;
     if (STATE.fpMode?.active) {
       studioThree.controls.enabled = false;
-      if (studioThree.renderer && studioThree.renderer.domElement) {
-        studioThree.renderer.domElement.style.cursor =
-          document.pointerLockElement === studioThree.renderer.domElement ? "none" : "grab";
+      if (studioThree.renderer?.domElement) {
+        studioThree.renderer.domElement.style.cursor = document.pointerLockElement === studioThree.renderer.domElement ? "none" : "grab";
       }
       return;
     }
-    const isFreehandLasso =
-      (STATE.activeTool === "crop_delete" || STATE.activeTool === "crop") &&
-      STATE.lassoInputMethod !== "polygon" &&
-      !STATE.studioLassoOrbitMode;
+    const isFreehandLasso = (STATE.activeTool === "crop_delete" || STATE.activeTool === "crop") &&
+      STATE.lassoInputMethod !== "polygon" && !STATE.studioLassoOrbitMode;
     studioThree.controls.enabled = true;
     studioThree.controls.enableRotate = true;
     studioThree.controls.enableZoom = true;
     studioThree.controls.enablePan = true;
     studioThree.controls.screenSpacePanning = true;
-    studioThree.controls.mouseButtons = {
-      LEFT: isFreehandLasso ? -1 : THREE.MOUSE.ROTATE,
-      MIDDLE: THREE.MOUSE.ROTATE,
-      RIGHT: THREE.MOUSE.PAN,
-    };
-    studioThree.controls.touches = {
-      ONE: isFreehandLasso ? -1 : THREE.TOUCH.ROTATE,
-      TWO: THREE.TOUCH.DOLLY_PAN,
-    };
-    if (studioThree.renderer && studioThree.renderer.domElement) {
+    studioThree.controls.mouseButtons = { LEFT: isFreehandLasso ? -1 : THREE.MOUSE.ROTATE, MIDDLE: THREE.MOUSE.ROTATE, RIGHT: THREE.MOUSE.PAN };
+    studioThree.controls.touches = { ONE: isFreehandLasso ? -1 : THREE.TOUCH.ROTATE, TWO: THREE.TOUCH.DOLLY_PAN };
+    if (studioThree.renderer?.domElement) {
       studioThree.renderer.domElement.style.cursor =
-        (STATE.activeTool === "crop" || STATE.activeTool === "crop_delete") && !STATE.studioLassoOrbitMode
-          ? "crosshair"
-          : "";
+        (STATE.activeTool === "crop" || STATE.activeTool === "crop_delete") && !STATE.studioLassoOrbitMode ? "crosshair" : "";
     }
-    if (typeof syncAutoRotateUI === "function") {
-      syncAutoRotateUI();
-    }
+    if (typeof syncAutoRotateUI === "function") syncAutoRotateUI();
   }
 
   // =========================================================================
   // VIDEO-GAME FIRST-PERSON CAMERA ENGINE (WASD + Fly / Surface Walk + PointerLock)
   // =========================================================================
   const FP_MOVEMENT_CODES = new Set([
-    "KeyW",
-    "KeyA",
-    "KeyS",
-    "KeyD",
-    "ArrowUp",
-    "ArrowDown",
-    "ArrowLeft",
-    "ArrowRight",
-    "Space",
-    "KeyE",
-    "KeyQ",
-    "KeyC",
-    "PageUp",
-    "PageDown",
-    "ShiftLeft",
-    "ShiftRight",
-    "AltLeft",
-    "AltRight",
-    "ControlLeft",
-    "ControlRight",
+    "KeyW", "KeyA", "KeyS", "KeyD", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight",
+    "Space", "KeyE", "KeyQ", "KeyC", "PageUp", "PageDown",
+    "ShiftLeft", "ShiftRight", "AltLeft", "AltRight", "ControlLeft", "ControlRight",
   ]);
 
   function syncFirstPersonHudUI() {
@@ -3733,14 +4013,8 @@
   }
 
   function preserveLassoSelectionBeforeToolSwitch() {
-    if (studioThree && typeof studioThree._cancelLassoDrag === "function") {
-      studioThree._cancelLassoDrag();
-    }
-    if (
-      (STATE.activeTool === "crop_delete" || STATE.activeTool === "crop") &&
-      Array.isArray(STATE.measurePoints) &&
-      STATE.measurePoints.length >= 3
-    ) {
+    if (studioThree && typeof studioThree._cancelLassoDrag === "function") studioThree._cancelLassoDrag();
+    if ((STATE.activeTool === "crop_delete" || STATE.activeTool === "crop") && Array.isArray(STATE.measurePoints) && STATE.measurePoints.length >= 3) {
       const lockedPts = STATE.measurePoints.map((p) => p.clone());
       if (!Array.isArray(STATE.pendingCropPolygons)) STATE.pendingCropPolygons = [];
       STATE.pendingCropPolygons.push(lockedPts);
@@ -3748,18 +4022,8 @@
     }
     STATE.measurePoints = [];
     STATE.cropPolygonPoints = [];
-    if (studioThree && studioThree.polyPreviewGroup) {
-      while (studioThree.polyPreviewGroup.children.length > 0) {
-        const c = studioThree.polyPreviewGroup.children[0];
-        if (c.geometry) c.geometry.dispose();
-        if (c.material) c.material.dispose();
-        studioThree.polyPreviewGroup.remove(c);
-      }
-    }
-    if (
-      (Array.isArray(STATE.lassoStrokes) && STATE.lassoStrokes.length > 0) ||
-      (Array.isArray(STATE.pendingCropPolygons) && STATE.pendingCropPolygons.length > 0)
-    ) {
+    disposeClearGroup(studioThree?.polyPreviewGroup);
+    if ((Array.isArray(STATE.lassoStrokes) && STATE.lassoStrokes.length > 0) || (Array.isArray(STATE.pendingCropPolygons) && STATE.pendingCropPolygons.length > 0)) {
       rebuildLassoHighlight3D();
     }
   }
@@ -3777,64 +4041,28 @@
     setActiveStudioTool("orbit");
     const panel = document.getElementById("studioSidePanel");
     if (keepPanelOpen && panel && panel.classList.contains("active")) {
-      if (wasKeep) {
-        openLassoKeepInspector({ armLasso: false });
-      } else {
-        openLassoDeleteInspector({ armLasso: false });
-      }
+      if (wasKeep) openLassoKeepInspector({ armLasso: false });
+      else openLassoDeleteInspector({ armLasso: false });
     }
   }
 
   const MULTI_ALIGN_DISABLED_TOOLS = new Set([
-    "volume",
-    "contours",
-    "profile",
-    "photos",
-    "rtk",
-    "categorize",
-    "drainage",
-    "flatness",
-    "gcp_qa",
-    "stakeout",
-    "stationing",
-    "bookmarks",
-    "comments",
-    "crop",
+    "volume", "contours", "profile", "photos", "rtk", "categorize", "drainage",
+    "flatness", "gcp_qa", "stakeout", "stationing", "bookmarks", "comments", "crop",
   ]);
 
   const MULTI_ALIGN_DISABLED_ELEMENT_IDS = [
-    "btnDockVolume",
-    "btnDockContours",
-    "btnMeasureProfile",
-    "btnMeasurePhotos",
-    "btnDockCategorize",
-    "btnDockQaGroup",
-    "btnDockFlatness",
-    "btnDockDrainage",
-    "btnDockSurveyGroup",
-    "btnDockStakeout",
-    "btnDockStationing",
-    "btnDockGcpQa",
-    "btnDockBookmarks",
-    "btnStudioSavedViews",
-    "btnDockComments",
-    "btnDockLassoKeep",
-    "btnStudioSurveyReport",
-    "studioProjectSelect",
-    "studioScanSelect",
-    "btnRenameStudioSite",
-    "btnRenameStudioScan",
-    "btnRerunStudioScan",
-    "btnDeleteStudioScan",
-    "btnStudioQuickShare",
-    "btnStudioDownloadObj",
+    "btnDockVolume", "btnDockContours", "btnMeasureProfile", "btnMeasurePhotos",
+    "btnDockCategorize", "btnDockQaGroup", "btnDockFlatness", "btnDockDrainage",
+    "btnDockSurveyGroup", "btnDockStakeout", "btnDockStationing", "btnDockGcpQa",
+    "btnDockBookmarks", "btnStudioSavedViews", "btnDockComments", "btnDockLassoKeep",
+    "btnStudioSurveyReport", "studioProjectSelect", "studioScanSelect",
+    "btnRenameStudioSite", "btnRenameStudioScan", "btnRerunStudioScan",
+    "btnDeleteStudioScan", "btnStudioQuickShare", "btnStudioDownloadObj",
   ];
 
   function getMultiAlignDisabledReason() {
-    return tr(
-      "多掃描合併編輯中暫停使用 — 請先合併掃描或退出多掃描模式",
-      "Unavailable during Multi-Scan Editing — merge scans first or exit Multi-Scan mode"
-    );
+    return tr("多掃描合併編輯中暫停使用 — 請先合併掃描或退出多掃描模式", "Unavailable during Multi-Scan Editing — merge scans first or exit Multi-Scan mode");
   }
 
   function syncMultiAlignToolAvailability() {
@@ -3846,54 +4074,38 @@
       const el = document.getElementById(id);
       if (!el) return;
       if (isMulti) {
-        if (el.dataset.origTitle === undefined) {
-          el.dataset.origTitle = el.getAttribute("title") || "";
-        }
+        if (el.dataset.origTitle === undefined) el.dataset.origTitle = el.getAttribute("title") || "";
         el.setAttribute("title", disabledReason);
         el.classList.add("multi-align-disabled");
         el.classList.remove("active");
         el.setAttribute("aria-disabled", "true");
         if (el.tagName === "A") {
           const curHref = el.getAttribute("href");
-          if (curHref) {
-            el.dataset.origHref = curHref;
-            el.removeAttribute("href");
-          }
+          if (curHref) { el.dataset.origHref = curHref; el.removeAttribute("href"); }
         } else {
           el.disabled = true;
         }
       } else {
         el.classList.remove("multi-align-disabled");
         el.removeAttribute("aria-disabled");
-        if (el.dataset.origTitle !== undefined) {
-          el.setAttribute("title", el.dataset.origTitle);
-          delete el.dataset.origTitle;
-        }
+        if (el.dataset.origTitle !== undefined) { el.setAttribute("title", el.dataset.origTitle); delete el.dataset.origTitle; }
         if (el.tagName === "A") {
-          if (el.dataset.origHref && !el.getAttribute("href")) {
-            el.setAttribute("href", el.dataset.origHref);
-          }
+          if (el.dataset.origHref && !el.getAttribute("href")) el.setAttribute("href", el.dataset.origHref);
           delete el.dataset.origHref;
-        } else if (id === "studioScanSelect" && lockSingleScan) {
-          el.disabled = true;
         } else {
-          el.disabled = false;
+          el.disabled = id === "studioScanSelect" && lockSingleScan;
         }
       }
     });
 
     const alignBtn = document.getElementById("btnDockAlignMerge");
-    if (alignBtn) {
-      alignBtn.classList.toggle("multi-align-session", Boolean(isMulti && STATE.activeTool !== "align_merge"));
-    }
+    if (alignBtn) alignBtn.classList.toggle("multi-align-session", Boolean(isMulti && STATE.activeTool !== "align_merge"));
   }
 
   function applyPreviewLodMode(mode, silent = false) {
     const validMode = mode === "rough" || mode === "auto" || mode === "max" ? mode : "rough";
     STATE.previewLodMode = validMode;
-    try {
-      localStorage.setItem("gs_preview_lod_mode_v3", validMode);
-    } catch (_e) {}
+    try { localStorage.setItem("gs_preview_lod_mode_v3", validMode); } catch (_e) {}
 
     document.querySelectorAll("#previewLodModeSwitcher [data-lod-mode]").forEach((btn) => {
       btn.classList.toggle("active", btn.dataset.lodMode === validMode);
@@ -3911,19 +4123,12 @@
       if (wantsPreviewTs !== loadedIsPreviewTs && STATE.activeView === "map" && STATE.activeScanId && typeof loadScanIntoPreview === "function") {
         loadScanIntoPreview(STATE.activeScanId, true);
       } else if (previewThree.tilesRenderer) {
-        if (typeof configureTilesRendererLodAndCaps === "function") {
-          configureTilesRendererLodAndCaps(previewThree.tilesRenderer, validMode, "preview");
-        } else {
-          previewThree.tilesRenderer.errorTarget = previewTargetErr;
-        }
+        if (typeof configureTilesRendererLodAndCaps === "function") configureTilesRendererLodAndCaps(previewThree.tilesRenderer, validMode, "preview");
+        else previewThree.tilesRenderer.errorTarget = previewTargetErr;
         previewThree.camera?.updateMatrixWorld();
         previewThree.tilesRenderer.update();
-        if (typeof updateGaussianSplatForContext === "function") {
-          updateGaussianSplatForContext(previewThree, "preview", true);
-        }
-        if (previewThree.renderer && previewThree.scene && previewThree.camera) {
-          previewThree.renderer.render(previewThree.scene, previewThree.camera);
-        }
+        if (typeof updateGaussianSplatForContext === "function") updateGaussianSplatForContext(previewThree, "preview", true);
+        if (previewThree.renderer && previewThree.scene && previewThree.camera) previewThree.renderer.render(previewThree.scene, previewThree.camera);
       }
     }
 
@@ -3941,9 +4146,7 @@
       : (mode === "rough" || mode === "auto" || mode === "max" ? mode : "auto");
     STATE.scanLodMode = validMode;
     if (!STATE.isEmbedded) {
-      try {
-        localStorage.setItem("gs_studio_lod_mode_v2", validMode);
-      } catch (_e) {}
+      try { localStorage.setItem("gs_studio_lod_mode_v2", validMode); } catch (_e) {}
     }
 
     document.querySelectorAll("#studioLodModeSwitcher [data-lod-mode], #settingsLodModeSwitcher [data-lod-mode]").forEach((btn) => {
@@ -3956,29 +4159,22 @@
     if (selStudio && selStudio.value !== validMode) selStudio.value = validMode;
 
     if (studioThree) {
-      if (
-        validMode !== "rough" &&
-        studioThree._loadedLowMemTileset &&
-        STATE.activeView === "studio" &&
-        STATE.activeScanId
-      ) {
-        loadScanIntoStudio(STATE.activeScanId, {
-          preserveCamera: true,
-          preserveTools: true,
-          forceFullRes: true,
-        });
+      if (validMode !== "rough" && studioThree._loadedLowMemTileset && STATE.activeView === "studio" && STATE.activeScanId) {
+        loadScanIntoStudio(STATE.activeScanId, { preserveCamera: true, preserveTools: true, forceFullRes: true });
       } else if (studioThree.tilesRenderer) {
-        if (typeof configureTilesRendererLodAndCaps === "function") {
-          configureTilesRendererLodAndCaps(studioThree.tilesRenderer, validMode, "studio");
-        }
+        const tr = studioThree.tilesRenderer;
+        if (typeof configureTilesRendererLodAndCaps === "function") configureTilesRendererLodAndCaps(tr, validMode, "studio");
+        installStudioSmartLodEngine(tr, validMode);
+        tr._gsBudgetSaturatedCamSig = null;
+        tr._gsNeedsUpdate = true;
+        studioThree._lastSettledCamSig = "";
+        if (validMode === "rough") abortInFlightHdTiles(tr);
         studioThree.camera?.updateMatrixWorld();
-        studioThree.tilesRenderer.update();
-        if (typeof updateGaussianSplatForContext === "function") {
-          updateGaussianSplatForContext(studioThree, "studio", true);
-        }
-        if (studioThree.renderer && studioThree.scene && studioThree.camera) {
-          studioThree.renderer.render(studioThree.scene, studioThree.camera);
-        }
+        tr.update();
+        enforceStudioHdGpuBudget(tr);
+        ensureZeroGapCoarseCoverage(tr, Boolean(studioThree._camMoving));
+        if (typeof updateGaussianSplatForContext === "function") updateGaussianSplatForContext(studioThree, "studio", true);
+        if (studioThree.renderer && studioThree.scene && studioThree.camera) studioThree.renderer.render(studioThree.scene, studioThree.camera);
       }
     }
 
@@ -3993,31 +4189,24 @@
   if (typeof document !== "undefined" && !window.__gsLodSwitcherBound) {
     window.__gsLodSwitcherBound = true;
     document.addEventListener("click", (ev) => {
-      const previewBtn = ev.target && typeof ev.target.closest === "function"
-        ? ev.target.closest("#previewLodModeSwitcher [data-lod-mode]")
-        : null;
+      const previewBtn = ev.target && typeof ev.target.closest === "function" ? ev.target.closest("#previewLodModeSwitcher [data-lod-mode]") : null;
       if (previewBtn) {
-        ev.preventDefault();
-        ev.stopPropagation();
+        ev.preventDefault(); ev.stopPropagation();
         const mode = previewBtn.getAttribute("data-lod-mode");
         if (mode) applyPreviewLodMode(mode, false);
         return;
       }
       const btn = ev.target && typeof ev.target.closest === "function"
-        ? ev.target.closest("#studioLodModeSwitcher [data-lod-mode], #settingsLodModeSwitcher [data-lod-mode]")
-        : null;
+        ? ev.target.closest("#studioLodModeSwitcher [data-lod-mode], #settingsLodModeSwitcher [data-lod-mode]") : null;
       if (!btn) return;
-      ev.preventDefault();
-      ev.stopPropagation();
+      ev.preventDefault(); ev.stopPropagation();
       const mode = btn.getAttribute("data-lod-mode");
       if (mode) applyScanLodMode(mode, false);
     });
   }
 
   const STUDIO_GROUP1_TOOLS = new Set(["distance", "angle", "area", "coordinates", "laser", "clear"]);
-  function isStudioGroup1Tool(toolName) {
-    return STUDIO_GROUP1_TOOLS.has(String(toolName || ""));
-  }
+  function isStudioGroup1Tool(toolName) { return STUDIO_GROUP1_TOOLS.has(String(toolName || "")); }
   window.isStudioGroup1Tool = isStudioGroup1Tool;
 
   function setActiveStudioTool(toolName, opts = {}) {
@@ -4029,32 +4218,17 @@
     const isG1 = isStudioGroup1Tool(toolName) || (isStudioGroup1Tool(STATE.activeTool) && toolName === "orbit");
     const keepSidePanel = Boolean(isG1 || opts?.keepSidePanel);
     const sidePanelEl = document.getElementById("studioSidePanel");
-    const openPanelTool =
-      sidePanelEl && !sidePanelEl.classList.contains("hidden")
-        ? sidePanelEl.getAttribute("data-active-tool") || ""
-        : "";
+    const openPanelTool = sidePanelEl && !sidePanelEl.classList.contains("hidden") ? sidePanelEl.getAttribute("data-active-tool") || "" : "";
 
     if ((toolName === "crop" || toolName === "crop_delete" || toolName === "lasso") && STATE.scanLodMode !== "max") {
       applyScanLodMode("max", true);
-      if (typeof showToast === "function") {
-        showToast(tr("已自動鎖定「精細 (L2)」畫質以確保套索裁切跨圖層精準同步", "Locked to Max Detail (L2) for multi-LOD accurate Lasso editing"));
-      }
+      if (typeof showToast === "function") showToast(tr("已自動鎖定「精細 (L2)」畫質以確保套索裁切跨圖層精準同步", "Locked to Max Detail (L2) for multi-LOD accurate Lasso editing"));
     }
-    if (!keepSidePanel && STATE.activeTool === "section" && toolName !== "section") {
-      clearSectionBoxClippingIfNotKept();
-    }
-    if (
-      (STATE.activeTool === "crop" || STATE.activeTool === "crop_delete") &&
-      toolName !== "crop" &&
-      toolName !== "crop_delete" &&
-      studioThree &&
-      typeof studioThree._cancelLassoDrag === "function"
-    ) {
+    if (!keepSidePanel && STATE.activeTool === "section" && toolName !== "section") clearSectionBoxClippingIfNotKept();
+    if ((STATE.activeTool === "crop" || STATE.activeTool === "crop_delete") && toolName !== "crop" && toolName !== "crop_delete" && studioThree && typeof studioThree._cancelLassoDrag === "function") {
       studioThree._cancelLassoDrag();
     }
-    if ((toolName === "crop" || toolName === "crop_delete") && STATE.fpMode?.active) {
-      exitFirstPersonMode(true);
-    }
+    if ((toolName === "crop" || toolName === "crop_delete") && STATE.fpMode?.active) exitFirstPersonMode(true);
     if (toolName !== "crop" && toolName !== "crop_delete") {
       STATE.studioLassoOrbitMode = false;
       if (STATE.lassoEdit) STATE.lassoEdit.active = false;
@@ -4075,9 +4249,7 @@
     if (!keepSidePanel && toolName !== "gcp_qa" && typeof clearGcpQaMarkers3D === "function") clearGcpQaMarkers3D();
     if (!keepSidePanel && toolName !== "stationing" && typeof window.clearStationingVisuals3D === "function") window.clearStationingVisuals3D();
     if (!keepSidePanel && toolName !== "contours" && typeof clearContoursVisualsOnly === "function") clearContoursVisualsOnly();
-    if (!keepSidePanel && toolName !== "utilities" && typeof window.onUtilitiesPanelClosed === "function") {
-      window.onUtilitiesPanelClosed();
-    }
+    if (!keepSidePanel && toolName !== "utilities" && typeof window.onUtilitiesPanelClosed === "function") window.onUtilitiesPanelClosed();
     if (typeof window.onQaPanelsClosed === "function") window.onQaPanelsClosed(toolName);
     if (!keepSidePanel) {
       if (STATE.activeTool === "photos" && toolName !== "photos" && typeof clearPhotoTargetVisuals3D === "function") {
@@ -4101,21 +4273,14 @@
         if (typeof window.syncSidePanelMinimizedState === "function") window.syncSidePanelMinimizedState(false);
       }
     }
-    if (studioThree && studioThree.gizmoGroup) {
-      studioThree.gizmoGroup.visible = Boolean(
-        STATE.multiAlign?.active && toolName === "align_merge" && STATE.multiAlign?.selectedScanId
-      );
+    if (studioThree?.gizmoGroup) {
+      studioThree.gizmoGroup.visible = Boolean(STATE.multiAlign?.active && toolName === "align_merge" && STATE.multiAlign?.selectedScanId);
     }
     clearTempDistanceVisuals();
-    if (studioThree && studioThree.polyPreviewGroup) {
-      while (studioThree.polyPreviewGroup.children.length > 0) {
-        studioThree.polyPreviewGroup.remove(studioThree.polyPreviewGroup.children[0]);
-      }
-    }
+    disposeClearGroup(studioThree?.polyPreviewGroup);
     document.querySelectorAll('#bimBottomDock .bim-dock-btn:not([data-tool="snap"]):not([data-tool="first_person"]):not(#btnToggleFirstPerson):not(#btnClearMeasurements):not(#btnMeasureClear), #studioEditingDock .bim-dock-btn, #bimDockQaMenu .bim-dock-btn, #bimDockSurveyMenu .bim-dock-btn').forEach((b) => {
       const key = b.dataset.tool || b.dataset.dock || "";
-      const isActive = key === toolName || (keepSidePanel && openPanelTool && key === openPanelTool);
-      b.classList.toggle("active", isActive);
+      b.classList.toggle("active", key === toolName || (keepSidePanel && openPanelTool && key === openPanelTool));
     });
     const qaGroupBtn = document.getElementById("btnDockQaGroup");
     if (qaGroupBtn) qaGroupBtn.classList.toggle("active", toolName === "flatness" || toolName === "drainage" || (keepSidePanel && (openPanelTool === "flatness" || openPanelTool === "drainage")));
@@ -4123,16 +4288,13 @@
     const surveyTools = ["stakeout", "stationing", "gcp_qa", "contours"];
     if (surveyGroupBtn) surveyGroupBtn.classList.toggle("active", surveyTools.includes(toolName) || (keepSidePanel && surveyTools.includes(openPanelTool)));
     const bottomDock = document.getElementById("bimBottomDock");
-    if (bottomDock && (toolName === "orbit" || window.innerWidth >= 560) && !isG1) {
-      bottomDock.scrollLeft = 0;
-    }
+    if (bottomDock && (toolName === "orbit" || window.innerWidth >= 560) && !isG1) bottomDock.scrollLeft = 0;
     const lassoSvg = document.getElementById("studioLassoSvg");
-    if (lassoSvg && toolName !== "crop" && toolName !== "crop_delete") {
-      lassoSvg.classList.remove("active", "keep-mode", "sub-mode");
-    }
+    if (lassoSvg && toolName !== "crop" && toolName !== "crop_delete") lassoSvg.classList.remove("active", "keep-mode", "sub-mode");
     syncMultiAlignToolAvailability();
     syncStudioControlsForTool();
     if (typeof syncStudioMobileToolHud === "function") syncStudioMobileToolHud();
+    if (studioThree) studioThree._badgeLayoutDirty = true;
     update2DBadgePositions();
   }
   window.updateZoomInvariantElements = updateZoomInvariantElements;
@@ -4140,68 +4302,41 @@
   function clearTempDistanceVisuals() {
     if (studioThree && STATE.tempDistanceObjects.length) {
       STATE.tempDistanceObjects.forEach((obj) => {
-        if (obj.geometry) obj.geometry.dispose();
-        if (obj.material) obj.material.dispose();
+        disposeObjectGpuDeep(obj);
         studioThree.overlayGroup.remove(obj);
       });
     }
     STATE.tempDistanceObjects = [];
+    const prevLen = STATE.badges2D.length;
     STATE.badges2D = STATE.badges2D.filter((b) => {
-      if (b.isTempDistance) {
-        b.el?.remove();
-        return false;
-      }
+      if (b.isTempDistance) { b.el?.remove(); return false; }
       return true;
     });
+    if (STATE.badges2D.length !== prevLen) markStudioBadgeListDirty();
   }
 
   function clearAreaVisualsOnly() {
-    if (studioThree && studioThree.overlayGroup) {
+    if (studioThree?.overlayGroup) {
       const toRemove = [];
-      studioThree.overlayGroup.children.forEach((c) => {
-        if (c.userData && c.userData.isAreaVisual) toRemove.push(c);
-      });
-      toRemove.forEach((c) => {
-        if (c.geometry) c.geometry.dispose();
-        if (c.material) c.material.dispose();
-        studioThree.overlayGroup.remove(c);
-      });
+      studioThree.overlayGroup.children.forEach((c) => { if (c.userData?.isAreaVisual) toRemove.push(c); });
+      toRemove.forEach((c) => { disposeObjectGpuDeep(c); studioThree.overlayGroup.remove(c); });
     }
-    if (studioThree && studioThree.polyPreviewGroup) {
-      while (studioThree.polyPreviewGroup.children.length > 0) {
-        studioThree.polyPreviewGroup.remove(studioThree.polyPreviewGroup.children[0]);
-      }
-    }
+    disposeClearGroup(studioThree?.polyPreviewGroup);
     STATE.badges2D = STATE.badges2D.filter((b) => {
-      if (b.isArea) {
-        b.el?.remove();
-        return false;
-      }
+      if (b.isArea) { b.el?.remove(); return false; }
       return true;
     });
+    markStudioBadgeListDirty();
   }
 
   function clearVolumeVisualsOnly() {
-    if (studioThree && studioThree.volumeGroup) {
-      while (studioThree.volumeGroup.children.length > 0) {
-        const c = studioThree.volumeGroup.children[0];
-        if (c.geometry) c.geometry.dispose();
-        if (c.material) c.material.dispose();
-        studioThree.volumeGroup.remove(c);
-      }
-    }
-    if (studioThree && studioThree.polyPreviewGroup) {
-      while (studioThree.polyPreviewGroup.children.length > 0) {
-        studioThree.polyPreviewGroup.remove(studioThree.polyPreviewGroup.children[0]);
-      }
-    }
+    disposeClearGroup(studioThree?.volumeGroup);
+    disposeClearGroup(studioThree?.polyPreviewGroup);
     STATE.badges2D = STATE.badges2D.filter((b) => {
-      if (b.isVolume) {
-        b.el?.remove();
-        return false;
-      }
+      if (b.isVolume) { b.el?.remove(); return false; }
       return true;
     });
+    markStudioBadgeListDirty();
   }
 
   function clearMeasurements(opts = {}) {
@@ -4209,8 +4344,9 @@
     STATE.measurePoints = [];
     STATE.completedMeasurements = [];
     if (studioThree) {
-      studioThree._snapIndicatorRing = null;
-      studioThree._movingVertexRing = null;
+      if (studioThree._snapIndicatorRing) { disposeObjectGpuDeep(studioThree._snapIndicatorRing); studioThree._snapIndicatorRing.parent?.remove(studioThree._snapIndicatorRing); studioThree._snapIndicatorRing = null; }
+      if (studioThree._movingVertexRing) { disposeObjectGpuDeep(studioThree._movingVertexRing); studioThree._movingVertexRing.parent?.remove(studioThree._movingVertexRing); studioThree._movingVertexRing = null; }
+      markStudioZoomInvariantDirty();
     }
     clearTempDistanceVisuals();
     clearAreaVisualsOnly();
@@ -4236,23 +4372,25 @@
     if (typeof clearContoursVisualsOnly === "function") clearContoursVisualsOnly();
     if (typeof clearRtkPhotoFrustums3D === "function") clearRtkPhotoFrustums3D();
     if (typeof clearPhotoTargetVisuals3D === "function") clearPhotoTargetVisuals3D();
-    if (studioThree && studioThree.overlayGroup) {
-      const keepList = [];
+    if (studioThree?.overlayGroup) {
+      const keepSet = new Set();
       studioThree.overlayGroup.children.forEach((c) => {
-        if (c && (c === window.UTILS_STATE?.threeGroup || c.name === "PublicUtilitiesGroup")) {
-          keepList.push(c);
-        }
+        if (c && (c === window.UTILS_STATE?.threeGroup || c.name === "PublicUtilitiesGroup")) keepSet.add(c);
       });
-      while (studioThree.overlayGroup.children.length > 0) {
-        studioThree.overlayGroup.remove(studioThree.overlayGroup.children[0]);
+      for (let i = studioThree.overlayGroup.children.length - 1; i >= 0; i--) {
+        const c = studioThree.overlayGroup.children[i];
+        if (!keepSet.has(c)) {
+          disposeObjectGpuDeep(c);
+          studioThree.overlayGroup.remove(c);
+        }
       }
-      keepList.forEach((c) => studioThree.overlayGroup.add(c));
     }
     STATE.badges2D = STATE.badges2D.filter((b) => {
       if (b.isCommentPin) return true;
       b.el?.remove();
       return false;
     });
+    markStudioBadgeListDirty();
     if (typeof renderCommentPins3D === "function") renderCommentPins3D();
   }
 
@@ -4264,92 +4402,51 @@
       if (!c) return;
       const cname = String(c.name || "");
       if (
-        c.userData?.isLassoHighlight ||
-        c.userData?.isSnapIndicator ||
-        c.userData?.isMovingVertexIndicator ||
-        c.userData?.isEdgeMidpointIndicator ||
-        c.userData?.isPhotoTargetPin ||
-        c.userData?.isSectionTempPin ||
-        c === studioThree._sectionBoxHelper ||
-        c === studioThree.sectionBoxGizmoGroup ||
-        c === studioThree.drainageGroup ||
-        c === studioThree.pondingGroup ||
-        c === studioThree.gcpQaGroup ||
-        c === studioThree.stationingGroup ||
-        c === studioThree.photoFrustumGroup ||
-        c === studioThree.photoTargetGroup ||
-        c === studioThree.cameraTrajectoryGroup ||
-        c === window.UTILS_STATE?.threeGroup ||
-        cname === "PublicUtilitiesGroup" ||
-        cname.startsWith("GS_")
+        c.userData?.isLassoHighlight || c.userData?.isSnapIndicator || c.userData?.isMovingVertexIndicator ||
+        c.userData?.isEdgeMidpointIndicator || c.userData?.isPhotoTargetPin || c.userData?.isSectionTempPin ||
+        c === studioThree._sectionBoxHelper || c === studioThree.sectionBoxGizmoGroup ||
+        c === studioThree.drainageGroup || c === studioThree.pondingGroup || c === studioThree.gcpQaGroup ||
+        c === studioThree.stationingGroup || c === studioThree.photoFrustumGroup || c === studioThree.photoTargetGroup ||
+        c === studioThree.cameraTrajectoryGroup || c === window.UTILS_STATE?.threeGroup ||
+        cname === "PublicUtilitiesGroup" || cname.startsWith("GS_")
       ) {
         return;
       }
       toRemove.push(c);
     });
-    toRemove.forEach((c) => {
-      if (c.geometry) c.geometry.dispose();
-      if (c.material) c.material.dispose();
-      studioThree.overlayGroup.remove(c);
-    });
+    toRemove.forEach((c) => { disposeObjectGpuDeep(c); studioThree.overlayGroup.remove(c); });
 
     STATE.badges2D = STATE.badges2D.filter((b) => {
-      if (b.isCommentPin || b.isCategorize || b.isVolume || b.isLassoHighlight || b.isProfile || b.isSurveyToolBadge) {
-        return true;
-      }
+      if (b.isCommentPin || b.isCategorize || b.isVolume || b.isLassoHighlight || b.isProfile || b.isSurveyToolBadge) return true;
       b.el?.remove();
       return false;
     });
+    markStudioBadgeListDirty();
+    markStudioZoomInvariantDirty();
 
     (STATE.completedMeasurements || []).forEach((m) => {
       if (!m || typeof m !== "object") return;
-      if (m.type === "distance" && m.p1 && m.p2) {
-        m.dist = m.p1.distanceTo(m.p2);
-        renderDistanceVisuals(null, m);
-      } else if (m.type === "angle" && m.p1 && m.p2 && m.p3) {
-        renderAngleVisuals(null, m);
-      } else if (m.type === "coordinates" && m.pt) {
-        m.twd = localToTwd97(m.pt);
-        renderCoordinateVisuals(m.pt, m);
-      } else if (m.type === "area" && Array.isArray(m.points) && m.points.length >= 3) {
-        if (typeof renderClosedAreaPolygon === "function") {
-          renderClosedAreaPolygon(m.points, { preserveExistingAreas: true });
-        }
-      } else if (m.type === "laser") {
-        if (typeof renderLaserVisuals === "function") {
-          renderLaserVisuals(null, m);
-        }
-      }
+      if (m.type === "distance" && m.p1 && m.p2) { m.dist = m.p1.distanceTo(m.p2); renderDistanceVisuals(null, m); }
+      else if (m.type === "angle" && m.p1 && m.p2 && m.p3) renderAngleVisuals(null, m);
+      else if (m.type === "coordinates" && m.pt) { m.twd = localToTwd97(m.pt); renderCoordinateVisuals(m.pt, m); }
+      else if (m.type === "area" && Array.isArray(m.points) && m.points.length >= 3 && typeof renderClosedAreaPolygon === "function") {
+        renderClosedAreaPolygon(m.points, { preserveExistingAreas: true });
+      } else if (m.type === "laser" && typeof renderLaserVisuals === "function") renderLaserVisuals(null, m);
     });
 
     const pts = Array.isArray(STATE.measurePoints) ? STATE.measurePoints : [];
     if (pts.length > 0) {
-      if (STATE.activeTool === "distance") {
-        renderDistanceVisuals(null, null);
-      } else if (STATE.activeTool === "angle") {
-        renderAngleVisuals(null, null);
-      } else if (STATE.activeTool === "area") {
-        const addAreaObj = (m) => {
-          m.userData.isAreaVisual = true;
-          studioThree.overlayGroup.add(m);
-        };
-        pts.forEach((p, idx) => {
-          add3DPinMarker(p, idx === 0 ? 0xff3b30 : 0x0284c7, studioThree.overlayGroup, addAreaObj);
-        });
+      if (STATE.activeTool === "distance") renderDistanceVisuals(null, null);
+      else if (STATE.activeTool === "angle") renderAngleVisuals(null, null);
+      else if (STATE.activeTool === "area") {
+        const addAreaObj = (m) => { m.userData.isAreaVisual = true; studioThree.overlayGroup.add(m); };
+        pts.forEach((p, idx) => add3DPinMarker(p, idx === 0 ? 0xff3b30 : 0x0284c7, studioThree.overlayGroup, addAreaObj));
         if (pts.length >= 2) {
-          const lineGeom = new THREE.BufferGeometry().setFromPoints(pts);
-          const lineMesh = new THREE.Line(lineGeom, new THREE.LineBasicMaterial({ color: 0x0284c7, depthTest: true }));
-          addAreaObj(lineMesh);
+          addAreaObj(new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts), new THREE.LineBasicMaterial({ color: 0x0284c7, depthTest: true })));
         }
-      } else if (STATE.activeTool === "volume" && typeof drawPlacedCutFillPolygon3D === "function") {
-        drawPlacedCutFillPolygon3D(pts.slice(), null);
-      } else if (STATE.activeTool === "contours") {
-        pts.forEach((p, idx) => {
-          add3DPinMarker(p, idx === 0 ? 0xff3b30 : 0x0284c7);
-        });
-      } else if (STATE.activeTool === "flatness" && typeof window.refreshFlatnessDraftVisuals === "function") {
-        window.refreshFlatnessDraftVisuals();
-      }
+      } else if (STATE.activeTool === "volume" && typeof drawPlacedCutFillPolygon3D === "function") drawPlacedCutFillPolygon3D(pts.slice(), null);
+      else if (STATE.activeTool === "contours") pts.forEach((p, idx) => add3DPinMarker(p, idx === 0 ? 0xff3b30 : 0x0284c7));
+      else if (STATE.activeTool === "flatness" && typeof window.refreshFlatnessDraftVisuals === "function") window.refreshFlatnessDraftVisuals();
     }
 
     if (STATE.movingVertex?.source === "cutFillPolygonPoints" && Array.isArray(STATE.cutFillPolygonPoints) && STATE.cutFillPolygonPoints.length >= 2 && typeof drawPlacedCutFillPolygon3D === "function") {
@@ -4364,7 +4461,7 @@
     if (Array.isArray(STATE.profileEndpoints) && STATE.profileEndpoints.length >= 2 && typeof drawProfileSectionLine3D === "function") {
       drawProfileSectionLine3D(STATE.profileEndpoints[0], STATE.profileEndpoints[1], STATE.movingVertex?.source === "profileEndpoints" ? null : STATE.lastProfileResult?.samples || null);
     }
-    if (STATE.movingVertex && STATE.movingVertex.point) updateStudioMovingVertexIndicator(STATE.movingVertex.point);
+    if (STATE.movingVertex?.point) updateStudioMovingVertexIndicator(STATE.movingVertex.point);
     updateZoomInvariantElements();
     update2DBadgePositions();
   }
@@ -4501,15 +4598,12 @@
   window.cancelStudioVertexMove = cancelStudioVertexMove;
 
   // Exact Gathering Cloud Distance Measurement Visuals with Orthogonal X, Y, Z Delta Breakdown (Fix #5)
-  function formatGcDist(meters) {
-    return `~ ${Number(meters).toFixed(2)} m`;
-  }
+  function formatGcDist(meters) { return `~ ${Number(meters).toFixed(2)} m`; }
 
   function renderDistanceVisuals(dynamicEnd = null, existingMeas = null) {
     if (!studioThree) return;
     let p1, p2;
     const isTemp = !existingMeas;
-
     if (existingMeas) {
       p1 = existingMeas.p1;
       p2 = existingMeas.p2;
@@ -4520,28 +4614,14 @@
       if (!p1) return;
     }
 
-    const addObj = (mesh) => {
-      studioThree.overlayGroup.add(mesh);
-      if (isTemp) STATE.tempDistanceObjects.push(mesh);
-    };
-
-    const addEndpointMarker = (pos) => {
-      add3DPinMarker(pos, 0x0084ff, studioThree.overlayGroup, addObj);
-    };
-
+    const addObj = (mesh) => { studioThree.overlayGroup.add(mesh); if (isTemp) STATE.tempDistanceObjects.push(mesh); };
+    const addEndpointMarker = (pos) => add3DPinMarker(pos, 0x0084ff, studioThree.overlayGroup, addObj);
     const addLegRod = (start, end, colorHex) => {
       const lDir = new THREE.Vector3().subVectors(end, start);
       const lLen = lDir.length();
       if (lLen > 0.01) {
-        const rodGeo = new THREE.CylinderGeometry(1, 1, lLen, 8);
-        const rodMat = new THREE.MeshBasicMaterial({
-          color: colorHex,
-          depthTest: true,
-          depthWrite: false,
-          transparent: true,
-          opacity: 0.90,
-        });
-        const rod = new THREE.Mesh(rodGeo, rodMat);
+        const rodMat = new THREE.MeshBasicMaterial({ color: colorHex, depthTest: true, depthWrite: false, transparent: true, opacity: 0.90 });
+        const rod = new THREE.Mesh(new THREE.CylinderGeometry(1, 1, lLen, 8), rodMat);
         rod.position.copy(start).addScaledVector(lDir, 0.5);
         rod.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), lDir.clone().normalize());
         rod.userData.isZoomInvariantRod = true;
@@ -4551,103 +4631,41 @@
       }
     };
 
-    // Endpoint 1
     addEndpointMarker(p1);
-
     if (!p2) {
-      add2DBadge(
-        p1,
-        `<div class="autodesk-dist-badge">起點 (請點擊終點)</div>`,
-        "#0084ff",
-        { rawHtml: true, offsetY: -22, isTempDistance: true }
-      );
+      add2DBadge(p1, `<div class="autodesk-dist-badge">起點 (請點擊終點)</div>`, "#0084ff", { rawHtml: true, offsetY: -22, isTempDistance: true });
+      markStudioZoomInvariantDirty();
       updateZoomInvariantElements();
       return;
     }
 
-    // Endpoint 2
     addEndpointMarker(p2);
-
-    // Direct 3D Dimension Line (#0084ff)
     const d3d = p1.distanceTo(p2);
-    const lineGeo = new THREE.BufferGeometry().setFromPoints([p1, p2]);
-    const lineMat = new THREE.LineBasicMaterial({ color: 0x0084ff, linewidth: 2, depthTest: true });
-    const directLine = new THREE.Line(lineGeo, lineMat);
+    const directLine = new THREE.Line(new THREE.BufferGeometry().setFromPoints([p1, p2]), new THREE.LineBasicMaterial({ color: 0x0084ff, linewidth: 2, depthTest: true }));
     directLine.renderOrder = 998;
     addObj(directLine);
     addLegRod(p1, p2, 0x0084ff);
+    add2DBadge(new THREE.Vector3().addVectors(p1, p2).multiplyScalar(0.5), `<div class="autodesk-dist-badge">${formatGcDist(d3d)}</div>`, "#0084ff", { rawHtml: true, isTempDistance: isTemp });
 
-    const mid = new THREE.Vector3().addVectors(p1, p2).multiplyScalar(0.5);
-    add2DBadge(
-      mid,
-      `<div class="autodesk-dist-badge">${formatGcDist(d3d)}</div>`,
-      "#0084ff",
-      { rawHtml: true, isTempDistance: isTemp }
-    );
+    // Orthogonal X, Y, Z Delta Breakdown (Revit/BIM standard: X = Easting, Y = Northing along Three.js Z, Z = Elevation along Three.js Y)
+    const c1 = new THREE.Vector3(p2.x, p1.y, p1.z), c2 = new THREE.Vector3(p2.x, p1.y, p2.z);
+    const curDx = Math.abs(p2.x - p1.x), curDy = Math.abs(p2.z - p1.z), curDz = Math.abs(p2.y - p1.y);
 
-    // Orthogonal X, Y, Z Delta Breakdown (matching Gathering Cloud Revit/BIM standard:
-    // X = Easting p1 -> c1, Y = Plan Depth/Northing along Three.js Z c1 -> c2, Z = Elevation along Three.js Y c2 -> p2)
-    const c1 = new THREE.Vector3(p2.x, p1.y, p1.z);
-    const c2 = new THREE.Vector3(p2.x, p1.y, p2.z);
+    const lineX = new THREE.Line(new THREE.BufferGeometry().setFromPoints([p1, c1]), new THREE.LineBasicMaterial({ color: 0xef4444, linewidth: 2, depthTest: true }));
+    lineX.renderOrder = 998; addObj(lineX); addLegRod(p1, c1, 0xef4444);
+    add2DBadge(new THREE.Vector3().addVectors(p1, c1).multiplyScalar(0.5), `<div class="autodesk-delta-badge delta-x"><span class="autodesk-delta-axis axis-x">X</span><span class="autodesk-delta-val">${formatGcDist(curDx)}</span></div>`, "#ef4444", { rawHtml: true, isTempDistance: isTemp });
 
-    const curDx = Math.abs(p2.x - p1.x);
-    const curDy = Math.abs(p2.z - p1.z);
-    const curDz = Math.abs(p2.y - p1.y);
+    const lineY = new THREE.Line(new THREE.BufferGeometry().setFromPoints([c1, c2]), new THREE.LineBasicMaterial({ color: 0x10b981, linewidth: 2, depthTest: true }));
+    lineY.renderOrder = 998; addObj(lineY); addLegRod(c1, c2, 0x10b981);
+    add2DBadge(new THREE.Vector3().addVectors(c1, c2).multiplyScalar(0.5), `<div class="autodesk-delta-badge delta-y"><span class="autodesk-delta-axis axis-y">Y</span><span class="autodesk-delta-val">${formatGcDist(curDy)}</span></div>`, "#10b981", { rawHtml: true, isTempDistance: isTemp });
 
-    // 1. X Delta leg (Red #ef4444)
-    const lineX = new THREE.Line(
-      new THREE.BufferGeometry().setFromPoints([p1, c1]),
-      new THREE.LineBasicMaterial({ color: 0xef4444, linewidth: 2, depthTest: true })
-    );
-    lineX.renderOrder = 998;
-    addObj(lineX);
-    addLegRod(p1, c1, 0xef4444);
+    const lineZ = new THREE.Line(new THREE.BufferGeometry().setFromPoints([c2, p2]), new THREE.LineBasicMaterial({ color: 0x3b82f6, linewidth: 2, depthTest: true }));
+    lineZ.renderOrder = 998; addObj(lineZ); addLegRod(c2, p2, 0x3b82f6);
+    add2DBadge(new THREE.Vector3().addVectors(c2, p2).multiplyScalar(0.5), `<div class="autodesk-delta-badge delta-z"><span class="autodesk-delta-axis axis-z">Z</span><span class="autodesk-delta-val">${formatGcDist(curDz)}</span></div>`, "#3b82f6", { rawHtml: true, offsetX: 46, offsetY: -8, isTempDistance: isTemp });
 
-    const midX = new THREE.Vector3().addVectors(p1, c1).multiplyScalar(0.5);
-    add2DBadge(
-      midX,
-      `<div class="autodesk-delta-badge delta-x"><span class="autodesk-delta-axis axis-x">X</span><span class="autodesk-delta-val">${formatGcDist(curDx)}</span></div>`,
-      "#ef4444",
-      { rawHtml: true, isTempDistance: isTemp }
-    );
-
-    // 2. Y Delta leg (Green #10b981, Northing / Plan Depth along Three.js Z: c1 -> c2)
-    const lineY = new THREE.Line(
-      new THREE.BufferGeometry().setFromPoints([c1, c2]),
-      new THREE.LineBasicMaterial({ color: 0x10b981, linewidth: 2, depthTest: true })
-    );
-    lineY.renderOrder = 998;
-    addObj(lineY);
-    addLegRod(c1, c2, 0x10b981);
-
-    const midY = new THREE.Vector3().addVectors(c1, c2).multiplyScalar(0.5);
-    add2DBadge(
-      midY,
-      `<div class="autodesk-delta-badge delta-y"><span class="autodesk-delta-axis axis-y">Y</span><span class="autodesk-delta-val">${formatGcDist(curDy)}</span></div>`,
-      "#10b981",
-      { rawHtml: true, isTempDistance: isTemp }
-    );
-
-    // 3. Z Delta leg (Blue #3b82f6, Vertical Elevation difference along Three.js Y: c2 -> p2)
-    const lineZ = new THREE.Line(
-      new THREE.BufferGeometry().setFromPoints([c2, p2]),
-      new THREE.LineBasicMaterial({ color: 0x3b82f6, linewidth: 2, depthTest: true })
-    );
-    lineZ.renderOrder = 998;
-    addObj(lineZ);
-    addLegRod(c2, p2, 0x3b82f6);
-
-    const midZ = new THREE.Vector3().addVectors(c2, p2).multiplyScalar(0.5);
-    add2DBadge(
-      midZ,
-      `<div class="autodesk-delta-badge delta-z"><span class="autodesk-delta-axis axis-z">Z</span><span class="autodesk-delta-val">${formatGcDist(curDz)}</span></div>`,
-      "#3b82f6",
-      { rawHtml: true, offsetX: 46, offsetY: -8, isTempDistance: isTemp }
-    );
-
+    markStudioZoomInvariantDirty();
     updateZoomInvariantElements();
   }
-
 
   // Interactive Dynamic Angle Visuals (3-Point: P1 -> Vertex P2 -> P3 with live legs, 3D sector arc & wedge)
   function renderAngleVisuals(dynamicPt = null, existingMeas = null) {
@@ -4656,64 +4674,35 @@
     let p1 = null, p2 = null, p3 = null;
 
     if (existingMeas) {
-      p1 = existingMeas.p1;
-      p2 = existingMeas.p2;
-      p3 = existingMeas.p3;
+      p1 = existingMeas.p1; p2 = existingMeas.p2; p3 = existingMeas.p3;
     } else {
       clearTempDistanceVisuals();
       const pts = STATE.measurePoints || [];
       if (pts.length === 0) {
         if (!dynamicPt) return;
-        const addHoverObj = (mesh) => {
-          studioThree.overlayGroup.add(mesh);
-          STATE.tempDistanceObjects.push(mesh);
-        };
+        const addHoverObj = (mesh) => { studioThree.overlayGroup.add(mesh); STATE.tempDistanceObjects.push(mesh); };
         add3DPinMarker(dynamicPt, 0xf59e0b, studioThree.overlayGroup, addHoverObj);
-        add2DBadge(
-          dynamicPt,
-          `<div class="autodesk-flex-badge autodesk-angle-badge">📐 起點 P1 <span class="autodesk-sub-pill">點擊設定第一邊</span></div>`,
-          "#f59e0b",
-          { rawHtml: true, offsetY: -24, isTempDistance: true }
-        );
+        add2DBadge(dynamicPt, `<div class="autodesk-flex-badge autodesk-angle-badge">📐 起點 P1 <span class="autodesk-sub-pill">點擊設定第一邊</span></div>`, "#f59e0b", { rawHtml: true, offsetY: -24, isTempDistance: true });
+        markStudioZoomInvariantDirty();
         updateZoomInvariantElements();
         return;
       } else if (pts.length === 1) {
-        p1 = pts[0];
-        p2 = dynamicPt;
+        p1 = pts[0]; p2 = dynamicPt;
       } else {
-        p1 = pts[0];
-        p2 = pts[1];
-        p3 = dynamicPt || (pts.length >= 3 ? pts[2] : null);
+        p1 = pts[0]; p2 = pts[1]; p3 = dynamicPt || (pts.length >= 3 ? pts[2] : null);
       }
     }
-
     if (!p1) return;
 
-    const addObj = (mesh) => {
-      studioThree.overlayGroup.add(mesh);
-      if (isTemp) STATE.tempDistanceObjects.push(mesh);
-    };
-
+    const addObj = (mesh) => { studioThree.overlayGroup.add(mesh); if (isTemp) STATE.tempDistanceObjects.push(mesh); };
     const addLegRod = (start, end, colorHex) => {
       const lDir = new THREE.Vector3().subVectors(end, start);
       const lLen = lDir.length();
       if (lLen > 0.01) {
-        const line = new THREE.Line(
-          new THREE.BufferGeometry().setFromPoints([start, end]),
-          new THREE.LineBasicMaterial({ color: colorHex, linewidth: 2, depthTest: false })
-        );
-        line.renderOrder = 998;
-        addObj(line);
-
-        const rodGeo = new THREE.CylinderGeometry(1, 1, lLen, 8);
-        const rodMat = new THREE.MeshBasicMaterial({
-          color: colorHex,
-          depthTest: false,
-          depthWrite: false,
-          transparent: true,
-          opacity: 0.90,
-        });
-        const rod = new THREE.Mesh(rodGeo, rodMat);
+        const line = new THREE.Line(new THREE.BufferGeometry().setFromPoints([start, end]), new THREE.LineBasicMaterial({ color: colorHex, linewidth: 2, depthTest: false }));
+        line.renderOrder = 998; addObj(line);
+        const rodMat = new THREE.MeshBasicMaterial({ color: colorHex, depthTest: false, depthWrite: false, transparent: true, opacity: 0.90 });
+        const rod = new THREE.Mesh(new THREE.CylinderGeometry(1, 1, lLen, 8), rodMat);
         rod.position.copy(start).addScaledVector(lDir, 0.5);
         rod.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), lDir.clone().normalize());
         rod.userData.isZoomInvariantRod = true;
@@ -4723,114 +4712,62 @@
       }
     };
 
-    // Endpoint P1
     add3DPinMarker(p1, 0x0084ff, studioThree.overlayGroup, addObj);
-
     if (!p2) {
-      add2DBadge(
-        p1,
-        `<div class="autodesk-flex-badge autodesk-angle-badge">起點 P1 <span class="autodesk-sub-pill">請點擊角頂點 P2</span></div>`,
-        "#f59e0b",
-        { rawHtml: true, offsetY: -22, isTempDistance: isTemp }
-      );
+      add2DBadge(p1, `<div class="autodesk-flex-badge autodesk-angle-badge">起點 P1 <span class="autodesk-sub-pill">請點擊角頂點 P2</span></div>`, "#f59e0b", { rawHtml: true, offsetY: -22, isTempDistance: isTemp });
+      markStudioZoomInvariantDirty();
       updateZoomInvariantElements();
       return;
     }
 
-    // Vertex P2 (Amber highlight) + Leg 1 (P1 <-> P2)
     add3DPinMarker(p2, 0xf59e0b, studioThree.overlayGroup, addObj);
     const len1 = p1.distanceTo(p2);
     addLegRod(p2, p1, 0x0084ff);
-
-    const mid1 = new THREE.Vector3().addVectors(p1, p2).multiplyScalar(0.5);
     if (len1 > 0.05) {
-      add2DBadge(
-        mid1,
-        `<div class="autodesk-dist-badge">${formatGcDist(len1)}</div>`,
-        "#0084ff",
-        { rawHtml: true, isTempDistance: isTemp }
-      );
+      add2DBadge(new THREE.Vector3().addVectors(p1, p2).multiplyScalar(0.5), `<div class="autodesk-dist-badge">${formatGcDist(len1)}</div>`, "#0084ff", { rawHtml: true, isTempDistance: isTemp });
     }
 
-    // Compute true horizontal azimuths (0°-360° clockwise from North) at P1 and P3 from vertex P2
-    const twd1 = localToTwd97(p1);
-    const twd2 = localToTwd97(p2);
+    const twd1 = localToTwd97(p1), twd2 = localToTwd97(p2);
     const az1 = ((Math.atan2(twd1.e - twd2.e, twd1.n - twd2.n) * 180) / Math.PI + 360) % 360;
-
     if (!p3) {
       const horiz1 = Math.hypot(p2.x - p1.x, p2.z - p1.z);
       const slopePct = horiz1 > 0.05 ? (Math.abs(p2.y - p1.y) / horiz1) * 100 : 0;
-      const v2Locked = isTemp && (STATE.measurePoints || []).length >= 2;
-      const subPrompt = v2Locked
-        ? `頂點已鎖定 · 移動滑鼠預覽夾角`
-        : `坡度 ${slopePct.toFixed(1)}% · 點擊確認頂點 P2`;
-      add2DBadge(
-        p1,
-        `<div class="autodesk-azimuth-badge">Az ${az1.toFixed(1)}°</div>`,
-        "#f59e0b",
-        { rawHtml: true, offsetY: -20, isTempDistance: isTemp }
-      );
-      add2DBadge(
-        p2,
-        `<div class="autodesk-flex-badge autodesk-angle-badge">頂點 P2 <span class="autodesk-sub-pill">${subPrompt}</span></div>`,
-        "#f59e0b",
-        { rawHtml: true, offsetY: -24, isTempDistance: isTemp }
-      );
+      const subPrompt = (isTemp && (STATE.measurePoints || []).length >= 2) ? `頂點已鎖定 · 移動滑鼠預覽夾角` : `坡度 ${slopePct.toFixed(1)}% · 點擊確認頂點 P2`;
+      add2DBadge(p1, `<div class="autodesk-azimuth-badge">Az ${az1.toFixed(1)}°</div>`, "#f59e0b", { rawHtml: true, offsetY: -20, isTempDistance: isTemp });
+      add2DBadge(p2, `<div class="autodesk-flex-badge autodesk-angle-badge">頂點 P2 <span class="autodesk-sub-pill">${subPrompt}</span></div>`, "#f59e0b", { rawHtml: true, offsetY: -24, isTempDistance: isTemp });
+      markStudioZoomInvariantDirty();
       updateZoomInvariantElements();
       return;
     }
 
-    // Endpoint P3 + Leg 2 (P2 <-> P3)
     add3DPinMarker(p3, 0x0084ff, studioThree.overlayGroup, addObj);
     const len2 = p3.distanceTo(p2);
     addLegRod(p2, p3, 0x0084ff);
-
-    const mid2 = new THREE.Vector3().addVectors(p2, p3).multiplyScalar(0.5);
     if (len2 > 0.05) {
-      add2DBadge(
-        mid2,
-        `<div class="autodesk-dist-badge">${formatGcDist(len2)}</div>`,
-        "#0084ff",
-        { rawHtml: true, isTempDistance: isTemp }
-      );
+      add2DBadge(new THREE.Vector3().addVectors(p2, p3).multiplyScalar(0.5), `<div class="autodesk-dist-badge">${formatGcDist(len2)}</div>`, "#0084ff", { rawHtml: true, isTempDistance: isTemp });
     }
 
     const twd3 = localToTwd97(p3);
     const az3 = ((Math.atan2(twd3.e - twd2.e, twd3.n - twd2.n) * 180) / Math.PI + 360) % 360;
-
-    // Compute 3D interior angle at Vertex P2
-    const u1 = p1.clone().sub(p2);
-    const u2 = p3.clone().sub(p2);
-    const l1Safe = Math.max(1e-6, u1.length());
-    const l2Safe = Math.max(1e-6, u2.length());
-    u1.divideScalar(l1Safe);
-    u2.divideScalar(l2Safe);
-
+    const u1 = p1.clone().sub(p2), u2 = p3.clone().sub(p2);
+    const l1Safe = Math.max(1e-6, u1.length()), l2Safe = Math.max(1e-6, u2.length());
+    u1.divideScalar(l1Safe); u2.divideScalar(l2Safe);
     const cos3D = Math.max(-1, Math.min(1, u1.dot(u2)));
     const thetaRad = Math.acos(cos3D);
     const deg3D = THREE.MathUtils.radToDeg(thetaRad);
-    if (existingMeas) {
-      existingMeas.angleDeg = deg3D;
-    }
+    if (existingMeas) existingMeas.angleDeg = deg3D;
 
-    // Orthonormal basis (u1, wOrtho) in the P1-P2-P3 plane for 3D Sector Arc & Translucent Wedge
     const wOrtho = u2.clone().addScaledVector(u1, -cos3D);
     if (wOrtho.lengthSq() < 1e-8) {
-      // Collinear fallback (0° or 180°): choose horizontal perpendicular
       wOrtho.set(-u1.z, 0, u1.x);
       if (wOrtho.lengthSq() < 1e-8) wOrtho.set(1, 0, 0);
     }
     wOrtho.normalize();
 
     const arcR = Math.max(0.14, Math.min(6.5, Math.min(l1Safe, l2Safe) * 0.30));
-    const segs = 28;
-    const arcPts = [];
-    const fanPositions = [];
-
+    const segs = 28, arcPts = [], fanPositions = [];
     for (let k = 0; k <= segs; k++) {
-      const a = (k / segs) * thetaRad;
-      const ca = Math.cos(a);
-      const sa = Math.sin(a);
+      const a = (k / segs) * thetaRad, ca = Math.cos(a), sa = Math.sin(a);
       const ptArc = new THREE.Vector3(
         p2.x + arcR * (ca * u1.x + sa * wOrtho.x),
         p2.y + arcR * (ca * u1.y + sa * wOrtho.y),
@@ -4843,24 +4780,14 @@
       }
     }
 
-    const arcLine = new THREE.Line(
-      new THREE.BufferGeometry().setFromPoints(arcPts),
-      new THREE.LineBasicMaterial({ color: 0xf59e0b, linewidth: 2, depthTest: false })
-    );
+    const arcLine = new THREE.Line(new THREE.BufferGeometry().setFromPoints(arcPts), new THREE.LineBasicMaterial({ color: 0xf59e0b, linewidth: 2, depthTest: false }));
     arcLine.renderOrder = 999;
     addObj(arcLine);
 
     if (fanPositions.length >= 9) {
       const wedgeGeom = new THREE.BufferGeometry();
       wedgeGeom.setAttribute("position", new THREE.Float32BufferAttribute(fanPositions, 3));
-      const wedgeMat = new THREE.MeshBasicMaterial({
-        color: 0xf59e0b,
-        transparent: true,
-        opacity: 0.24,
-        side: THREE.DoubleSide,
-        depthTest: false,
-        depthWrite: false,
-      });
+      const wedgeMat = new THREE.MeshBasicMaterial({ color: 0xf59e0b, transparent: true, opacity: 0.24, side: THREE.DoubleSide, depthTest: false, depthWrite: false });
       const wedgeMesh = new THREE.Mesh(wedgeGeom, wedgeMat);
       wedgeMesh.renderOrder = 997;
       addObj(wedgeMesh);
@@ -4872,56 +4799,27 @@
       p2.y + arcR * 1.18 * (Math.cos(midAng) * u1.y + Math.sin(midAng) * wOrtho.y),
       p2.z + arcR * 1.18 * (Math.cos(midAng) * u1.z + Math.sin(midAng) * wOrtho.z)
     );
-
-    // Show interior angle once at center point P2, and show azimuths at P1 and P3
-    add2DBadge(
-      bisectorPt,
-      `<div class="autodesk-flex-badge autodesk-angle-badge"><span>${deg3D.toFixed(1)}°</span></div>`,
-      "#f59e0b",
-      { rawHtml: true, offsetY: -10, isTempDistance: isTemp }
-    );
-    add2DBadge(
-      p1,
-      `<div class="autodesk-azimuth-badge">Az ${az1.toFixed(1)}°</div>`,
-      "#f59e0b",
-      { rawHtml: true, offsetY: -20, isTempDistance: isTemp }
-    );
-    add2DBadge(
-      p3,
-      `<div class="autodesk-azimuth-badge">Az ${az3.toFixed(1)}°</div>`,
-      "#f59e0b",
-      { rawHtml: true, offsetY: -20, isTempDistance: isTemp }
-    );
-
+    add2DBadge(bisectorPt, `<div class="autodesk-flex-badge autodesk-angle-badge"><span>${deg3D.toFixed(1)}°</span></div>`, "#f59e0b", { rawHtml: true, offsetY: -10, isTempDistance: isTemp });
+    add2DBadge(p1, `<div class="autodesk-azimuth-badge">Az ${az1.toFixed(1)}°</div>`, "#f59e0b", { rawHtml: true, offsetY: -20, isTempDistance: isTemp });
+    add2DBadge(p3, `<div class="autodesk-azimuth-badge">Az ${az3.toFixed(1)}°</div>`, "#f59e0b", { rawHtml: true, offsetY: -20, isTempDistance: isTemp });
+    markStudioZoomInvariantDirty();
     updateZoomInvariantElements();
   }
-
 
   // Interactive Hover & Pinned Coordinate Visuals (Compact 4-Row Format: Name; E; N; H)
   function renderCoordinateVisuals(pt, existingMeas = null) {
     if (!studioThree || !pt) return;
     const isTemp = !existingMeas;
-    if (isTemp) {
-      clearTempDistanceVisuals();
-    }
+    if (isTemp) clearTempDistanceVisuals();
     const targetPt = existingMeas ? existingMeas.pt : pt;
     const twd = localToTwd97(targetPt);
-    if (existingMeas) {
-      existingMeas.twd = twd;
-    }
+    if (existingMeas) existingMeas.twd = twd;
     const isLocalCrs = !STATE.multiAlign?.active && inferActiveScanCrsCode(STATE.activeScan) === "LOCAL_ORIGIN";
-    const axX = isLocalCrs ? "X" : "E";
-    const axY = isLocalCrs ? "Y" : "N";
-    const axZ = isLocalCrs ? "Z" : "H";
+    const axX = isLocalCrs ? "X" : "E", axY = isLocalCrs ? "Y" : "N", axZ = isLocalCrs ? "Z" : "H";
     const zSign = twd.h >= 0 ? "+" : "";
-
-    const addObj = (mesh) => {
-      studioThree.overlayGroup.add(mesh);
-      if (isTemp) STATE.tempDistanceObjects.push(mesh);
-    };
+    const addObj = (mesh) => { studioThree.overlayGroup.add(mesh); if (isTemp) STATE.tempDistanceObjects.push(mesh); };
 
     add3DPinMarker(targetPt, isTemp ? 0x0ea5e9 : 0x10b981, studioThree.overlayGroup, addObj);
-
     const nextIdx = (STATE.completedMeasurements || []).filter((m) => m.type === "coordinates").length + 1;
     const ptName = existingMeas?.label || `P${nextIdx}`;
     add2DBadge(
@@ -4930,12 +4828,11 @@
         `<div class="coord-row coord-row-name">${escapeHtml(ptName)}</div>` +
         `<div class="coord-row">${axX} ${twd.e.toFixed(2)}</div>` +
         `<div class="coord-row">${axY} ${twd.n.toFixed(2)}</div>` +
-        `<div class="coord-row">${axZ} ${zSign}${twd.h.toFixed(2)} m</div>` +
-      `</div>`,
+        `<div class="coord-row">${axZ} ${zSign}${twd.h.toFixed(2)} m</div></div>`,
       isTemp ? "#38bdf8" : "#10b981",
       { rawHtml: true, offsetY: -26, isTempDistance: isTemp }
     );
-
+    markStudioZoomInvariantDirty();
     updateZoomInvariantElements();
   }
 
