@@ -860,7 +860,16 @@ def _acquire_vps_tunnel_socket(timeout: float = 6.0) -> Tuple[Optional[socket.so
         if rem <= 0:
             return None, None, 0
         try:
-            sock, done_evt, ts, proto_ver = VPS_TUNNEL_POOL.get(timeout=min(rem, 0.25))
+            pool_item = VPS_TUNNEL_POOL.get(timeout=min(rem, 0.25))
+            if len(pool_item) == 4:
+                sock, done_evt, ts, proto_ver = pool_item
+            elif len(pool_item) == 3:
+                sock, done_evt, proto_ver = pool_item
+                ts = time.time()
+            else:
+                continue
+            if sock is None or done_evt is None:
+                continue
         except queue.Empty:
             if time.time() >= deadline:
                 return None, None, 0
@@ -1873,8 +1882,15 @@ class CloudAndTunnelHandlerMixin:
             return True
 
         # 5. PC is offline: serve catalog, projects, and share links 24/7 from synced Google Drive Cloud Manifest
+        from pc_worker.server_api_routes import PRIMARY_SCAN_API_PATHS, export_public_primary_scans_summary
+
+        if path in PRIMARY_SCAN_API_PATHS or (path.startswith("/api/scans/") and path.endswith("/primary")):
+            return False
         manifest = _load_cloud_manifest()
         cloud_scans = manifest.get("scans") or []
+        prim_summary = export_public_primary_scans_summary()
+        if not prim_summary and isinstance(manifest.get("primary_scans"), dict):
+            prim_summary = {str(k): str(v) for k, v in manifest["primary_scans"].items() if k and v}
         if path in ("/api/status", "/api/pc/health"):
             from pc_worker.surveying.rust_accel import get_rust_status
 
@@ -1903,6 +1919,8 @@ class CloudAndTunnelHandlerMixin:
                     self.send_json({"error": reason, "revoked": True}, status=403)
                     return True
                 enriched = [self._enrich_scan_urls(s, share_token) for s in allowed_scans]
+                for _es in enriched:
+                    _es["is_primary"] = bool(prim_summary.get(str(_es.get("project_group") or "")) == _es.get("scan_id"))
                 self.send_json(
                     {
                         "status": "ok",
@@ -1912,12 +1930,15 @@ class CloudAndTunnelHandlerMixin:
                         "share_link": link,
                         "scans": enriched,
                         "projects": self._build_projects_summary(enriched),
+                        "primary_scans": prim_summary,
                         "materials": MATERIAL_CATALOG,
                         "google_client_id": GOOGLE_OAUTH_CLIENT_ID,
                     }
                 )
                 return True
             enriched = [self._enrich_scan_urls(s) for s in cloud_scans]
+            for _es in enriched:
+                _es["is_primary"] = bool(prim_summary.get(str(_es.get("project_group") or "")) == _es.get("scan_id"))
             actor_em_fb, _, _ = self._resolve_request_role(None, parsed_q, share_token)
             pref_em_fb = (
                 actor_em_fb
@@ -1938,6 +1959,7 @@ class CloudAndTunnelHandlerMixin:
                     "crs": TWD97_TWVD2001_LABEL,
                     "scans": enriched,
                     "projects": self._build_projects_summary(enriched),
+                    "primary_scans": prim_summary,
                     "library_folders": manifest.get("library_folders") or (DB.get_library_folders() if hasattr(DB, "get_library_folders") else []),
                     "materials": MATERIAL_CATALOG,
                     "google_client_id": GOOGLE_OAUTH_CLIENT_ID,
@@ -1947,13 +1969,18 @@ class CloudAndTunnelHandlerMixin:
             return True
         if path == "/api/projects":
             enriched = [self._enrich_scan_urls(s) for s in cloud_scans]
+            for _es in enriched:
+                _es["is_primary"] = bool(prim_summary.get(str(_es.get("project_group") or "")) == _es.get("scan_id"))
             projects = self._build_projects_summary(enriched)
+            for _pr in projects:
+                _pr["primary_scan_id"] = prim_summary.get(str(_pr.get("project_group") or ""), "")
             self.send_json(
                 {
                     "status": "ok",
                     "total_projects": len(projects),
                     "total_scans": len(enriched),
                     "projects": projects,
+                    "primary_scans": prim_summary,
                     "library_folders": manifest.get("library_folders") or (DB.get_library_folders() if hasattr(DB, "get_library_folders") else []),
                 }
             )

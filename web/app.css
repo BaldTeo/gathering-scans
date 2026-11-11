@@ -2612,6 +2612,8 @@ body.theme-light .gs-comment-pin-close-btn:hover { background: #ef4444; border-c
     top: 72px !important;
     bottom: auto !important;
     left: 50% !important;
+    right: auto !important;
+    margin: 0 !important;
     transform: translateX(-50%) !important;
     max-width: calc(100vw - 16px) !important;
     width: max-content !important;
@@ -2627,6 +2629,8 @@ body.theme-light .gs-comment-pin-close-btn:hover { background: #ef4444; border-c
     top: auto !important;
     right: auto !important;
     left: 50% !important;
+    right: auto !important;
+    margin: 0 !important;
     transform: translateX(-50%) !important;
     max-width: calc(100vw - 24px) !important;
     width: max-content !important;
@@ -4459,9 +4463,11 @@ body.theme-light .oauth-error-banner {
 #viewStudio nav#bimBottomDock.bim-bottom-dock::-webkit-scrollbar { display: none !important; }
 
 /* Default on Wide Desktop (>= 1361px when not space-constrained): show full dock, hide compact slots */
-#viewStudio nav#bimBottomDock.bim-bottom-dock:not(.gs-dock-force-compact) .gs-dock-compact-only,
-#viewStudio nav#bimBottomDock.bim-bottom-dock:not(.gs-dock-force-compact) .gs-dock-compact-trigger {
-  display: none !important;
+@media (min-width: 1361px) {
+  #viewStudio nav#bimBottomDock.bim-bottom-dock:not(.gs-dock-force-compact) .gs-dock-compact-only,
+  #viewStudio nav#bimBottomDock.bim-bottom-dock:not(.gs-dock-force-compact) .gs-dock-compact-trigger {
+    display: none !important;
+  }
 }
 
 /* Compact Active Dot & Staged Count Badge on Category Triggers */
@@ -4519,6 +4525,8 @@ body.theme-light .oauth-error-banner {
     gap: 3px !important;
     padding: 5px 8px !important;
     left: 50% !important;
+    right: auto !important;
+    margin: 0 !important;
     transform: translateX(-50%) !important;
   }
   #viewStudio nav#bimBottomDock.bim-bottom-dock > *:not(#btnDockOrbitNav):not(#btnDockCatMeasure):not(#btnMeasureClear):not(#btnDockVolume):not(#btnDockCatCivil):not(#btnDockCategorize):not(#btnDockCatLayers):not(#btnDockMoreTools) {

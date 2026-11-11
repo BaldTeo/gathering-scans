@@ -156,14 +156,21 @@ from pc_worker.server_api_routes import (
 
 class GatheringScansHandler(CloudAndTunnelHandlerMixin, ServerWriteRoutesMixin, SimpleHTTPRequestHandler):
     def _proxy_via_pc_tunnel_if_vps(self, method: str, path: str, body: bytes = b"") -> bool:
-        if os.name != "nt" and (
-            path in PRIMARY_SCAN_API_PATHS
-            or (path.startswith("/api/scans/") and path.endswith("/primary"))
-        ):
-            sock_item = _acquire_vps_tunnel_socket()
-            if sock_item is None:
+        is_primary_api = path in PRIMARY_SCAN_API_PATHS or (
+            path.startswith("/api/scans/") and path.endswith("/primary")
+        )
+        if os.name != "nt" and is_primary_api:
+            if method in ("POST", "DELETE"):
+                for k in list(_VPS_RAM_FALLBACK_CACHE.keys()):
+                    if k.startswith("/api/scans") or k.startswith("/api/projects"):
+                        _VPS_RAM_FALLBACK_CACHE.pop(k, None)
+            tun_sock, done_evt, proto_ver = _acquire_vps_tunnel_socket(timeout=1.2)
+            if not tun_sock or not done_evt:
                 return False
-            VPS_TUNNEL_POOL.put(sock_item)
+            now_put = time.time()
+            done_evt.last_ts = now_put
+            done_evt.in_use = False
+            VPS_TUNNEL_POOL.put((tun_sock, done_evt, now_put, proto_ver))
         return super()._proxy_via_pc_tunnel_if_vps(method, path, body)
 
     extensions_map = SimpleHTTPRequestHandler.extensions_map.copy()

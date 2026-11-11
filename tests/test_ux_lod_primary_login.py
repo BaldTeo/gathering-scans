@@ -94,8 +94,8 @@ class UxLodPrimaryLoginTests(unittest.TestCase):
         self.assertIn("MutationObserver", app_js)
 
         # 4. Asset cache-busting version synchronization between index.html and sw.js
-        self.assertIn("?v=20261111_v319", html)
-        self.assertIn("gathering-scans-offline-v319", sw_js)
+        self.assertIn("?v=20261111_v320", html)
+        self.assertIn("gathering-scans-offline-v320", sw_js)
 
     def test_62_primary_scan_star_api_persistence_and_default_selection(self):
         """Verify Primary Scan HTTP API, RBAC, disk persistence, site rename migration, and default site selection."""
@@ -374,10 +374,18 @@ class UxLodPrimaryLoginTests(unittest.TestCase):
             )
             time.sleep(0.8)
 
-            for vw, vh, is_mob in ((375, 812, True), (768, 1024, True)):
+            for vw, vh, is_mob in ((768, 1024, False), (375, 812, True)):
+                cdp("Emulation.clearDeviceMetricsOverride")
                 cdp(
                     "Emulation.setDeviceMetricsOverride",
-                    {"width": vw, "height": vh, "deviceScaleFactor": 2, "mobile": is_mob},
+                    {
+                        "width": vw,
+                        "height": vh,
+                        "screenWidth": vw,
+                        "screenHeight": vh,
+                        "deviceScaleFactor": 2,
+                        "mobile": is_mob,
+                    },
                 )
                 time.sleep(0.45)
                 metrics = cdp(
@@ -394,6 +402,11 @@ class UxLodPrimaryLoginTests(unittest.TestCase):
                           const pop = document.getElementById('studioCompactToolsPopover');
                           const popTiles = pop ? pop.querySelectorAll('.gs-compact-tool-tile').length : 0;
                           window.closeCompactStudioPopovers?.();
+                          const slotIds = ['btnDockOrbitNav', 'btnDockCatMeasure', 'btnDockCatCivil', 'btnDockCatLayers', 'btnDockMoreTools'];
+                          const visibleSlots = slotIds.filter(id => {
+                            const el = document.getElementById(id);
+                            return el && getComputedStyle(el).display !== 'none' && el.getBoundingClientRect().width >= 36;
+                          }).length;
                           return {
                             vw: window.innerWidth,
                             dockScrollW: dock.scrollWidth,
@@ -406,6 +419,7 @@ class UxLodPrimaryLoginTests(unittest.TestCase):
                             pillScrollW: topPill ? topPill.scrollWidth : 0,
                             pillClientW: topPill ? topPill.clientWidth : 0,
                             popTiles,
+                            visibleSlots,
                           };
                         })()""",
                         "returnByValue": True,
@@ -423,6 +437,7 @@ class UxLodPrimaryLoginTests(unittest.TestCase):
                 self.assertLessEqual(metrics["topScrollW"], metrics["topClientW"] + 1)
                 self.assertLessEqual(metrics["pillScrollW"], metrics["pillClientW"] + 1)
                 self.assertGreaterEqual(metrics["popTiles"], 8)
+                self.assertEqual(metrics["visibleSlots"], 5, f"All 5 compact dock slots must be visible at {vw}px: {metrics}")
 
             self.assertEqual(len(page_exceptions), 0, f"Unexpected JS runtime exceptions: {page_exceptions}")
         finally:
