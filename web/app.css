@@ -6,7 +6,6 @@
  *   neutral slate typography #0f172a / #475569 / #64748b, single #0284c7 accent)
  * - Icon-only (0 words) or maximum 1-word buttons
  * ============================================================================ */
-
 :root,
 html[data-theme="light"] {
   --ui-bg-canvas: #eef2f6;
@@ -33,7 +32,6 @@ html[data-theme="light"] {
   --mono: var(--font-mono);
   color-scheme: light;
 }
-
 html[data-theme="dark"] {
   --ui-bg-canvas: #0b1120;
   --ui-bg-surface: #0f172a;
@@ -59,9 +57,7 @@ html[data-theme="dark"] {
   --mono: var(--font-mono);
   color-scheme: dark;
 }
-
 * { box-sizing: border-box; margin: 0; padding: 0; }
-
 html, body {
   width: 100%;
   height: 100%;
@@ -72,9 +68,7 @@ html, body {
   -webkit-font-smoothing: antialiased;
   transition: background-color 0.2s ease, color 0.2s ease;
 }
-
 body { display: flex; flex-direction: column; }
-
 /* ============================================================================
  * 1. Top Navigation Bar (Unified Light / Dark Surface)
  * ============================================================================ */
@@ -92,9 +86,7 @@ body { display: flex; flex-direction: column; }
   position: relative;
   user-select: none;
 }
-
 .gs-brand { display: flex; align-items: center; gap: 12px; }
-
 .brand-cluster {
   display: flex;
   align-items: center;
@@ -102,7 +94,6 @@ body { display: flex; flex-direction: column; }
   min-width: 0;
   text-decoration: none;
 }
-
 .gs-brand-logo-img,
 .brand-logo-img {
   height: 28px;
@@ -113,22 +104,17 @@ body { display: flex; flex-direction: column; }
   flex-shrink: 0;
   transition: opacity 0.2s ease;
 }
-
 .gs-logo-light,
 .brand-logo-light { display: none; }
-
 html[data-theme="light"] .gs-logo-dark,
 html[data-theme="light"] .brand-logo-dark { display: none !important; }
-
 html[data-theme="light"] .gs-logo-light,
 html[data-theme="light"] .brand-logo-light { display: block !important; }
-
 .gc-icon {
   display: inline-block;
   vertical-align: middle;
   flex-shrink: 0;
 }
-
 /* Portfolio Switcher (Portfolio-Unified with GatherenFiles & GatherenCloud) */
 .portfolio-switcher {
   display: flex;
@@ -139,12 +125,7 @@ html[data-theme="light"] .brand-logo-light { display: block !important; }
   border-radius: 8px;
   border: 1px solid rgba(15, 23, 42, 0.07);
 }
-
-html[data-theme="dark"] .portfolio-switcher {
-  background: #152033;
-  border-color: rgba(148, 163, 184, 0.11);
-}
-
+html[data-theme="dark"] .portfolio-switcher { background: #152033; border-color: rgba(148, 163, 184, 0.11); }
 .portfolio-link {
   text-decoration: none;
   color: #475569;
@@ -158,39 +139,22 @@ html[data-theme="dark"] .portfolio-switcher {
   gap: 5px;
   white-space: nowrap;
 }
-
-html[data-theme="dark"] .portfolio-link {
-  color: #94a3b8;
-}
-
-.portfolio-link:hover {
-  color: #0f172a;
-  background: #eff6ff;
-}
-
-html[data-theme="dark"] .portfolio-link:hover {
-  color: #f1f5f9;
-  background: #1b2942;
-}
-
+html[data-theme="dark"] .portfolio-link { color: #94a3b8; }
+.portfolio-link:hover { color: #0f172a; background: #eff6ff; }
+html[data-theme="dark"] .portfolio-link:hover { color: #f1f5f9; background: #1b2942; }
 .portfolio-link.active {
   background: #e2e8f0;
   color: #0f172a;
   box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
 }
-
 html[data-theme="dark"] .portfolio-link.active {
   background: #223250;
   color: #f1f5f9;
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
 }
-
 @media (max-width: 767px) {
-  .portfolio-switcher {
-    display: none !important;
-  }
+  .portfolio-switcher { display: none !important; }
 }
-
 .gs-brand-logo {
   width: 30px;
   height: 30px;
@@ -205,7 +169,6 @@ html[data-theme="dark"] .portfolio-link.active {
   letter-spacing: 0.02em;
   flex-shrink: 0;
 }
-
 .gs-brand-title {
   font-size: 14.5px;
   font-weight: 700;
@@ -214,7 +177,6 @@ html[data-theme="dark"] .portfolio-link.active {
   align-items: center;
   gap: 8px;
 }
-
 .gs-crs-pill {
   font-size: 11px;
   font-weight: 600;
@@ -228,7 +190,6 @@ html[data-theme="dark"] .portfolio-link.active {
 }
 #topCrsBadge { white-space: nowrap !important; flex-shrink: 0 !important; }
 .btn, .btn-xs, .btn-sm, .btn-seg, .cloud-sync-chip, .gs-top-btn, #btnToggleLanguage, #btnLangSwitcher, #btnGoogleUser, .gs-topbar button { white-space: nowrap !important; flex-shrink: 0 !important; }
-
 /* Segmented Pill Mode Switcher */
 .segmented-pill {
   display: inline-flex;
@@ -239,7 +200,6 @@ html[data-theme="dark"] .portfolio-link.active {
   padding: 3px;
   gap: 2px;
 }
-
 .segmented-pill .btn-seg {
   border: 1px solid transparent;
   background: transparent;
@@ -254,16 +214,11 @@ html[data-theme="dark"] .portfolio-link.active {
   align-items: center;
   gap: 6px;
 }
-
 .segmented-pill .btn-seg:hover { color: var(--ui-text-primary); }
-
 .segmented-pill .btn-seg.active { background: var(--ui-bg-surface); color: var(--ui-accent); border-color: var(--ui-border-strong); box-shadow: var(--ui-shadow-active); }
-
 .segmented-pill .btn-seg svg { stroke: currentColor; }
-
 /* Right Action Cluster */
 .gs-topbar-actions { display: flex; align-items: center; gap: 6px; }
-
 .cloud-sync-chip {
   display: inline-flex;
   align-items: center;
@@ -278,9 +233,7 @@ html[data-theme="dark"] .portfolio-link.active {
   cursor: pointer;
   transition: all 0.14s ease;
 }
-
 .cloud-sync-chip:hover { background: var(--ui-bg-surface); color: var(--ui-accent); border-color: var(--ui-accent); }
-
 .cloud-sync-chip .status-dot {
   width: 7px;
   height: 7px;
@@ -289,9 +242,7 @@ html[data-theme="dark"] .portfolio-link.active {
   display: inline-block;
   flex-shrink: 0;
 }
-
 .cloud-sync-chip.state-offline .status-dot { background: var(--ui-text-muted); }
-
 .gs-top-btn {
   display: inline-flex;
   align-items: center;
@@ -310,13 +261,9 @@ html[data-theme="dark"] .portfolio-link.active {
   transition: all 0.14s ease;
   text-decoration: none;
 }
-
 .gs-top-btn:hover { background: var(--ui-bg-surface); color: var(--ui-accent); border-color: var(--ui-accent); box-shadow: var(--ui-shadow-active); }
-
 .gs-top-btn.accent { background: var(--ui-bg-surface); border-color: var(--ui-border-strong); color: var(--ui-accent); box-shadow: var(--ui-shadow-active); }
-
 .gs-top-btn.accent:hover { background: var(--ui-accent); color: #ffffff; border-color: var(--ui-accent); }
-
 .gs-lang-toggle-btn {
   font-weight: 800;
   letter-spacing: 0.4px;
@@ -324,9 +271,7 @@ html[data-theme="dark"] .portfolio-link.active {
   border-color: var(--ui-border-strong);
   min-width: 36px;
 }
-
 .gs-lang-toggle-btn:hover { background: var(--ui-accent); color: #ffffff; border-color: var(--ui-accent); }
-
 /* External Share Guest Scope Banner */
 .gs-share-banner {
   background: var(--ui-bg-subtle);
@@ -339,7 +284,6 @@ html[data-theme="dark"] .portfolio-link.active {
   color: var(--ui-text-primary);
   z-index: 190;
 }
-
 /* ============================================================================
  * 2. Main Workspace Views (Map, 3D Studio, Multi-Date Compare)
  * ============================================================================ */
@@ -351,11 +295,8 @@ html[data-theme="dark"] .portfolio-link.active {
   height: calc(100vh - 52px);
   overflow: hidden;
 }
-
 .gs-view { position: absolute; inset: 0; display: none; }
-
 .gs-view.active { display: block; }
-
 #viewMap.active {
   display: flex;
   flex-direction: row;
@@ -363,7 +304,6 @@ html[data-theme="dark"] .portfolio-link.active {
   height: 100%;
   overflow: hidden;
 }
-
 /* ============================================================================
  * 3. Unified 3-Pane Workbench: Left 42% Map + Right 58% (Top 30% Timeline + Bottom 70% 3D Preview)
  * ============================================================================ */
@@ -378,7 +318,6 @@ html[data-theme="dark"] .portfolio-link.active {
   user-select: none;
   -webkit-user-select: none;
 }
-
 #mapContainer {
   width: 100%;
   height: 100%;
@@ -387,9 +326,7 @@ html[data-theme="dark"] .portfolio-link.active {
   user-select: none;
   -webkit-user-select: none;
 }
-
 #mapContainer canvas { touch-action: none; user-select: none; -webkit-user-select: none; }
-
 .gs-map-zoom-controls {
   position: absolute;
   bottom: 14px;
@@ -399,7 +336,6 @@ html[data-theme="dark"] .portfolio-link.active {
   flex-direction: column;
   gap: 6px;
 }
-
 .gs-map-zoom-btn {
   width: 36px;
   height: 36px;
@@ -418,9 +354,7 @@ html[data-theme="dark"] .portfolio-link.active {
   box-shadow: var(--ui-shadow-window);
   touch-action: manipulation;
 }
-
 .gs-map-zoom-btn:active { background: var(--ui-accent); color: #ffffff; border-color: var(--ui-accent); }
-
 .gs-map-hud-top {
   position: absolute;
   top: 14px;
@@ -433,7 +367,6 @@ html[data-theme="dark"] .portfolio-link.active {
   max-width: calc(100% - 28px);
   pointer-events: none;
 }
-
 .gs-map-card {
   background: var(--ui-bg-window);
   backdrop-filter: blur(12px);
@@ -444,7 +377,6 @@ html[data-theme="dark"] .portfolio-link.active {
   color: var(--ui-text-primary);
   pointer-events: auto;
 }
-
 /* Spatial Cluster Blobs on Map */
 .scan-cluster-blob {
   position: relative;
@@ -464,12 +396,9 @@ html[data-theme="dark"] .portfolio-link.active {
   -webkit-user-select: none;
   transition: transform 0.16s ease, box-shadow 0.16s ease;
 }
-
 .scan-cluster-blob:hover,
 .scan-cluster-blob.active-cluster { transform: scale(1.12); box-shadow: 0 0 0 8px rgba(56, 189, 248, 0.42), 0 6px 20px rgba(15, 23, 42, 0.5); }
-
 .scan-cluster-blob.active-cluster .blob-label { border-color: var(--ui-accent); box-shadow: 0 0 0 1.5px rgba(2, 132, 199, 0.35), var(--ui-shadow-active); }
-
 .scan-cluster-blob .blob-label {
   position: absolute;
   top: calc(100% + 6px);
@@ -483,12 +412,10 @@ html[data-theme="dark"] .portfolio-link.active {
   border-radius: 6px;
   box-shadow: var(--ui-shadow-active);
 }
-
 /* Legacy vertical list popover hidden in Unified 3-Pane Workbench */
 .gs-cluster-popover,
 .gs-cluster-popover.gs-map-right-panel,
 .gs-cluster-popover.active { display: none !important; }
-
 .gs-map-right-header {
   display: flex;
   justify-content: space-between;
@@ -499,7 +426,6 @@ html[data-theme="dark"] .portfolio-link.active {
   gap: 8px;
   flex-shrink: 0;
 }
-
 .gs-map-right-tiles-scroll {
   flex: 1;
   min-height: 0;
@@ -510,7 +436,6 @@ html[data-theme="dark"] .portfolio-link.active {
   flex-direction: column;
   gap: 10px;
 }
-
 .gs-scan-item-card {
   background: var(--ui-bg-subtle);
   border: 1.5px solid var(--ui-border);
@@ -523,11 +448,8 @@ html[data-theme="dark"] .portfolio-link.active {
   flex-shrink: 0;
   transition: all 0.15s ease;
 }
-
 .gs-scan-item-card:hover { border-color: var(--ui-accent); background: var(--ui-bg-surface); box-shadow: var(--ui-shadow-active); transform: translateY(-1px); }
-
 .gs-scan-item-card.active { border-color: var(--ui-accent); background: var(--ui-bg-surface); box-shadow: 0 0 0 2px rgba(2, 132, 199, 0.22), var(--ui-shadow-active); }
-
 .gs-map-right-preview-pane {
   flex: 0 0 228px;
   height: 228px;
@@ -536,7 +458,6 @@ html[data-theme="dark"] .portfolio-link.active {
   border-top: 1px solid var(--ui-border-strong);
   background: var(--ui-bg-subtle);
 }
-
 .gs-map-right-preview-topbar {
   display: flex;
   align-items: center;
@@ -547,7 +468,6 @@ html[data-theme="dark"] .portfolio-link.active {
   background: var(--ui-bg-surface);
   flex-shrink: 0;
 }
-
 .gs-map-right-preview-title {
   font-size: 11.5px;
   font-weight: 700;
@@ -556,7 +476,6 @@ html[data-theme="dark"] .portfolio-link.active {
   overflow: hidden;
   text-overflow: ellipsis;
 }
-
 .gs-lowres-preview-pill {
   display: inline-flex;
   align-items: center;
@@ -571,9 +490,7 @@ html[data-theme="dark"] .portfolio-link.active {
   color: #b45309;
   flex-shrink: 0;
 }
-
 html[data-theme="dark"] .gs-lowres-preview-pill { color: #fbbf24; border-color: rgba(251, 191, 36, 0.45); }
-
 .gs-map-right-preview-canvas-wrap {
   position: relative;
   flex: 1;
@@ -582,11 +499,8 @@ html[data-theme="dark"] .gs-lowres-preview-pill { color: #fbbf24; border-color: 
   background: #0b1120;
   overflow: hidden;
 }
-
 .gs-map-right-preview-canvas { width: 100%; height: 100%; }
-
 .gs-right-preview-enlarge-btn { right: 10px !important; bottom: 10px !important; width: 38px !important; height: 38px !important; }
-
 .gs-map-tile-thumb-wrap {
   position: relative;
   width: 100%;
@@ -595,7 +509,6 @@ html[data-theme="dark"] .gs-lowres-preview-pill { color: #fbbf24; border-color: 
   overflow: hidden;
   flex-shrink: 0;
 }
-
 .gs-map-tile-thumb {
   width: 100%;
   height: 100%;
@@ -603,13 +516,9 @@ html[data-theme="dark"] .gs-lowres-preview-pill { color: #fbbf24; border-color: 
   display: block;
   transition: transform 0.22s ease;
 }
-
 .gs-scan-item-card:hover .gs-map-tile-thumb { transform: scale(1.03); }
-
 .gs-map-tile-body { padding: 10px 12px; display: flex; flex-direction: column; }
-
 .gs-scan-item-actions { display: flex; align-items: center; gap: 5px; margin-top: 8px; }
-
 /* Compact Icon-Only or 1-Word Button */
 .btn-xs {
   height: 28px;
@@ -631,20 +540,14 @@ html[data-theme="dark"] .gs-lowres-preview-pill { color: #fbbf24; border-color: 
   flex-shrink: 0;
   transition: all 0.14s ease;
 }
-
 .btn-xs:hover { background: var(--ui-bg-surface); border-color: var(--ui-accent); color: var(--ui-accent); box-shadow: var(--ui-shadow-active); }
-
 .btn-xs.primary { background: var(--ui-bg-surface); border-color: var(--ui-border-strong); color: var(--ui-accent); box-shadow: var(--ui-shadow-active); }
-
 .btn-xs.primary:hover { background: var(--ui-accent); border-color: var(--ui-accent); color: #ffffff; }
-
 .btn-xs svg { stroke: currentColor; flex-shrink: 0; }
-
 /* ============================================================================
  * 4. 3D Scan Studio & Clean Icon-Only Toolbars
  * ============================================================================ */
 #studioCanvasContainer { position: absolute; inset: 0; background: var(--ui-3d-bg); }
-
 .gs-studio-top-bar {
   position: absolute;
   top: 14px;
@@ -657,9 +560,7 @@ html[data-theme="dark"] .gs-lowres-preview-pill { color: #fbbf24; border-color: 
   pointer-events: none;
   z-index: 80;
 }
-
 .gs-studio-top-bar > * { pointer-events: auto; }
-
 .gs-active-scan-pill {
   background: var(--ui-bg-window);
   backdrop-filter: blur(12px);
@@ -672,7 +573,6 @@ html[data-theme="dark"] .gs-lowres-preview-pill { color: #fbbf24; border-color: 
   box-shadow: var(--ui-shadow-window);
   color: var(--ui-text-primary);
 }
-
 .gs-studio-main-pill {
   flex: 0 1 auto;
   min-width: 0;
@@ -686,7 +586,6 @@ html[data-theme="dark"] .gs-lowres-preview-pill { color: #fbbf24; border-color: 
 .gs-studio-main-pill #studioScanSelect { max-width: 155px; font-size: 11.5px; padding: 3px 22px 3px 7px !important; }
 .gs-studio-main-pill #studioScanMetrics { max-width: 112px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding-left: 6px !important; font-size: 10.5px !important; flex-shrink: 1; }
 .gs-studio-coord-pill { flex-shrink: 0; white-space: nowrap; }
-
 .gs-scan-select {
   background: var(--ui-bg-pill);
   color: var(--ui-text-primary);
@@ -697,7 +596,6 @@ html[data-theme="dark"] .gs-lowres-preview-pill { color: #fbbf24; border-color: 
   font-weight: 600;
   outline: none;
 }
-
 /* Scan Brightness Control (0.1x – 4.0x, matching Gathering Cloud) */
 .gs-brightness-control {
   display: inline-flex;
@@ -708,7 +606,6 @@ html[data-theme="dark"] .gs-lowres-preview-pill { color: #fbbf24; border-color: 
   flex-shrink: 0;
   white-space: nowrap;
 }
-
 .gs-brightness-icon-btn {
   display: inline-flex;
   align-items: center;
@@ -721,11 +618,8 @@ html[data-theme="dark"] .gs-lowres-preview-pill { color: #fbbf24; border-color: 
   border-radius: 4px;
   transition: color 0.14s ease, background 0.14s ease;
 }
-
 .gs-brightness-icon-btn:hover { background: var(--ui-bg-pill); color: var(--ui-accent-hover); }
-
 .gs-brightness-slider { width: 52px; height: 4px; accent-color: var(--ui-accent); cursor: pointer; }
-
 .gs-brightness-val {
   font-size: 10.5px;
   font-weight: 700;
@@ -734,7 +628,6 @@ html[data-theme="dark"] .gs-lowres-preview-pill { color: #fbbf24; border-color: 
   min-width: 28px;
   text-align: right;
 }
-
 /* Bottom Measurement Toolbar & Bottom Dock — Segmented Pill Clean Style */
 .bim-measure-bottom-container {
   position: absolute;
@@ -747,7 +640,6 @@ html[data-theme="dark"] .gs-lowres-preview-pill { color: #fbbf24; border-color: 
   z-index: 100;
   max-width: calc(100vw - 24px);
 }
-
 .autodesk-measure-toolbar {
   position: relative;
   display: flex;
@@ -761,9 +653,7 @@ html[data-theme="dark"] .gs-lowres-preview-pill { color: #fbbf24; border-color: 
   z-index: 100;
   user-select: none;
 }
-
 .autodesk-measure-subtools { display: flex; align-items: center; gap: 2px; }
-
 .autodesk-measure-btn {
   display: flex;
   align-items: center;
@@ -778,23 +668,17 @@ html[data-theme="dark"] .gs-lowres-preview-pill { color: #fbbf24; border-color: 
   color: var(--ui-text-secondary) !important;
   transition: all 0.14s ease;
 }
-
 .autodesk-measure-btn > *,
 .bim-dock-btn > * { pointer-events: none; }
-
 .autodesk-measure-btn:hover { color: var(--ui-text-primary) !important; background: var(--ui-bg-hover) !important; }
-
 .autodesk-measure-btn.active {
   border: 1px solid var(--ui-border-strong) !important;
   background: var(--ui-bg-surface) !important;
   box-shadow: var(--ui-shadow-active) !important;
   color: var(--ui-accent) !important;
 }
-
 .autodesk-measure-btn.active svg { stroke: var(--ui-accent) !important; color: var(--ui-accent) !important; }
-
 .autodesk-measure-btn svg { stroke: currentColor; color: currentColor; }
-
 .autodesk-measure-icon {
   display: flex;
   align-items: center;
@@ -802,11 +686,8 @@ html[data-theme="dark"] .gs-lowres-preview-pill { color: #fbbf24; border-color: 
   width: 20px;
   height: 20px;
 }
-
 .autodesk-measure-label { display: none; }
-
 .autodesk-measure-divider { width: 1px; height: 22px; background: var(--ui-border-strong) !important; margin: 0 3px; }
-
 .autodesk-measure-clear-btn {
   display: flex;
   align-items: center;
@@ -820,9 +701,7 @@ html[data-theme="dark"] .gs-lowres-preview-pill { color: #fbbf24; border-color: 
   cursor: pointer;
   transition: all 0.14s ease;
 }
-
 .autodesk-measure-clear-btn:hover { background: var(--ui-bg-surface); border-color: var(--ui-border-strong); color: var(--ui-text-primary); box-shadow: var(--ui-shadow-active); }
-
 /* Unified Bottom Dock — Clean Segmented Pill Style */
 .bim-bottom-dock {
   position: absolute;
@@ -842,7 +721,6 @@ html[data-theme="dark"] .gs-lowres-preview-pill { color: #fbbf24; border-color: 
   max-width: calc(100vw - 20px);
   overflow-x: auto;
 }
-
 .bim-dock-btn {
   display: flex;
   flex-direction: column;
@@ -861,13 +739,9 @@ html[data-theme="dark"] .gs-lowres-preview-pill { color: #fbbf24; border-color: 
   transition: all 0.14s ease;
   flex-shrink: 0;
 }
-
 .bim-dock-btn:hover { color: var(--ui-text-primary); background: var(--ui-bg-hover); }
-
 .bim-dock-btn.active { background: var(--ui-bg-surface); border-color: var(--ui-border-strong); color: var(--ui-accent); box-shadow: var(--ui-shadow-active); }
-
 .bim-dock-icon { height: 18px; display: flex; align-items: center; justify-content: center; }
-
 .bim-dock-label {
   display: block;
   font-size: 10px;
@@ -875,7 +749,6 @@ html[data-theme="dark"] .gs-lowres-preview-pill { color: #fbbf24; border-color: 
   line-height: 1.1;
   white-space: nowrap;
 }
-
 .bim-dock-divider {
   width: 1px;
   height: 24px;
@@ -883,7 +756,6 @@ html[data-theme="dark"] .gs-lowres-preview-pill { color: #fbbf24; border-color: 
   margin: 0 3px;
   flex-shrink: 0;
 }
-
 /* 2D Measurement Pin & Distance Labels on 3D Canvas */
 .measure-badge-2d {
   position: absolute;
@@ -901,7 +773,6 @@ html[data-theme="dark"] .gs-lowres-preview-pill { color: #fbbf24; border-color: 
   box-shadow: var(--ui-shadow-window);
   z-index: 60;
 }
-
 /* Gathering Cloud / Autodesk Distance & Orthogonal Delta (X, Y, Z) Badges */
 .autodesk-dist-badge {
   position: absolute;
@@ -921,7 +792,6 @@ html[data-theme="dark"] .gs-lowres-preview-pill { color: #fbbf24; border-color: 
   transform: translate(-50%, -50%);
   transition: transform 0.15s ease, filter 0.15s ease;
 }
-
 .autodesk-delta-badge {
   position: absolute;
   pointer-events: none !important;
@@ -940,14 +810,11 @@ html[data-theme="dark"] .gs-lowres-preview-pill { color: #fbbf24; border-color: 
   transform: translate(-50%, -50%);
   transition: transform 0.15s ease, filter 0.15s ease;
 }
-
 .autodesk-delta-axis { padding: 2px 6px; color: #ffffff; font-weight: 700; }
 .autodesk-delta-axis.axis-x { background: #ef4444; }
 .autodesk-delta-axis.axis-y { background: #10b981; }
 .autodesk-delta-axis.axis-z { background: #3b82f6; }
-
 .autodesk-delta-val { background: var(--ui-bg-surface); color: var(--ui-accent); padding: 2px 8px; }
-
 /* ============================================================================
  * 5. Right-Side Surveying & Engineering Inspector Panel
  * ============================================================================ */
@@ -969,9 +836,7 @@ html[data-theme="dark"] .gs-lowres-preview-pill { color: #fbbf24; border-color: 
   display: none;
   color: var(--ui-text-primary);
 }
-
 .gs-side-panel.active { display: block; }
-
 .gs-panel-header {
   display: flex;
   align-items: center;
@@ -980,7 +845,6 @@ html[data-theme="dark"] .gs-lowres-preview-pill { color: #fbbf24; border-color: 
   padding-bottom: 9px;
   margin-bottom: 12px;
 }
-
 .gs-panel-title {
   font-size: 13.5px;
   font-weight: 700;
@@ -989,9 +853,7 @@ html[data-theme="dark"] .gs-lowres-preview-pill { color: #fbbf24; border-color: 
   align-items: center;
   gap: 7px;
 }
-
 .gs-form-group { margin-bottom: 10px; }
-
 .gs-form-group label {
   display: block;
   font-size: 11px;
@@ -999,7 +861,6 @@ html[data-theme="dark"] .gs-lowres-preview-pill { color: #fbbf24; border-color: 
   color: var(--ui-text-secondary);
   margin-bottom: 4px;
 }
-
 .gs-input, .gs-select {
   width: 100%;
   background: var(--ui-bg-subtle);
@@ -1010,18 +871,13 @@ html[data-theme="dark"] .gs-lowres-preview-pill { color: #fbbf24; border-color: 
   font-size: 12px;
   font-weight: 500;
 }
-
 .gs-select,
 select.gs-input,
 .gs-scan-select,
 .select-sm { padding-right: 28px !important; text-overflow: ellipsis !important; overflow: hidden !important; white-space: nowrap !important; }
-
 .gs-metric-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; margin: 10px 0; }
-
 .gs-metric-box { background: var(--ui-bg-subtle); border: 1px solid var(--ui-border); border-radius: 8px; padding: 8px 10px; }
-
 .gs-metric-box .lbl { font-size: 10.5px; color: var(--ui-text-muted); font-weight: 600; }
-
 .gs-metric-box .val {
   font-size: 14.5px;
   font-weight: 700;
@@ -1029,23 +885,16 @@ select.gs-input,
   margin-top: 2px;
   font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
 }
-
 /* ============================================================================
  * 6. Multi-Date Split Curtain Slider View
  * ============================================================================ */
 .gs-compare-stage { position: absolute; inset: 0; overflow: hidden; background: var(--ui-3d-bg); }
-
 .gs-compare-layer { position: absolute; inset: 0; }
-
 #compareRightLayer { clip-path: inset(0 0 0 50%); }
-
 /* 2-, 3-, and 4-Viewport Multi-Viewport Synced Camera Mode */
 .gs-compare-stage.mode-split { display: grid; grid-template-columns: 1fr 1fr; }
-
 .gs-compare-stage.mode-split[data-compare-count="3"] { grid-template-columns: 1fr 1fr 1fr; }
-
 .gs-compare-stage.mode-split[data-compare-count="4"] { grid-template-columns: 1fr 1fr; grid-template-rows: 1fr 1fr; }
-
 .gs-compare-stage.mode-split .gs-compare-layer {
   position: relative;
   inset: auto;
@@ -1057,13 +906,10 @@ select.gs-input,
   border-right: 1.5px solid var(--ui-accent);
   border-bottom: 1.5px solid var(--ui-accent);
 }
-
 .gs-compare-stage.mode-split #compareRightLayer,
 .gs-compare-stage.mode-split #compareThirdLayer,
 .gs-compare-stage.mode-split #compareFourthLayer { clip-path: none !important; }
-
 .gs-compare-stage.mode-split .gs-curtain-divider { display: none !important; }
-
 .gs-curtain-divider {
   position: absolute;
   top: 0;
@@ -1079,7 +925,6 @@ select.gs-input,
   user-select: none;
   -webkit-user-select: none;
 }
-
 .gs-curtain-divider::before {
   content: "";
   position: absolute;
@@ -1090,7 +935,6 @@ select.gs-input,
   cursor: ew-resize;
   touch-action: none;
 }
-
 .gs-curtain-handle {
   position: absolute;
   top: 50%;
@@ -1111,7 +955,6 @@ select.gs-input,
   user-select: none;
   -webkit-user-select: none;
 }
-
 .gs-compare-hud {
   position: absolute;
   top: 14px;
@@ -1123,9 +966,7 @@ select.gs-input,
   z-index: 130;
   pointer-events: none;
 }
-
 .gs-compare-hud > * { pointer-events: auto; }
-
 .gs-epoch-badge {
   background: var(--ui-bg-window);
   border: 1px solid var(--ui-border-strong);
@@ -1137,7 +978,6 @@ select.gs-input,
   box-shadow: var(--ui-shadow-window);
   color: var(--ui-text-primary);
 }
-
 .gs-compare-legend {
   position: absolute;
   bottom: 20px;
@@ -1156,7 +996,6 @@ select.gs-input,
   font-size: 11.5px;
   font-weight: 600;
 }
-
 /* ============================================================================
  * 7. Modals (Queue Monitor, Sharing Controls, Offline Cache Settings)
  * ============================================================================ */
@@ -1171,9 +1010,7 @@ select.gs-input,
   justify-content: center;
   padding: 20px;
 }
-
 .gs-modal-backdrop.active { display: flex; }
-
 .gs-modal,
 .gs-modal-window {
   background: var(--ui-bg-surface, #0f172a);
@@ -1187,9 +1024,7 @@ select.gs-input,
   padding: 18px 20px;
   color: var(--ui-text-primary, #f8fafc);
 }
-
 .gs-modal-window { padding: 0; overflow: hidden; display: flex; flex-direction: column; }
-
 .gs-modal-header {
   display: flex;
   align-items: center;
@@ -1199,13 +1034,9 @@ select.gs-input,
   background: var(--ui-bg-subtle, #1e293b);
   border-bottom: 1px solid var(--ui-border, #334155);
 }
-
 .gs-modal-title { font-size: 14px; font-weight: 700; color: var(--ui-text-primary); }
-
 .gs-modal-subtitle { font-size: 11px; color: var(--ui-text-muted); margin-top: 2px; }
-
 .gs-modal-body { overflow-y: auto; max-height: calc(88vh - 64px); color: var(--ui-text-primary); }
-
 .select-sm {
   background: var(--ui-bg-subtle);
   border: 1px solid var(--ui-border-strong);
@@ -1216,11 +1047,8 @@ select.gs-input,
   font-weight: 600;
   cursor: pointer;
 }
-
 .gs-table { width: 100%; border-collapse: collapse; font-size: 12px; }
-
 .gs-table th, .gs-table td { border-bottom: 1px solid var(--ui-border); padding: 8px 10px; text-align: left; color: var(--ui-text-primary); }
-
 .gs-table th {
   color: var(--ui-text-secondary);
   font-weight: 600;
@@ -1229,9 +1057,7 @@ select.gs-input,
   text-transform: uppercase;
   letter-spacing: 0.02em;
 }
-
 .gs-sharing-modal { max-width: 1060px; }
-
 .gs-share-latest-bar {
   display: flex;
   align-items: center;
@@ -1244,7 +1070,6 @@ select.gs-input,
   padding: 9px 12px;
   margin-bottom: 12px;
 }
-
 .gs-share-latest-meta {
   display: flex;
   align-items: center;
@@ -1254,11 +1079,8 @@ select.gs-input,
   color: var(--ui-text-primary);
   white-space: nowrap;
 }
-
 .gs-share-url-group { display: flex; align-items: center; gap: 6px; min-width: 0; }
-
 .gs-share-url-group-lg { flex: 1 1 420px; }
-
 .gs-share-url-input {
   flex: 1 1 auto;
   min-width: 280px;
@@ -1273,14 +1095,10 @@ select.gs-input,
   outline: none;
   cursor: text;
 }
-
 .gs-share-url-input:focus { border-color: var(--ui-accent); }
-
 .gs-share-copy-btn,
 .gs-share-open-btn { flex-shrink: 0; text-decoration: none; white-space: nowrap; }
-
 .gs-share-copy-btn.is-copied { background: #059669 !important; border-color: #059669 !important; color: #ffffff !important; }
-
 .gs-share-scope-pill {
   display: inline-flex;
   align-items: center;
@@ -1295,7 +1113,6 @@ select.gs-input,
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-
 .gs-quick-share-popover {
   position: fixed;
   z-index: 9999;
@@ -1309,9 +1126,7 @@ select.gs-input,
   color: var(--ui-text-primary);
   font-family: var(--sans, system-ui, sans-serif);
 }
-
 .gs-quick-share-popover .gs-share-url-input { min-width: 0; font-size: 11px; }
-
 .gs-quick-share-chip {
   display: inline-flex;
   align-items: center;
@@ -1324,7 +1139,6 @@ select.gs-input,
   border: 1px solid var(--ui-border);
   color: var(--ui-text-secondary);
 }
-
 .gs-share-viewer-tag {
   display: inline-flex;
   align-items: center;
@@ -1335,7 +1149,6 @@ select.gs-input,
   padding: 2px 7px;
   flex-shrink: 0;
 }
-
 .gs-share-viewer-input {
   background: transparent;
   border: none;
@@ -1345,9 +1158,7 @@ select.gs-input,
   font-weight: 600;
   width: 138px;
 }
-
 .gs-share-viewer-input::placeholder { color: inherit; opacity: 0.72; }
-
 .gs-share-analytics-drawer {
   margin-top: 12px;
   border: 1px solid var(--ui-border-strong);
@@ -1358,7 +1169,6 @@ select.gs-input,
   flex-direction: column;
   gap: 10px;
 }
-
 .gs-share-analytics-head {
   display: flex;
   justify-content: space-between;
@@ -1368,7 +1178,6 @@ select.gs-input,
   padding-bottom: 8px;
   border-bottom: 1px solid var(--ui-border);
 }
-
 .gs-share-analytics-title {
   font-size: 13px;
   font-weight: 700;
@@ -1377,11 +1186,8 @@ select.gs-input,
   align-items: center;
   gap: 6px;
 }
-
 .gs-share-analytics-sub { font-size: 11px; color: var(--ui-text-muted); margin-top: 2px; }
-
 .gs-analytics-kpi-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 8px; }
-
 .gs-analytics-kpi-card {
   background: var(--ui-bg-surface);
   border: 1px solid var(--ui-border);
@@ -1391,7 +1197,6 @@ select.gs-input,
   flex-direction: column;
   gap: 2px;
 }
-
 .gs-analytics-kpi-label {
   font-size: 10px;
   font-weight: 700;
@@ -1399,11 +1204,8 @@ select.gs-input,
   letter-spacing: 0.03em;
   color: var(--ui-text-muted);
 }
-
 .gs-analytics-kpi-val { font-size: 15px; font-weight: 700; color: var(--ui-text-primary); }
-
 .gs-analytics-kpi-sub { font-size: 10.5px; color: var(--ui-text-secondary); }
-
 .gs-analytics-sessions-list {
   display: flex;
   flex-direction: column;
@@ -1412,7 +1214,6 @@ select.gs-input,
   overflow-y: auto;
   padding-right: 2px;
 }
-
 .gs-analytics-session-card {
   background: var(--ui-bg-surface);
   border: 1px solid var(--ui-border);
@@ -1422,9 +1223,7 @@ select.gs-input,
   flex-direction: column;
   gap: 6px;
 }
-
 .gs-analytics-session-card.is-bot-row { opacity: 0.78; border-style: dashed; }
-
 .gs-analytics-session-top {
   display: flex;
   justify-content: space-between;
@@ -1432,7 +1231,6 @@ select.gs-input,
   gap: 8px;
   flex-wrap: wrap;
 }
-
 .gs-analytics-meta-line {
   display: flex;
   flex-wrap: wrap;
@@ -1440,9 +1238,7 @@ select.gs-input,
   font-size: 11px;
   color: var(--ui-text-secondary);
 }
-
 .gs-analytics-tools-row { display: flex; flex-wrap: wrap; gap: 5px; align-items: center; }
-
 .gs-analytics-tool-pill {
   display: inline-flex;
   align-items: center;
@@ -1455,11 +1251,8 @@ select.gs-input,
   border: 1px solid var(--ui-border-strong);
   color: var(--ui-text-primary);
 }
-
 .gs-analytics-timeline { margin-top: 2px; font-size: 10.5px; color: var(--ui-text-secondary); }
-
 .gs-analytics-timeline summary { cursor: pointer; font-weight: 600; color: var(--ui-accent); user-select: none; }
-
 .gs-analytics-timeline-items {
   margin-top: 5px;
   padding: 6px 8px;
@@ -1473,7 +1266,6 @@ select.gs-input,
   gap: 3px;
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
 }
-
 .gs-toast {
   position: fixed;
   bottom: 78px;
@@ -1496,9 +1288,7 @@ select.gs-input,
   overflow: hidden;
   text-overflow: ellipsis;
 }
-
 .gs-toast.show { display: block; transform: translateX(-50%) translateY(0); }
-
 /* ============================================================================
  * 8. Right 58% Docked Workbench: Top 30% Timeline Tiles + Bottom 70% 3D Preview
  * ============================================================================ */
@@ -1517,10 +1307,8 @@ select.gs-input,
   border-left: 1px solid var(--ui-border-strong);
   box-shadow: -4px 0 20px rgba(15, 23, 42, 0.12);
 }
-
 .gs-site-timeline-split:not(.active) { display: none !important; }
 #viewMap:not(:has(#siteTimelineSplitView.active)) .gs-map-left-pane { width: 100%; flex: 1 1 100%; }
-
 .gs-site-timeline-top {
   height: 30%;
   min-height: 214px;
@@ -1533,7 +1321,6 @@ select.gs-input,
   box-shadow: 0 4px 18px rgba(15, 23, 42, 0.12);
   z-index: 25;
 }
-
 .gs-timeline-header {
   display: flex;
   justify-content: space-between;
@@ -1543,15 +1330,10 @@ select.gs-input,
   border-bottom: 1px solid var(--ui-border);
   flex-shrink: 0;
 }
-
 .gs-timeline-header-left { display: flex; align-items: center; gap: 10px; min-width: 0; }
-
 .gs-timeline-header-right { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
-
 .gs-timeline-site-title { font-size: 14.5px; font-weight: 700; color: var(--ui-text-primary); letter-spacing: -0.01em; }
-
 .gs-timeline-site-sub { font-size: 11px; color: var(--ui-text-muted); margin-top: 1px; }
-
 .gs-timeline-track {
   flex: 1;
   display: flex;
@@ -1562,7 +1344,6 @@ select.gs-input,
   padding: 8px 2px 4px 2px;
   position: relative;
 }
-
 .gs-timeline-tile {
   width: 248px;
   flex-shrink: 0;
@@ -1577,20 +1358,17 @@ select.gs-input,
   position: relative;
   user-select: none;
 }
-
 .gs-timeline-tile:hover {
   border-color: var(--ui-border-strong);
   background: var(--ui-bg-surface);
   transform: translateY(-1px);
   box-shadow: 0 6px 14px rgba(15, 23, 42, 0.08);
 }
-
 .gs-timeline-tile.active {
   border-color: var(--ui-accent);
   background: var(--ui-bg-surface);
   box-shadow: 0 0 0 2px rgba(2, 132, 199, 0.2), 0 6px 16px rgba(2, 132, 199, 0.12);
 }
-
 .gs-tile-thumb-wrap {
   position: relative;
   width: 100%;
@@ -1599,7 +1377,6 @@ select.gs-input,
   overflow: hidden;
   flex-shrink: 0;
 }
-
 .gs-tile-thumb {
   width: 100%;
   height: 100%;
@@ -1607,9 +1384,7 @@ select.gs-input,
   display: block;
   transition: transform 0.22s ease;
 }
-
 .gs-timeline-tile:hover .gs-tile-thumb { transform: scale(1.03); }
-
 .gs-tile-badge-row {
   position: absolute;
   top: 6px;
@@ -1620,7 +1395,6 @@ select.gs-input,
   align-items: center;
   pointer-events: none;
 }
-
 .gs-tile-chip {
   background: rgba(15, 23, 42, 0.78);
   color: #f8fafc;
@@ -1631,9 +1405,7 @@ select.gs-input,
   border-radius: 4px;
   border: 1px solid rgba(255, 255, 255, 0.16);
 }
-
 .gs-tile-chip.active-indicator { background: var(--ui-accent); color: #ffffff; border-color: rgba(255, 255, 255, 0.35); }
-
 .gs-tile-meta {
   padding: 6px 10px 7px 10px;
   display: flex;
@@ -1642,11 +1414,8 @@ select.gs-input,
   flex: 1;
   gap: 2px;
 }
-
 .gs-tile-date-row { display: flex; align-items: center; justify-content: space-between; gap: 6px; }
-
 .gs-tile-date { font-size: 11.5px; font-weight: 700; font-family: 'JetBrains Mono', monospace; color: var(--ui-text-primary); }
-
 .gs-tile-uploader {
   display: flex;
   align-items: center;
@@ -1658,7 +1427,6 @@ select.gs-input,
   overflow: hidden;
   text-overflow: ellipsis;
 }
-
 .gs-tile-name {
   font-size: 10.5px;
   color: var(--ui-text-secondary);
@@ -1666,7 +1434,6 @@ select.gs-input,
   overflow: hidden;
   text-overflow: ellipsis;
 }
-
 /* Bottom 70% Interactive 3D Scan Preview Pane */
 .gs-site-preview-bottom {
   height: 70%;
@@ -1676,9 +1443,7 @@ select.gs-input,
   background: var(--ui-3d-bg);
   overflow: hidden;
 }
-
 #sitePreviewCanvasContainer { width: 100%; height: 100%; position: relative; }
-
 .gs-preview-hud-top-left {
   position: absolute;
   top: 14px;
@@ -1688,7 +1453,6 @@ select.gs-input,
   z-index: 40;
   pointer-events: auto;
 }
-
 .gs-preview-hud-top-left .gs-preview-scan-pill {
   max-width: 100%;
   flex-wrap: wrap !important;
@@ -1699,7 +1463,6 @@ select.gs-input,
   padding: 6px 10px !important;
   border-radius: 14px !important;
 }
-
 /* Icon-Only Enlarge Button (Strictly 0 words, only icon) */
 .gs-preview-enlarge-btn {
   position: absolute;
@@ -1720,7 +1483,6 @@ select.gs-input,
   box-shadow: 0 8px 24px rgba(15, 23, 42, 0.24);
   transition: all 0.16s ease;
 }
-
 .gs-preview-enlarge-btn:hover {
   background: var(--ui-accent);
   border-color: var(--ui-accent);
@@ -1728,9 +1490,7 @@ select.gs-input,
   transform: scale(1.05);
   box-shadow: 0 10px 28px rgba(2, 132, 199, 0.38);
 }
-
 .gs-preview-enlarge-btn svg { stroke: currentColor; pointer-events: none; }
-
 /* ============================================================================
    CIRCULAR 3D SCAN LOADING INDICATOR (Fill / Void Ring + Centered Percentage)
    ============================================================================ */
@@ -1746,9 +1506,7 @@ select.gs-input,
   visibility: hidden;
   transition: opacity 0.2s ease, visibility 0.2s ease;
 }
-
 .gs-scan-loader-overlay.active { opacity: 1; visibility: visible; }
-
 .gs-scan-loader-card {
   background: rgba(15, 23, 42, 0.88);
   backdrop-filter: blur(10px);
@@ -1762,7 +1520,6 @@ select.gs-input,
   gap: 10px;
   box-shadow: 0 18px 42px rgba(2, 6, 23, 0.58);
 }
-
 .gs-scan-loader-ring-wrap {
   position: relative;
   width: 92px;
@@ -1771,12 +1528,9 @@ select.gs-input,
   align-items: center;
   justify-content: center;
 }
-
 .gs-scan-loader-svg { transform: rotate(-90deg); overflow: visible; }
-
 /* Void colour (unfilled ring track & inner void) */
 .gs-scan-loader-void { fill: rgba(15, 23, 42, 0.65); stroke: #1e293b; stroke-width: 9; }
-
 /* Fill colour (active progress ring arc) */
 .gs-scan-loader-fill {
   fill: none;
@@ -1788,7 +1542,6 @@ select.gs-input,
   transition: stroke-dashoffset 0.14s ease-out, stroke 0.2s ease;
   filter: drop-shadow(0 0 6px rgba(56, 189, 248, 0.48));
 }
-
 /* Percentage centered in the middle of the circular ring */
 .gs-scan-loader-pct {
   position: absolute;
@@ -1804,7 +1557,6 @@ select.gs-input,
   letter-spacing: -0.02em;
   text-shadow: 0 2px 6px rgba(0, 0, 0, 0.65);
 }
-
 .gs-scan-loader-label {
   font-size: 11.5px;
   font-weight: 600;
@@ -1813,7 +1565,6 @@ select.gs-input,
   white-space: nowrap;
   letter-spacing: 0.01em;
 }
-
 /* ============================================================================
  * 9. Mobile & Small-Viewport Responsive Architecture (<= 767px)
  *    Ensures all buttons fit and zero text overflows across every view & modal
@@ -1828,42 +1579,26 @@ select.gs-input,
     align-content: space-between;
     gap: 5px;
   }
-
-  .gs-brand {
-    gap: 7px;
-    min-width: 0;
-  }
-
+  .gs-brand { gap: 7px; min-width: 0; }
   .gs-brand-logo {
     width: 26px;
     height: 26px;
     font-size: 11px;
     border-radius: 6px;
   }
-
-  .gs-brand-title {
-    font-size: 13.5px;
-    gap: 5px;
-  }
-
+  .gs-brand-title { font-size: 13.5px; gap: 5px; }
   .gs-brand-title .gs-crs-pill {
     display: inline-flex;
     font-size: 9.5px;
     padding: 2px 6px;
   }
-
-  .gs-topbar-actions {
-    margin-left: auto;
-    gap: 4px;
-  }
-
+  .gs-topbar-actions { margin-left: auto; gap: 4px; }
   #pcStatusChip {
     padding: 4px 7px;
     font-size: 11px;
     height: 28px;
     gap: 4px;
   }
-
   #lblPcStatus,
   #pcStatusText {
     max-width: 64px;
@@ -1871,7 +1606,6 @@ select.gs-input,
     text-overflow: ellipsis;
     white-space: nowrap;
   }
-
   .gs-top-btn {
     height: 28px;
     min-width: 28px;
@@ -1879,17 +1613,10 @@ select.gs-input,
     font-size: 11px;
     border-radius: 6px;
   }
-
   #btnGoogleUser,
-  #btnCurrentUserProfile {
-    padding: 0 6px !important;
-  }
-
+  #btnCurrentUserProfile { padding: 0 6px !important; }
   #btnGoogleUser #lblCurrentUser,
-  #btnCurrentUserProfile #lblCurrentUser {
-    display: none !important;
-  }
-
+  #btnCurrentUserProfile #lblCurrentUser { display: none !important; }
   #mainModeSwitcher {
     order: 3;
     width: 100%;
@@ -1897,7 +1624,6 @@ select.gs-input,
     padding: 2px;
     border-radius: 8px;
   }
-
   #mainModeSwitcher .btn-seg {
     flex: 1;
     justify-content: center;
@@ -1906,24 +1632,18 @@ select.gs-input,
     gap: 5px;
     border-radius: 6px;
   }
-
   .gs-main {
     flex: 1;
     min-height: 0;
     height: auto;
   }
-
   /* 9.2 Unified 3-Pane Workbench on Mobile (Top 34% Map + Bottom 66% Timeline & 3D Preview) */
-  #viewMap.active {
-    flex-direction: column;
-  }
-
+  #viewMap.active { flex-direction: column; }
   .gs-map-left-pane {
     width: 100%;
     flex: 0 0 34%;
     height: 34%;
   }
-
   .gs-map-hud-top {
     top: 8px;
     left: 8px;
@@ -1932,30 +1652,15 @@ select.gs-input,
     max-width: none;
     gap: 6px;
   }
-
-  .gs-map-card {
-    padding: 8px 10px;
-    border-radius: 10px;
-  }
-
+  .gs-map-card { padding: 8px 10px; border-radius: 10px; }
   .gs-map-desc,
   .gs-map-coords-bar,
   #mapCoordsBar,
-  #mapCursorCoords {
-    display: none !important;
-  }
-
-  .gs-map-controls-row {
-    margin-top: 6px !important;
-    gap: 6px !important;
-  }
-
+  #mapCursorCoords { display: none !important; }
+  .gs-map-controls-row { margin-top: 6px !important; gap: 6px !important; }
   .gs-cluster-popover,
   .gs-cluster-popover.gs-map-right-panel,
-  .gs-cluster-popover.active {
-    display: none !important;
-  }
-
+  .gs-cluster-popover.active { display: none !important; }
   /* 9.3 Site Timeline Split View (Top Timeline Tiles + Bottom 3D Preview) */
   .gs-site-timeline-split,
   .gs-site-timeline-split.active {
@@ -1965,110 +1670,62 @@ select.gs-input,
     border-left: none;
     border-top: 1px solid var(--ui-border-strong);
   }
-
   .gs-site-timeline-top {
     height: auto;
     min-height: 158px;
     max-height: 176px;
     padding: 6px 10px 5px 10px;
   }
-
   .gs-timeline-header {
     gap: 6px;
     padding-bottom: 5px;
     flex-wrap: nowrap;
   }
-
   .gs-timeline-header-left {
     gap: 6px;
     min-width: 0;
     flex: 1;
   }
-
-  .gs-timeline-header-left > div {
-    min-width: 0;
-    flex: 1;
-  }
-
+  .gs-timeline-header-left > div { min-width: 0; flex: 1; }
   .gs-timeline-site-title {
     font-size: 13px;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
   }
-
   .gs-timeline-site-sub,
-  .gs-timeline-crs-extra {
-    display: none !important;
-  }
-
-  .gs-timeline-header-right {
-    gap: 4px;
-    flex-shrink: 0;
-  }
-
+  .gs-timeline-crs-extra { display: none !important; }
+  .gs-timeline-header-right { gap: 4px; flex-shrink: 0; }
   .gs-timeline-header-right .btn-xs {
     height: 26px;
     min-width: 26px;
     padding: 0 6px;
     font-size: 10.5px;
   }
-
   #lblTimelineScanCountBadge,
   #timelineSiteCountPill {
     font-size: 10px;
     padding: 2px 6px;
     white-space: nowrap;
   }
-
-  .gs-timeline-track {
-    gap: 8px;
-    padding: 6px 2px 2px 2px;
-  }
-
-  .gs-timeline-tile {
-    width: 172px;
-    border-radius: 8px;
-  }
-
-  .gs-tile-thumb-wrap {
-    height: 56px;
-  }
-
-  .gs-tile-meta {
-    padding: 5px 8px 6px 8px;
-    gap: 2px;
-  }
-
-  .gs-tile-date {
-    font-size: 10.5px;
-  }
-
-  .gs-tile-uploader {
-    font-size: 10px;
-  }
-
-  .gs-tile-name {
-    font-size: 9.5px;
-  }
-
+  .gs-timeline-track { gap: 8px; padding: 6px 2px 2px 2px; }
+  .gs-timeline-tile { width: 172px; border-radius: 8px; }
+  .gs-tile-thumb-wrap { height: 56px; }
+  .gs-tile-meta { padding: 5px 8px 6px 8px; gap: 2px; }
+  .gs-tile-date { font-size: 10.5px; }
+  .gs-tile-uploader { font-size: 10px; }
+  .gs-tile-name { font-size: 9.5px; }
   .gs-preview-hud-top-left {
     top: 8px;
     left: 8px;
     right: 52px;
   }
-
   .gs-preview-scan-pill {
     width: 100%;
     padding: 5px 8px !important;
     gap: 6px !important;
   }
-
-  .gs-preview-text-wrap {
-    min-width: 0;
-    flex: 1;
-  }
-
+  .gs-preview-text-wrap { min-width: 0; flex: 1; }
   #lblPreviewActiveScanTitle,
   #previewScanTitle {
     font-size: 11.5px !important;
@@ -2076,7 +1733,6 @@ select.gs-input,
     overflow: hidden;
     text-overflow: ellipsis;
   }
-
   #lblPreviewActiveScanSub,
   #previewScanMeta {
     font-size: 10px !important;
@@ -2084,7 +1740,6 @@ select.gs-input,
     overflow: hidden;
     text-overflow: ellipsis;
   }
-
   .gs-preview-enlarge-btn {
     top: 8px;
     right: 8px;
@@ -2092,7 +1747,6 @@ select.gs-input,
     height: 36px;
     border-radius: 9px;
   }
-
   /* 9.4 3D Scan Studio View (Top HUD, Measurement Toolbar, Bottom Dock, Side Panel) */
   .gs-studio-top-bar {
     top: 8px;
@@ -2102,21 +1756,16 @@ select.gs-input,
     align-items: stretch;
     gap: 5px;
   }
-
   .gs-studio-main-pill {
     width: 100%;
     flex-wrap: wrap;
     padding: 6px 8px;
     gap: 5px;
   }
-
   .gs-studio-cube-icon,
   #studioScanMetricsText,
   #studioScanMetrics,
-  .gs-studio-coord-pill {
-    display: none !important;
-  }
-
+  .gs-studio-coord-pill { display: none !important; }
   #studioProjectSelect {
     flex: 1 1 115px;
     min-width: 0;
@@ -2124,7 +1773,6 @@ select.gs-input,
     font-size: 11px;
     padding: 3px 6px;
   }
-
   #studioScanSelect {
     flex: 1 1 140px;
     min-width: 0;
@@ -2132,60 +1780,33 @@ select.gs-input,
     font-size: 11px;
     padding: 3px 6px;
   }
-
   .gs-brightness-control {
     border-left: none;
     padding-left: 0;
     gap: 4px;
     margin-right: auto;
   }
-
-  .gs-brightness-slider {
-    width: 52px;
-  }
-
-  .gs-brightness-val {
-    font-size: 10.5px;
-    min-width: 28px;
-  }
-
-  .bim-measure-bottom-container {
-    bottom: 54px;
-    max-width: calc(100vw - 12px);
-  }
-
+  .gs-brightness-slider { width: 52px; }
+  .gs-brightness-val { font-size: 10.5px; min-width: 28px; }
+  .bim-measure-bottom-container { bottom: 54px; max-width: calc(100vw - 12px); }
   .autodesk-measure-toolbar {
     padding: 3px;
     gap: 2px;
     border-radius: 10px;
   }
-
-  .autodesk-measure-subtools {
-    gap: 1px;
-  }
-
+  .autodesk-measure-subtools { gap: 1px; }
   .autodesk-measure-btn {
     width: 29px;
     height: 28px;
     border-radius: 6px;
   }
-
-  .autodesk-measure-icon svg {
-    width: 15px;
-    height: 15px;
-  }
-
-  .autodesk-measure-divider {
-    height: 18px;
-    margin: 0 1px;
-  }
-
+  .autodesk-measure-icon svg { width: 15px; height: 15px; }
+  .autodesk-measure-divider { height: 18px; margin: 0 1px; }
   .autodesk-measure-clear-btn {
     width: 28px;
     height: 28px;
     border-radius: 6px;
   }
-
   .bim-bottom-dock {
     bottom: 8px;
     padding: 3px 4px;
@@ -2194,18 +1815,13 @@ select.gs-input,
     max-width: calc(100vw - 12px);
     overflow-x: auto;
   }
-
   .bim-dock-btn {
     min-width: 34px;
     height: 34px;
     padding: 2px 4px;
     border-radius: 6px;
   }
-
-  .bim-dock-label {
-    font-size: 8.5px;
-  }
-
+  .bim-dock-label { font-size: 8.5px; }
   .gs-side-panel {
     top: auto;
     bottom: 54px;
@@ -2216,7 +1832,6 @@ select.gs-input,
     padding: 10px 12px;
     border-radius: 11px;
   }
-
   /* 9.5 Multi-Date Compare View */
   .gs-compare-hud {
     top: 8px;
@@ -2226,7 +1841,6 @@ select.gs-input,
     align-items: stretch;
     gap: 5px;
   }
-
   .gs-compare-hud .gs-epoch-badge {
     width: 100%;
     padding: 5px 8px;
@@ -2235,14 +1849,12 @@ select.gs-input,
     justify-content: space-between;
     border-radius: 8px;
   }
-
   .gs-compare-hud .gs-scan-select {
     flex: 1 1 105px;
     min-width: 0;
     font-size: 11px;
     padding: 3px 6px;
   }
-
   .gs-compare-legend {
     bottom: 8px;
     left: 8px;
@@ -2256,62 +1868,35 @@ select.gs-input,
     flex-wrap: wrap;
     border-radius: 8px;
   }
-
-  .gs-compare-legend-bar {
-    width: 68px !important;
-  }
-
+  .gs-compare-legend-bar { width: 68px !important; }
   /* 9.6 Modals (Queue, Sharing, Settings/Cache, OAuth Gate) */
-  .gs-modal-backdrop {
-    padding: 8px;
-  }
-
+  .gs-modal-backdrop { padding: 8px; }
   .gs-modal {
     padding: 12px 12px;
     max-height: 92vh;
     border-radius: 11px;
   }
-
-  .gs-panel-title {
-    font-size: 12.5px;
-  }
-
+  .gs-panel-title { font-size: 12.5px; }
   .gs-modal-metrics-grid,
   .gs-share-form-grid,
   .gs-responsive-grid-3,
   .gs-responsive-grid-4,
-  .gs-admin-editor-grid {
-    grid-template-columns: 1fr !important;
-    gap: 6px !important;
-  }
-
+  .gs-admin-editor-grid { grid-template-columns: 1fr !important; gap: 6px !important; }
   .gs-webhook-bar,
   .gs-queue-actions-bar {
     flex-direction: column !important;
     align-items: stretch !important;
     gap: 8px !important;
   }
-
-  .gs-settings-row {
-    padding: 10px 11px !important;
-  }
-
-  .gs-theme-switcher {
-    width: 100%;
-    display: flex;
-  }
-
+  .gs-settings-row { padding: 10px 11px !important; }
+  .gs-theme-switcher { width: 100%; display: flex; }
   .gs-theme-switcher .btn-seg {
     flex: 1;
     justify-content: center;
     padding: 5px 8px;
     font-size: 11.5px;
   }
-
-  .gs-studio-main-pill .gs-toolbar-divider {
-    display: none !important;
-  }
-
+  .gs-studio-main-pill .gs-toolbar-divider { display: none !important; }
   .measure-badge-2d {
     max-width: calc(100vw - 24px) !important;
     white-space: normal !important;
@@ -2320,14 +1905,12 @@ select.gs-input,
     line-height: 1.35;
     padding: 4px 8px;
   }
-
   .gs-table th,
   .gs-table td {
     padding: 6px 6px;
     font-size: 11px;
     white-space: nowrap;
   }
-
   .gs-table td:first-child {
     white-space: normal;
     overflow-wrap: break-word;
@@ -2335,16 +1918,12 @@ select.gs-input,
     min-width: 110px;
     max-width: 165px;
   }
-
   /* Hide secondary desktop metadata columns on mobile so tables fit 100% cleanly */
   #modalOfflineCache .gs-table th:nth-child(2),
   #modalOfflineCache .gs-table td:nth-child(2),
   #modalOfflineCache .gs-table th:nth-child(3),
-  #modalOfflineCache .gs-table td:nth-child(3) {
-    display: none;
-  }
+  #modalOfflineCache .gs-table td:nth-child(3) { display: none; }
 }
-
 @media (max-width: 980px) {
   #modalQueue .gs-table th:nth-child(2), #modalQueue .gs-table td:nth-child(2),
   #modalQueue .gs-table th:nth-child(3), #modalQueue .gs-table td:nth-child(3),
@@ -2355,12 +1934,10 @@ select.gs-input,
   #modalSharing .gs-table th:nth-child(5), #modalSharing .gs-table td:nth-child(5) { display: none; }
   #modalSharing .gs-share-url-input { min-width: 150px; font-size: 10.5px; }
 }
-
 /* Mandatory Authorization Gate Lock before App Usage */
 body.gs-auth-locked .gs-topbar,
 body.gs-auth-locked .gs-share-banner,
 body.gs-auth-locked .gs-main { filter: blur(8px); pointer-events: none !important; user-select: none !important; }
-
 /* ============================================================================
  * Separate Scan Editing Toolbar (#studioEditingDock) & Freehand Lasso Overlay
  * Permission-gated: Only visible to Editor, Admin & Owner roles
@@ -2384,7 +1961,6 @@ body.gs-auth-locked .gs-main { filter: blur(8px); pointer-events: none !importan
   z-index: 94;
   user-select: none;
 }
-
 .gs-edit-dock-badge {
   display: flex;
   align-items: center;
@@ -2400,13 +1976,9 @@ body.gs-auth-locked .gs-main { filter: blur(8px); pointer-events: none !importan
   margin-bottom: 2px;
   white-space: nowrap;
 }
-
 .gs-edit-dock-btn { min-width: 56px !important; height: 46px !important; padding: 4px 6px !important; border-radius: 9px !important; }
-
 .gs-edit-dock-btn[data-tool="crop_delete"].active { border-color: #ef4444 !important; color: #ef4444 !important; background: rgba(239, 68, 68, 0.12) !important; }
-
 .gs-generate-scan-dock-btn.has-staged { border-color: var(--ui-accent) !important; color: var(--ui-accent) !important; background: rgba(2, 132, 199, 0.12) !important; }
-
 .gs-staged-edits-badge {
   position: absolute;
   top: -6px;
@@ -2424,19 +1996,15 @@ body.gs-auth-locked .gs-main { filter: blur(8px); pointer-events: none !importan
   box-shadow: 0 1px 4px rgba(0, 0, 0, 0.35);
   pointer-events: none;
 }
-
 /* Single-scan-only tools greyed-out & unclickable during Multi-Scan Combination Mode */
 .multi-align-disabled { opacity: 0.32 !important; filter: grayscale(0.9) !important; cursor: not-allowed !important; box-shadow: none !important; }
-
 .multi-align-disabled:hover { transform: none !important; background: transparent !important; }
-
 /* Persistent session indicator on Align & Merge dock button while Multi-Scan Mode is active */
 .bim-dock-btn.multi-align-session:not(.active) {
   border-color: rgba(56, 189, 248, 0.72) !important;
   background: rgba(56, 189, 248, 0.11) !important;
   box-shadow: 0 0 0 1px rgba(56, 189, 248, 0.35) inset;
 }
-
 /* Interactive Dynamic Angle, Coordinate & Laser Width Badges */
 .autodesk-flex-badge {
   position: absolute;
@@ -2455,14 +2023,12 @@ body.gs-auth-locked .gs-main { filter: blur(8px); pointer-events: none !importan
   user-select: none;
   transform: translate(-50%, -50%);
 }
-
 .autodesk-angle-badge {
   background: linear-gradient(135deg, #d97706, #f59e0b);
   color: #ffffff;
   box-shadow: 0 2px 10px rgba(245, 158, 11, 0.48);
   border: 1px solid rgba(255, 255, 255, 0.28);
 }
-
 .autodesk-azimuth-badge {
   background: rgba(15, 23, 42, 0.88);
   color: #fde68a;
@@ -2474,7 +2040,6 @@ body.gs-auth-locked .gs-main { filter: blur(8px); pointer-events: none !importan
   border: 1px solid rgba(245, 158, 11, 0.72);
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.42);
 }
-
 .autodesk-coord-badge {
   display: inline-flex;
   flex-direction: column;
@@ -2492,15 +2057,10 @@ body.gs-auth-locked .gs-main { filter: blur(8px); pointer-events: none !importan
   box-shadow: 0 2px 8px rgba(2, 132, 199, 0.3);
   backdrop-filter: blur(6px);
 }
-
 .autodesk-coord-badge .coord-row { white-space: nowrap; }
-
 .autodesk-coord-badge .coord-row-name { color: #38bdf8; font-weight: 800; font-size: 10px; letter-spacing: 0.02em; }
-
 .autodesk-coord-badge.pinned { border-color: rgba(16, 185, 129, 0.78); box-shadow: 0 2px 8px rgba(16, 185, 129, 0.28); }
-
 .autodesk-coord-badge.pinned .coord-row-name { color: #34d399; }
-
 /* Compact 2-Bubble Laser Labels (Width & Length separate, each with [W/L] [dh:L]) */
 .autodesk-laser-pair {
   display: inline-flex;
@@ -2511,7 +2071,6 @@ body.gs-auth-locked .gs-main { filter: blur(8px); pointer-events: none !importan
   user-select: none;
   pointer-events: none;
 }
-
 .laser-bubble {
   display: inline-flex;
   align-items: center;
@@ -2524,17 +2083,11 @@ body.gs-auth-locked .gs-main { filter: blur(8px); pointer-events: none !importan
   box-shadow: 0 2px 6px rgba(2, 6, 23, 0.48);
   backdrop-filter: blur(6px);
 }
-
 .laser-bubble-w { background: rgba(15, 23, 42, 0.9); color: #fda4af; border: 1px solid rgba(251, 113, 133, 0.85); }
-
 .autodesk-laser-pair.pinned .laser-bubble-w { background: #be123c; color: #ffffff; border-color: rgba(255, 255, 255, 0.75); }
-
 .laser-bubble-l { background: rgba(15, 23, 42, 0.9); color: #7dd3fc; border: 1px solid rgba(56, 189, 248, 0.85); }
-
 .autodesk-laser-pair.pinned .laser-bubble-l { background: #0369a1; color: #ffffff; border-color: rgba(255, 255, 255, 0.75); }
-
 .laser-bubble-slope { background: rgba(15, 23, 42, 0.86); color: #f8fafc; border: 1px solid rgba(148, 163, 184, 0.65); font-size: 10px; }
-
 /* Top-Left Semi-Transparent Red-Blue North Arrow (~3x larger, no circular background) */
 .gs-north-arrow-compass {
   position: absolute;
@@ -2558,9 +2111,7 @@ body.gs-auth-locked .gs-main { filter: blur(8px); pointer-events: none !importan
   z-index: 88;
   transition: opacity 0.15s ease, transform 0.15s ease;
 }
-
 .gs-north-arrow-compass:hover { opacity: 1; transform: scale(1.06); }
-
 /* 3D Scan Comment Icon & Nearby Hover/Tap Popover Card (Non-Overshadowing) */
 .gs-scan-comment-pin {
   position: relative;
@@ -2573,11 +2124,9 @@ body.gs-auth-locked .gs-main { filter: blur(8px); pointer-events: none !importan
   -webkit-user-select: none;
   z-index: 75;
 }
-
 .gs-scan-comment-pin:hover,
 .gs-scan-comment-pin:focus-within,
 .gs-scan-comment-pin.mobile-open { z-index: 160 !important; }
-
 .gs-comment-pin-icon {
   width: 30px;
   height: 30px;
@@ -2593,7 +2142,6 @@ body.gs-auth-locked .gs-main { filter: blur(8px); pointer-events: none !importan
   -webkit-backdrop-filter: blur(4px);
   transition: transform 0.14s ease, filter 0.14s ease;
 }
-
 .gs-comment-pin-avatar-char {
   font-size: 10.5px;
   font-weight: 800;
@@ -2602,7 +2150,6 @@ body.gs-auth-locked .gs-main { filter: blur(8px); pointer-events: none !importan
   color: #ffffff;
   text-shadow: 0 1px 2px rgba(0, 0, 0, 0.45);
 }
-
 .gs-comment-card-avatar {
   width: 20px;
   height: 20px;
@@ -2616,10 +2163,8 @@ body.gs-auth-locked .gs-main { filter: blur(8px); pointer-events: none !importan
   flex-shrink: 0;
   border: 1px solid rgba(255, 255, 255, 0.45);
 }
-
 .gs-scan-comment-pin:hover .gs-comment-pin-icon,
 .gs-scan-comment-pin.mobile-open .gs-comment-pin-icon { filter: brightness(1.12); transform: scale(1.12); }
-
 .gs-comment-pin-popover {
   position: absolute;
   left: calc(100% + 10px);
@@ -2645,7 +2190,6 @@ body.gs-auth-locked .gs-main { filter: blur(8px); pointer-events: none !importan
   pointer-events: none;
   transition: opacity 0.15s ease, visibility 0.15s ease;
 }
-
 .gs-comment-pin-popover::before {
   content: "";
   position: absolute;
@@ -2655,18 +2199,13 @@ body.gs-auth-locked .gs-main { filter: blur(8px); pointer-events: none !importan
   right: -16px;
   z-index: -1;
 }
-
 .gs-scan-comment-pin.flip-left .gs-comment-pin-popover { left: auto; right: calc(100% + 10px); }
-
 .gs-scan-comment-pin.flip-down .gs-comment-pin-popover { top: calc(100% + 8px); transform: none; }
-
 .gs-scan-comment-pin:not(.force-closed):hover .gs-comment-pin-popover,
 .gs-scan-comment-pin:not(.force-closed):focus-within .gs-comment-pin-popover,
 .gs-scan-comment-pin:not(.force-closed) .gs-comment-pin-popover:hover,
 .gs-scan-comment-pin.mobile-open:not(.force-closed) .gs-comment-pin-popover { opacity: 1; visibility: visible; pointer-events: auto !important; }
-
 .gs-scan-comment-pin.force-closed .gs-comment-pin-popover { opacity: 0 !important; visibility: hidden !important; pointer-events: none !important; }
-
 .gs-comment-pin-close-btn {
   width: 18px;
   height: 18px;
@@ -2685,9 +2224,7 @@ body.gs-auth-locked .gs-main { filter: blur(8px); pointer-events: none !importan
   flex-shrink: 0;
   transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
 }
-
 .gs-comment-pin-close-btn:hover { background: rgba(239, 68, 68, 0.85); border-color: rgba(248, 113, 113, 0.9); color: #ffffff; }
-
 .gs-comment-pin-meta {
   display: flex;
   justify-content: space-between;
@@ -2697,41 +2234,28 @@ body.gs-auth-locked .gs-main { filter: blur(8px); pointer-events: none !importan
   border-bottom: 1px solid rgba(148, 163, 184, 0.25);
   padding-bottom: 2px;
 }
-
 .gs-comment-pin-author { font-weight: 700; color: #38bdf8; font-size: 11px; }
-
 .gs-comment-pin-time { font-size: 9.5px; color: #cbd5e1; white-space: nowrap; }
-
 .gs-comment-pin-text { color: #f8fafc; font-size: 11px; line-height: 1.35; }
-
 /* Bright / Light Theme Support for 3D Comment Pin Popover & Avatar */
 html[data-theme="light"] .gs-comment-pin-icon,
 body.theme-light .gs-comment-pin-icon { border-color: rgba(255, 255, 255, 0.96); box-shadow: 0 3px 10px rgba(15, 23, 42, 0.25); }
-
 html[data-theme="light"] .gs-comment-pin-popover,
 body.theme-light .gs-comment-pin-popover { background: rgba(255, 255, 255, 0.94); border-color: rgba(2, 132, 199, 0.45); box-shadow: 0 8px 22px rgba(15, 23, 42, 0.16); color: #0f172a; }
-
 html[data-theme="light"] .gs-comment-pin-meta,
 body.theme-light .gs-comment-pin-meta { border-bottom-color: rgba(15, 23, 42, 0.12); }
-
 html[data-theme="light"] .gs-comment-pin-author,
 body.theme-light .gs-comment-pin-author { color: #0284c7; }
-
 html[data-theme="light"] .gs-comment-pin-time,
 body.theme-light .gs-comment-pin-time { color: #64748b; }
-
 html[data-theme="light"] .gs-comment-pin-text,
 body.theme-light .gs-comment-pin-text { color: #1e293b; }
-
 html[data-theme="light"] .gs-comment-pin-close-btn,
 body.theme-light .gs-comment-pin-close-btn { background: rgba(241, 245, 249, 0.9); border-color: rgba(15, 23, 42, 0.18); color: #475569; }
-
 html[data-theme="light"] .gs-comment-pin-close-btn:hover,
 body.theme-light .gs-comment-pin-close-btn:hover { background: #ef4444; border-color: #ef4444; color: #ffffff; }
-
 /* Mobile Editing Umbrella Button (Hidden on Desktop; Visible on Mobile) */
 .gs-mobile-editing-umbrella-btn { display: none; }
-
 .gs-studio-lasso-svg {
   position: absolute;
   inset: 0;
@@ -2741,22 +2265,15 @@ body.theme-light .gs-comment-pin-close-btn:hover { background: #ef4444; border-c
   z-index: 58;
   display: none;
 }
-
 .gs-studio-lasso-svg.active { display: block; }
-
 .gs-studio-lasso-poly { fill: rgba(239, 68, 68, 0.18); stroke: #ef4444; stroke-width: 2; stroke-dasharray: 6 4; }
-
 .gs-studio-lasso-svg.keep-mode .gs-studio-lasso-poly { fill: rgba(16, 185, 129, 0.18); stroke: #10b981; }
-
 .gs-studio-lasso-svg.sub-mode .gs-studio-lasso-poly { fill: rgba(245, 158, 11, 0.18); stroke: #f59e0b; stroke-dasharray: 4 4; }
-
 .gs-studio-lasso-line { fill: none; stroke: #ffffff; stroke-width: 1.5; stroke-opacity: 0.75; }
-
 @media (min-width: 768px) and (max-width: 1024px) {
   .gs-studio-editing-dock { left: 10px; right: auto; top: 50%; bottom: auto; transform: translateY(-50%); flex-direction: column; padding: 5px 4px; gap: 3px; }
   .gs-edit-dock-btn { min-width: 44px !important; height: 40px !important; padding: 2px 4px !important; }
 }
-
 /* ============================================================================
  * Video-Game First-Person Camera HUD (#studioFirstPersonHud) & FPS Crosshair
  * ============================================================================ */
@@ -2767,10 +2284,8 @@ body.theme-light .gs-comment-pin-close-btn:hover { background: #ef4444; border-c
   border-color: rgba(56, 189, 248, 0.9) !important;
   box-shadow: 0 2px 12px rgba(14, 165, 233, 0.45) !important;
 }
-
 #btnStudioFirstPerson.active svg,
 #btnToggleFirstPerson.active svg { stroke: #ffffff !important; }
-
 .gs-fp-hud {
   position: absolute;
   top: 64px;
@@ -2792,9 +2307,7 @@ body.theme-light .gs-comment-pin-close-btn:hover { background: #ef4444; border-c
   flex-wrap: nowrap;
   justify-content: center;
 }
-
 .gs-fp-hud.active { display: inline-flex; }
-
 .gs-fp-seg {
   display: inline-flex;
   align-items: center;
@@ -2804,7 +2317,6 @@ body.theme-light .gs-comment-pin-close-btn:hover { background: #ef4444; border-c
   background: var(--ui-bg-subtle);
   border: 1px solid var(--ui-border-strong);
 }
-
 .gs-fp-seg-btn {
   border: none;
   background: transparent;
@@ -2817,11 +2329,8 @@ body.theme-light .gs-comment-pin-close-btn:hover { background: #ef4444; border-c
   transition: all 0.14s ease;
   white-space: nowrap;
 }
-
 .gs-fp-seg-btn:hover { color: var(--ui-text-primary); }
-
 .gs-fp-seg-btn.active { background: linear-gradient(135deg, #0284c7, #0ea5e9); color: #ffffff; box-shadow: 0 1px 6px rgba(2, 132, 199, 0.4); }
-
 .gs-fp-lock-btn {
   border: 1px solid var(--ui-border-strong);
   background: var(--ui-bg-subtle);
@@ -2834,11 +2343,8 @@ body.theme-light .gs-comment-pin-close-btn:hover { background: #ef4444; border-c
   white-space: nowrap;
   transition: all 0.14s ease;
 }
-
 .gs-fp-lock-btn:hover { border-color: var(--ui-accent); }
-
 .gs-fp-lock-btn.locked { background: rgba(16, 185, 129, 0.16); border-color: rgba(16, 185, 129, 0.65); color: #10b981; }
-
 .gs-fp-speed-wrap {
   display: inline-flex;
   align-items: center;
@@ -2848,9 +2354,7 @@ body.theme-light .gs-comment-pin-close-btn:hover { background: #ef4444; border-c
   background: var(--ui-bg-subtle);
   border: 1px solid var(--ui-border);
 }
-
 .gs-fp-speed-lbl { font-size: 10.5px; font-weight: 700; color: var(--ui-text-secondary); }
-
 .gs-fp-speed-val {
   font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
   font-size: 11px;
@@ -2859,7 +2363,6 @@ body.theme-light .gs-comment-pin-close-btn:hover { background: #ef4444; border-c
   min-width: 54px;
   text-align: right;
 }
-
 .gs-fp-keys-hint {
   display: inline-flex;
   align-items: center;
@@ -2868,7 +2371,6 @@ body.theme-light .gs-comment-pin-close-btn:hover { background: #ef4444; border-c
   color: var(--ui-text-secondary);
   white-space: nowrap;
 }
-
 .gs-fp-key-chip {
   font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
   font-size: 10px;
@@ -2880,7 +2382,6 @@ body.theme-light .gs-comment-pin-close-btn:hover { background: #ef4444; border-c
   padding: 1px 5px;
   margin-left: 3px;
 }
-
 .gs-fp-exit-btn {
   border: 1px solid rgba(239, 68, 68, 0.45);
   background: rgba(239, 68, 68, 0.1);
@@ -2893,9 +2394,7 @@ body.theme-light .gs-comment-pin-close-btn:hover { background: #ef4444; border-c
   white-space: nowrap;
   transition: all 0.14s ease;
 }
-
 .gs-fp-exit-btn:hover { background: #ef4444; color: #ffffff; }
-
 /* Crisp High-Contrast Center Reticle for First-Person Mode */
 .gs-fp-crosshair {
   position: absolute;
@@ -2908,13 +2407,10 @@ body.theme-light .gs-comment-pin-close-btn:hover { background: #ef4444; border-c
   z-index: 64;
   display: none;
 }
-
 .gs-fp-crosshair.active { display: block; }
-
 .gs-fp-ch-h,
 .gs-fp-ch-v,
 .gs-fp-ch-dot { position: absolute; background: #ffffff; box-shadow: 0 0 3px rgba(0, 0, 0, 0.92), 0 0 1px rgba(0, 0, 0, 1); }
-
 .gs-fp-ch-h {
   left: 2px;
   right: 2px;
@@ -2923,7 +2419,6 @@ body.theme-light .gs-comment-pin-close-btn:hover { background: #ef4444; border-c
   border-radius: 1px;
   opacity: 0.88;
 }
-
 .gs-fp-ch-v {
   top: 2px;
   bottom: 2px;
@@ -2932,7 +2427,6 @@ body.theme-light .gs-comment-pin-close-btn:hover { background: #ef4444; border-c
   border-radius: 1px;
   opacity: 0.88;
 }
-
 .gs-fp-ch-dot {
   left: 10px;
   top: 10px;
@@ -2941,13 +2435,9 @@ body.theme-light .gs-comment-pin-close-btn:hover { background: #ef4444; border-c
   border-radius: 50%;
   background: #38bdf8;
 }
-
 @media (max-width: 1180px) {
-  .gs-fp-keys-hint {
-    display: none;
-  }
+  .gs-fp-keys-hint { display: none; }
 }
-
 /* Touch-Only Locomotion Pad for First-Person Mode on Mobile / Tablets */
 .gs-fp-touch-pad {
   position: absolute;
@@ -2959,16 +2449,10 @@ body.theme-light .gs-comment-pin-close-btn:hover { background: #ef4444; border-c
   -webkit-user-select: none;
   touch-action: none;
 }
-
 @media (pointer: coarse), (max-width: 900px) {
-  .gs-fp-touch-pad.active {
-    display: block;
-  }
-  .gs-fp-lock-btn {
-    display: none;
-  }
+  .gs-fp-touch-pad.active { display: block; }
+  .gs-fp-lock-btn { display: none; }
 }
-
 .gs-fp-dpad-grid {
   display: grid;
   grid-template-columns: repeat(3, 40px);
@@ -2980,7 +2464,6 @@ body.theme-light .gs-comment-pin-close-btn:hover { background: #ef4444; border-c
   backdrop-filter: blur(10px);
   border: 1px solid rgba(148, 163, 184, 0.28);
 }
-
 .gs-fp-touch-btn {
   width: 40px;
   height: 40px;
@@ -2996,17 +2479,13 @@ body.theme-light .gs-comment-pin-close-btn:hover { background: #ef4444; border-c
   cursor: pointer;
   touch-action: none;
 }
-
 .gs-fp-touch-btn:active,
 .gs-fp-touch-btn.pressed { background: linear-gradient(135deg, #0284c7, #0ea5e9); border-color: #38bdf8; color: #ffffff; }
-
 .gs-fp-touch-vert { font-size: 13px; background: rgba(15, 118, 110, 0.55); }
-
 /* ============================================================================
  * 10. Comprehensive Mobile & Touch Engineering Architecture (v64)
  *     Target Viewport: 384 x 694 CSS px (@media (max-width: 768px))
  * ============================================================================ */
-
 /* 10.1 Strict Touch-Action & Selection Prevention on All 3D Canvases & Sliders */
 #studioCanvasContainer,
 #sitePreviewCanvasContainer,
@@ -3022,14 +2501,11 @@ body.theme-light .gs-comment-pin-close-btn:hover { background: #ef4444; border-c
 .gs-curtain-handle,
 #compareSliderHandle,
 #profileChartCanvas { touch-action: none !important; -webkit-user-select: none !important; user-select: none !important; -webkit-touch-callout: none !important; }
-
 /* Ensure Toast Never Blocks Underlying Touch Controls */
 .gs-toast,
 #gsToast { pointer-events: none !important; }
-
 .gs-compare-legend,
 #compareElevationLegend { z-index: 135 !important; }
-
 /* 10.2 Floating Mobile Action Pill (#studioMobileToolHud) */
 .gs-mobile-tool-hud {
   position: absolute;
@@ -3054,9 +2530,7 @@ body.theme-light .gs-comment-pin-close-btn:hover { background: #ef4444; border-c
   user-select: none;
   -webkit-user-select: none;
 }
-
 .gs-mobile-tool-hud.active { display: inline-flex; }
-
 .gs-mobile-tool-hud .gs-mob-hud-label,
 .gs-mobile-tool-hud .gs-mobile-hud-label {
   font-size: 11px;
@@ -3065,7 +2539,6 @@ body.theme-light .gs-comment-pin-close-btn:hover { background: #ef4444; border-c
   padding: 0 4px;
   white-space: nowrap;
 }
-
 .gs-mobile-tool-hud .gs-mob-hud-btn,
 .gs-mobile-tool-hud .gs-mobile-hud-btn {
   appearance: none;
@@ -3086,27 +2559,20 @@ body.theme-light .gs-comment-pin-close-btn:hover { background: #ef4444; border-c
   white-space: nowrap;
   transition: all 0.14s ease;
 }
-
 .gs-mobile-tool-hud .gs-mob-hud-btn:hover,
 .gs-mobile-tool-hud .gs-mobile-hud-btn:hover,
 .gs-mobile-tool-hud .gs-mob-hud-btn:active,
 .gs-mobile-tool-hud .gs-mobile-hud-btn:active { border-color: #38bdf8; background: rgba(51, 65, 85, 0.96); }
-
 .gs-mobile-tool-hud .gs-mob-hud-btn.primary,
 .gs-mobile-tool-hud .gs-mobile-hud-btn.primary { background: linear-gradient(135deg, #0284c7, #0ea5e9); border-color: rgba(56, 189, 248, 0.85); color: #ffffff; }
-
 .gs-mobile-tool-hud .gs-mob-hud-btn.danger,
 .gs-mobile-tool-hud .gs-mobile-hud-btn.danger { background: rgba(239, 68, 68, 0.22); border-color: rgba(239, 68, 68, 0.65); color: #fca5a5; }
-
 .gs-mobile-tool-hud .gs-mob-hud-btn.success,
 .gs-mobile-tool-hud .gs-mobile-hud-btn.success { background: #10b981; border-color: #059669; color: #ffffff; }
-
 /* Collapse button visible on all viewports as a convenient toggle */
 .gs-panel-collapse-btn { display: inline-flex; align-items: center; justify-content: center; }
-
 .gs-side-panel.hidden,
 #studioSidePanel.hidden { display: none !important; }
-
 .gs-side-panel.mobile-minimized,
 .gs-side-panel.gs-panel-minimized,
 #studioSidePanel.mobile-minimized,
@@ -3117,17 +2583,14 @@ body.theme-light .gs-comment-pin-close-btn:hover { background: #ef4444; border-c
   padding-bottom: 5px !important;
   overflow: hidden !important;
 }
-
 .gs-side-panel.mobile-minimized .gs-panel-header,
 .gs-side-panel.gs-panel-minimized .gs-panel-header,
 #studioSidePanel.mobile-minimized .gs-panel-header,
 #studioSidePanel.gs-panel-minimized .gs-panel-header { margin-bottom: 0 !important; padding-bottom: 0 !important; border-bottom: none !important; }
-
 .gs-side-panel.mobile-minimized #sidePanelBody,
 .gs-side-panel.gs-panel-minimized #sidePanelBody,
 #studioSidePanel.mobile-minimized #sidePanelBody,
 #studioSidePanel.gs-panel-minimized #sidePanelBody { display: none !important; }
-
 /* Queue Settings Button & Rerun Source Path Wrapping */
 #btnJumpQueueToSettings {
   flex-shrink: 0;
@@ -3136,15 +2599,12 @@ body.theme-light .gs-comment-pin-close-btn:hover { background: #ef4444; border-c
   height: auto;
   padding: 4px 10px;
 }
-
 #rerunScanInfoSource,
 #lblQueueInboxDir,
 #livePix4dLogPath { word-break: break-all !important; overflow-wrap: anywhere !important; white-space: normal !important; max-width: 100% !important; }
-
 #gstScriptPreviewBox,
 #gstScriptCode,
 #rerunGstPreviewCode { white-space: pre-wrap !important; word-break: break-all !important; overflow-wrap: anywhere !important; font-size: 10.5px !important; }
-
 @media (max-width: 767px) {
   /* 10.2b Dock #studioMobileToolHud cleanly below 2-row .gs-studio-top-bar (inside #viewStudio) so it NEVER overlaps #studioSidePanel or docks */
   .gs-mobile-tool-hud,
@@ -3159,7 +2619,6 @@ body.theme-light .gs-comment-pin-close-btn:hover { background: #ef4444; border-c
     padding: 4px 9px !important;
     gap: 4px !important;
   }
-
   /* 10.3 Global Toast Fix (Non-interactive, compact, z-index below modals, positioned clear of panels & joysticks) */
   .gs-toast,
   #gsToast {
@@ -3179,28 +2638,17 @@ body.theme-light .gs-comment-pin-close-btn:hover { background: #ef4444; border-c
     font-size: 11px !important;
     z-index: 950 !important;
   }
-
   /* 10.4 Compact 2-Row Top Navigation Bar (~68px total height) */
   .gs-topbar {
     min-height: 64px !important;
     padding: 4px 6px !important;
     gap: 3px !important;
   }
-
-  .gs-brand-logo-img {
-    height: 22px !important;
-  }
-
+  .gs-brand-logo-img { height: 22px !important; }
   #topCrsBadge,
   .gs-author-credit-pill,
-  .gs-brand-title .gs-crs-pill {
-    display: none !important;
-  }
-
-  .gs-topbar-actions {
-    gap: 3px !important;
-  }
-
+  .gs-brand-title .gs-crs-pill { display: none !important; }
+  .gs-topbar-actions { gap: 3px !important; }
   .gs-topbar-actions .gs-top-btn,
   .gs-topbar-actions #pcStatusChip {
     min-width: 28px !important;
@@ -3209,7 +2657,6 @@ body.theme-light .gs-comment-pin-close-btn:hover { background: #ef4444; border-c
     padding: 0 5px !important;
     font-size: 10.5px !important;
   }
-
   .gs-topbar-actions #pcStatusText {
     max-width: 48px !important;
     font-size: 10.5px !important;
@@ -3217,23 +2664,17 @@ body.theme-light .gs-comment-pin-close-btn:hover { background: #ef4444; border-c
     text-overflow: ellipsis !important;
     white-space: nowrap !important;
   }
-
   #btnToggleLanguage {
     font-weight: 800 !important;
     letter-spacing: 0.2px !important;
     padding: 0 6px !important;
   }
-
-  #mainModeSwitcher {
-    padding: 2px !important;
-  }
-
+  #mainModeSwitcher { padding: 2px !important; }
   #mainModeSwitcher .btn-seg {
     padding: 3px 5px !important;
     font-size: 11px !important;
     min-height: 26px !important;
   }
-
   /* 10.5 Compact 2-Row Studio Top Bar (~60px total height, 0 clipping, Categorize & Labels visible) */
   .gs-studio-top-bar {
     top: 6px !important;
@@ -3241,7 +2682,6 @@ body.theme-light .gs-comment-pin-close-btn:hover { background: #ef4444; border-c
     right: 6px !important;
     gap: 4px !important;
   }
-
   /* Position North Arrow cleanly below mobile 2-row studio top bar (~74px) so it never collides */
   .gs-north-arrow-compass,
   #gsNorthArrowCompass {
@@ -3250,32 +2690,21 @@ body.theme-light .gs-comment-pin-close-btn:hover { background: #ef4444; border-c
     width: 72px !important;
     height: 72px !important;
   }
-
   .gs-north-arrow-compass svg,
-  #gsNorthArrowCompass svg {
-    width: 66px !important;
-    height: 66px !important;
-  }
-
-  .gs-compare-stage.mode-split[data-compare-count="3"] {
-    grid-template-columns: 1fr;
-    grid-template-rows: 1fr 1fr 1fr;
-  }
-
+  #gsNorthArrowCompass svg { width: 66px !important; height: 66px !important; }
+  .gs-compare-stage.mode-split[data-compare-count="3"] { grid-template-columns: 1fr; grid-template-rows: 1fr 1fr 1fr; }
   .gs-studio-main-pill {
     padding: 4px 6px !important;
     gap: 3px !important;
     border-radius: 10px !important;
     align-items: center !important;
   }
-
   #btnStudioBackToTimeline {
     padding: 0 5px !important;
     min-width: 24px !important;
     height: 24px !important;
     justify-content: center !important;
   }
-
   #btnStudioBackToTimeline span,
   .gs-brightness-control,
   #btnStudioRecycleBin,
@@ -3284,10 +2713,7 @@ body.theme-light .gs-comment-pin-close-btn:hover { background: #ef4444; border-c
   #btnStudioQuickShare svg:nth-of-type(2),
   #btnStudioDownloadObj span,
   #btnStudioDownloadObj svg:nth-of-type(2),
-  #btnStudioSurveyReport span {
-    display: none !important;
-  }
-
+  #btnStudioSurveyReport span { display: none !important; }
   #studioProjectSelect {
     flex: 1 1 64px !important;
     min-width: 58px !important;
@@ -3296,7 +2722,6 @@ body.theme-light .gs-comment-pin-close-btn:hover { background: #ef4444; border-c
     font-size: 10.5px !important;
     padding: 1px 4px !important;
   }
-
   #studioScanSelect {
     flex: 1 1 84px !important;
     min-width: 72px !important;
@@ -3305,7 +2730,6 @@ body.theme-light .gs-comment-pin-close-btn:hover { background: #ef4444; border-c
     font-size: 10.5px !important;
     padding: 1px 4px !important;
   }
-
   .gs-studio-main-pill .btn-xs {
     height: 24px !important;
     min-height: 24px !important;
@@ -3315,7 +2739,6 @@ body.theme-light .gs-comment-pin-close-btn:hover { background: #ef4444; border-c
     border-radius: 6px !important;
     flex-shrink: 0 !important;
   }
-
   #btnStudioToggleCategorizeVis,
   #btnStudioToggleCategorizeLabels {
     padding: 0 5px !important;
@@ -3324,7 +2747,6 @@ body.theme-light .gs-comment-pin-close-btn:hover { background: #ef4444; border-c
     min-height: 24px !important;
     gap: 2px !important;
   }
-
   #lblStudioCategorizeVis {
     max-width: 58px;
     overflow: hidden;
@@ -3332,7 +2754,6 @@ body.theme-light .gs-comment-pin-close-btn:hover { background: #ef4444; border-c
     white-space: nowrap;
     display: inline-block;
   }
-
   /* 10.6 Studio Editing Dock (#studioEditingDock) & Surveying Bottom Dock (#bimBottomDock) */
   .bim-bottom-dock,
   #bimBottomDock {
@@ -3352,12 +2773,8 @@ body.theme-light .gs-comment-pin-close-btn:hover { background: #ef4444; border-c
     scrollbar-width: none;
     z-index: 95 !important;
   }
-
   .bim-bottom-dock::-webkit-scrollbar,
-  .gs-studio-editing-dock::-webkit-scrollbar {
-    display: none;
-  }
-
+  .gs-studio-editing-dock::-webkit-scrollbar { display: none; }
   .gs-mobile-editing-umbrella-btn {
     display: inline-flex;
     align-items: center;
@@ -3378,18 +2795,13 @@ body.theme-light .gs-comment-pin-close-btn:hover { background: #ef4444; border-c
     z-index: 94;
     cursor: pointer;
   }
-
   .gs-mobile-editing-umbrella-btn.active {
     background: var(--ui-accent);
     border-color: var(--ui-accent);
     color: #ffffff;
   }
-
   .gs-studio-editing-dock:not(.mobile-expanded),
-  #studioEditingDock:not(.mobile-expanded) {
-    display: none !important;
-  }
-
+  #studioEditingDock:not(.mobile-expanded) { display: none !important; }
   .gs-studio-editing-dock.mobile-expanded,
   #studioEditingDock.mobile-expanded {
     display: flex !important;
@@ -3411,12 +2823,8 @@ body.theme-light .gs-comment-pin-close-btn:hover { background: #ef4444; border-c
     border-radius: 10px !important;
     z-index: 93 !important;
   }
-
   .gs-edit-dock-badge,
-  .gs-editing-dock-label {
-    display: none !important;
-  }
-
+  .gs-editing-dock-label { display: none !important; }
   .gs-edit-dock-btn {
     min-width: 48px !important;
     flex: 1 1 0 !important;
@@ -3424,12 +2832,7 @@ body.theme-light .gs-comment-pin-close-btn:hover { background: #ef4444; border-c
     padding: 2px 2px !important;
     border-radius: 7px !important;
   }
-
-  .gs-edit-dock-btn .bim-dock-label {
-    font-size: 8px !important;
-    letter-spacing: -0.02em;
-  }
-
+  .gs-edit-dock-btn .bim-dock-label { font-size: 8px !important; letter-spacing: -0.02em; }
   /* 10.7 Studio Side Panel (#studioSidePanel) Positioned Above Both Docks (+4px clearance above #studioEditingDock) */
   .gs-side-panel,
   #studioSidePanel {
@@ -3446,12 +2849,8 @@ body.theme-light .gs-comment-pin-close-btn:hover { background: #ef4444; border-c
     flex-direction: column !important;
     overflow: hidden !important;
   }
-
   .gs-side-panel.active:not(.hidden),
-  #studioSidePanel.active:not(.hidden) {
-    display: flex !important;
-  }
-
+  #studioSidePanel.active:not(.hidden) { display: flex !important; }
   .gs-side-panel.mobile-minimized,
   .gs-side-panel.gs-panel-minimized,
   #studioSidePanel.mobile-minimized,
@@ -3461,21 +2860,13 @@ body.theme-light .gs-comment-pin-close-btn:hover { background: #ef4444; border-c
     padding: 5px 10px !important;
     overflow: hidden !important;
   }
-
-  .gs-side-panel[data-active-tool="section"]:not(.mobile-minimized):not(.gs-panel-minimized) {
-    max-height: 30vh !important;
-  }
-
-  .gs-side-panel[data-active-tool="section"] .gs-form-group {
-    margin-bottom: 4px !important;
-  }
-
+  .gs-side-panel[data-active-tool="section"]:not(.mobile-minimized):not(.gs-panel-minimized) { max-height: 30vh !important; }
+  .gs-side-panel[data-active-tool="section"] .gs-form-group { margin-bottom: 4px !important; }
   .gs-side-panel .gs-panel-header {
     margin-bottom: 6px !important;
     padding-bottom: 5px !important;
     flex-shrink: 0 !important;
   }
-
   #sidePanelBody {
     overflow-y: auto !important;
     overflow-x: hidden !important;
@@ -3483,7 +2874,6 @@ body.theme-light .gs-comment-pin-close-btn:hover { background: #ef4444; border-c
     flex: 1 1 auto !important;
     min-height: 0 !important;
   }
-
   /* 10.8 2D Measurement Badges Mobile Clamping & Anti-Squishing */
   .autodesk-flex-badge,
   .autodesk-laser-badge,
@@ -3504,7 +2894,6 @@ body.theme-light .gs-comment-pin-close-btn:hover { background: #ef4444; border-c
     padding: 4px 8px !important;
     box-sizing: border-box !important;
   }
-
   .autodesk-coord-badge {
     width: max-content !important;
     max-width: min(190px, calc(100vw - 20px)) !important;
@@ -3516,7 +2905,6 @@ body.theme-light .gs-comment-pin-close-btn:hover { background: #ef4444; border-c
     padding: 3px 7px !important;
     gap: 1px !important;
   }
-
   /* 10.9 First-Person HUD Mobile Fit (Below 2-row .gs-studio-main-pill inside #viewStudio, #btnExitFirstPerson 100% Inside Viewport) */
   .gs-fp-hud,
   #studioFirstPersonHud,
@@ -3534,45 +2922,24 @@ body.theme-light .gs-comment-pin-close-btn:hover { background: #ef4444; border-c
     gap: 4px !important;
     border-radius: 12px !important;
   }
-
   .gs-fp-lock-btn,
-  .gs-fp-keys-hint {
-    display: none !important;
-  }
-
-  .gs-fp-seg-btn {
-    padding: 3px 7px !important;
-    font-size: 10.5px !important;
-  }
-
+  .gs-fp-keys-hint { display: none !important; }
+  .gs-fp-seg-btn { padding: 3px 7px !important; font-size: 10.5px !important; }
   .gs-fp-speed-wrap {
     padding: 2px 6px !important;
     gap: 4px !important;
     flex: 1 1 auto;
     justify-content: center;
   }
-
-  .gs-fp-speed-wrap input[type="range"] {
-    width: 48px !important;
-  }
-
-  .gs-fp-speed-val {
-    font-size: 10px !important;
-    min-width: 42px !important;
-  }
-
+  .gs-fp-speed-wrap input[type="range"] { width: 48px !important; }
+  .gs-fp-speed-val { font-size: 10px !important; min-width: 42px !important; }
   .gs-fp-exit-btn,
   #btnExitFirstPerson {
     padding: 3px 8px !important;
     font-size: 10.5px !important;
     flex-shrink: 0 !important;
   }
-
-  .gs-fp-touch-pad {
-    left: 10px !important;
-    bottom: 54px !important;
-  }
-
+  .gs-fp-touch-pad { left: 10px !important; bottom: 54px !important; }
   /* 10.10 Map & Site Timeline View Mobile Refinements (Map-Only Initial Screen; Timeline+Preview When Site Chosen) */
   #viewMap:not(.mobile-site-open) .gs-map-left-pane {
     display: flex !important;
@@ -3580,15 +2947,8 @@ body.theme-light .gs-comment-pin-close-btn:hover { background: #ef4444; border-c
     height: 100% !important;
     width: 100% !important;
   }
-
-  #viewMap:not(.mobile-site-open) #siteTimelineSplitView {
-    display: none !important;
-  }
-
-  #viewMap.mobile-site-open .gs-map-left-pane {
-    display: none !important;
-  }
-
+  #viewMap:not(.mobile-site-open) #siteTimelineSplitView { display: none !important; }
+  #viewMap.mobile-site-open .gs-map-left-pane { display: none !important; }
   #viewMap.mobile-site-open #siteTimelineSplitView {
     display: flex !important;
     flex: 1 1 100% !important;
@@ -3596,34 +2956,27 @@ body.theme-light .gs-comment-pin-close-btn:hover { background: #ef4444; border-c
     width: 100% !important;
     border-top: none !important;
   }
-
   .gs-site-timeline-top {
     min-height: 168px !important;
     max-height: 182px !important;
     padding: 6px 8px !important;
   }
-
   .gs-timeline-header {
     padding-bottom: 4px !important;
     gap: 5px !important;
     display: flex !important;
     align-items: center !important;
   }
-
   .gs-timeline-header > .gs-timeline-header-left {
     display: flex !important;
     flex: 0 0 auto !important;
     align-items: center !important;
     gap: 0 !important;
   }
-
   .gs-timeline-header-left > div,
   #timelineSiteTitle,
   #btnRenameTimelineSite,
-  #timelineSiteCountPill {
-    display: none !important;
-  }
-
+  #timelineSiteCountPill { display: none !important; }
   #btnCloseSiteTimeline {
     display: inline-flex !important;
     min-width: 30px !important;
@@ -3632,7 +2985,6 @@ body.theme-light .gs-comment-pin-close-btn:hover { background: #ef4444; border-c
     padding: 0 7px !important;
     flex-shrink: 0 !important;
   }
-
   .gs-timeline-header-right {
     flex: 1 1 auto !important;
     width: auto !important;
@@ -3642,7 +2994,6 @@ body.theme-light .gs-comment-pin-close-btn:hover { background: #ef4444; border-c
     flex-wrap: nowrap !important;
     min-width: 0 !important;
   }
-
   #timelineProjectSelect {
     flex: 1 1 auto !important;
     min-width: 0 !important;
@@ -3651,7 +3002,6 @@ body.theme-light .gs-comment-pin-close-btn:hover { background: #ef4444; border-c
     font-size: 12px !important;
     padding: 2px 6px !important;
   }
-
   .gs-timeline-header-right .btn-xs,
   #btnCapturePreviewScreenshot,
   #btnTimelineCompare,
@@ -3664,35 +3014,18 @@ body.theme-light .gs-comment-pin-close-btn:hover { background: #ef4444; border-c
     flex-shrink: 0 !important;
     font-size: 11px !important;
   }
-
-  .gs-timeline-track {
-    padding: 4px 2px 2px 2px !important;
-    gap: 8px !important;
-  }
-
-  .gs-timeline-tile {
-    width: 168px !important;
-    border-radius: 8px !important;
-  }
-
+  .gs-timeline-track { padding: 4px 2px 2px 2px !important; gap: 8px !important; }
+  .gs-timeline-tile { width: 168px !important; border-radius: 8px !important; }
   .gs-tile-thumb-wrap,
-  .gs-tile-thumb {
-    height: 60px !important;
-  }
-
+  .gs-tile-thumb { height: 60px !important; }
   .gs-tile-meta {
     padding: 4px 6px !important;
     font-size: 10.5px !important;
     line-height: 1.22 !important;
     gap: 1px !important;
   }
-
   .gs-tile-action-btn,
-  .gs-timeline-tile .btn-xs {
-    min-width: 30px !important;
-    min-height: 28px !important;
-  }
-
+  .gs-timeline-tile .btn-xs { min-width: 30px !important; min-height: 28px !important; }
   #sitePreviewHudBadge,
   .gs-preview-hud-top-left {
     top: 8px !important;
@@ -3701,7 +3034,6 @@ body.theme-light .gs-comment-pin-close-btn:hover { background: #ef4444; border-c
     max-width: calc(100vw - 58px) !important;
     width: calc(100vw - 58px) !important;
   }
-
   .gs-preview-scan-pill {
     width: 100% !important;
     max-width: 100% !important;
@@ -3714,26 +3046,18 @@ body.theme-light .gs-comment-pin-close-btn:hover { background: #ef4444; border-c
     box-sizing: border-box !important;
     overflow: hidden !important;
   }
-
-  .gs-preview-scan-pill > div:last-child {
-    position: static !important;
-  }
-
+  .gs-preview-scan-pill > div:last-child { position: static !important; }
   .gs-preview-scan-pill > svg,
   #previewQualityBadge,
   #btnRenamePreviewScan span,
   #btnRerunPreviewScan span,
   #btnDeletePreviewScan span,
-  #btnPreviewQuickShare span {
-    display: none !important;
-  }
-
+  #btnPreviewQuickShare span { display: none !important; }
   .gs-preview-text-wrap {
     flex: 1 1 auto !important;
     min-width: 0 !important;
     overflow: hidden !important;
   }
-
   .gs-preview-text-wrap > div:first-child {
     display: flex !important;
     align-items: center !important;
@@ -3741,7 +3065,6 @@ body.theme-light .gs-comment-pin-close-btn:hover { background: #ef4444; border-c
     min-width: 0 !important;
     width: 100% !important;
   }
-
   #previewScanTitle {
     flex: 1 1 60px !important;
     min-width: 60px !important;
@@ -3750,7 +3073,6 @@ body.theme-light .gs-comment-pin-close-btn:hover { background: #ef4444; border-c
     white-space: nowrap !important;
     font-size: 11.5px !important;
   }
-
   #btnRenamePreviewScan,
   #btnRerunPreviewScan,
   #btnDeletePreviewScan,
@@ -3762,7 +3084,6 @@ body.theme-light .gs-comment-pin-close-btn:hover { background: #ef4444; border-c
     padding: 0 5px !important;
     flex-shrink: 0 !important;
   }
-
   /* 10.11 Multi-Date Compare View Compact Mobile HUD & Curtain Bounds */
   .gs-compare-hud {
     top: 6px !important;
@@ -3771,7 +3092,6 @@ body.theme-light .gs-comment-pin-close-btn:hover { background: #ef4444; border-c
     gap: 4px !important;
     z-index: 135 !important;
   }
-
   .gs-compare-hud .gs-epoch-badge {
     padding: 3px 6px !important;
     gap: 4px !important;
@@ -3783,14 +3103,12 @@ body.theme-light .gs-comment-pin-close-btn:hover { background: #ef4444; border-c
     border-color: rgba(148, 163, 184, 0.34) !important;
     box-shadow: 0 4px 14px rgba(0, 0, 0, 0.45) !important;
   }
-
   body.theme-light .gs-compare-hud .gs-epoch-badge,
   html[data-theme="light"] .gs-compare-hud .gs-epoch-badge {
     background: rgba(255, 255, 255, 0.96) !important;
     border-color: rgba(15, 23, 42, 0.22) !important;
     box-shadow: 0 4px 12px rgba(15, 23, 42, 0.12) !important;
   }
-
   .gs-compare-hud .gs-compare-heatmap-badge {
     flex-wrap: wrap !important;
     max-width: 100% !important;
@@ -3799,7 +3117,6 @@ body.theme-light .gs-comment-pin-close-btn:hover { background: #ef4444; border-c
     gap: 4px !important;
     padding: 3px 6px !important;
   }
-
   .gs-compare-hud .gs-scan-select {
     height: 24px !important;
     font-size: 10.5px !important;
@@ -3807,13 +3124,11 @@ body.theme-light .gs-comment-pin-close-btn:hover { background: #ef4444; border-c
     min-width: 0 !important;
     flex: 1 1 80px !important;
   }
-
   #compareModeSwitcher {
     flex-shrink: 0 !important;
     padding: 1px !important;
     gap: 1px !important;
   }
-
   #compareModeSwitcher .btn-seg,
   #btnCompareModeSlider,
   #btnCompareModeSplit {
@@ -3822,7 +3137,6 @@ body.theme-light .gs-comment-pin-close-btn:hover { background: #ef4444; border-c
     font-size: 10.5px !important;
     gap: 3px !important;
   }
-
   .gs-compare-heatmap-badge label {
     font-size: 10.5px !important;
     gap: 3px !important;
@@ -3831,30 +3145,18 @@ body.theme-light .gs-comment-pin-close-btn:hover { background: #ef4444; border-c
     text-overflow: clip !important;
     flex-shrink: 0 !important;
   }
-
   #lblCurtainPct,
-  #compareSplitPctLabel {
-    display: none !important;
-  }
-
+  #compareSplitPctLabel { display: none !important; }
   #btnCompareResetCamera {
     height: 24px !important;
     min-width: 24px !important;
     padding: 0 5px !important;
     flex-shrink: 0 !important;
   }
-
-  #btnCompareResetCamera span {
-    display: none !important;
-  }
-
+  #btnCompareResetCamera span { display: none !important; }
   .gs-curtain-divider,
   #curtainDivider,
-  #compareCurtainDivider {
-    top: 116px !important;
-    bottom: 58px !important;
-  }
-
+  #compareCurtainDivider { top: 116px !important; bottom: 58px !important; }
   .gs-compare-legend,
   #compareElevationLegend {
     z-index: 135 !important;
@@ -3862,7 +3164,6 @@ body.theme-light .gs-comment-pin-close-btn:hover { background: #ef4444; border-c
     border-color: rgba(148, 163, 184, 0.34) !important;
     box-shadow: 0 4px 14px rgba(0, 0, 0, 0.45) !important;
   }
-
   body.theme-light .gs-compare-legend,
   body.theme-light #compareElevationLegend,
   html[data-theme="light"] .gs-compare-legend,
@@ -3871,13 +3172,9 @@ body.theme-light .gs-comment-pin-close-btn:hover { background: #ef4444; border-c
     border-color: rgba(15, 23, 42, 0.22) !important;
     box-shadow: 0 4px 12px rgba(15, 23, 42, 0.12) !important;
   }
-
   /* 10.12 Modals, Tables, Recycle Bin & Multi-Line Buttons on Mobile */
   #modalQueue .gs-table th:nth-child(6),
-  #modalQueue .gs-table td:nth-child(6) {
-    display: none !important;
-  }
-
+  #modalQueue .gs-table td:nth-child(6) { display: none !important; }
   .gs-modal-window {
     width: calc(100vw - 16px) !important;
     max-width: calc(100vw - 16px) !important;
@@ -3885,15 +3182,8 @@ body.theme-light .gs-comment-pin-close-btn:hover { background: #ef4444; border-c
     overflow-y: auto !important;
     border-radius: 12px !important;
   }
-
-  .gs-modal-window .gs-modal-header {
-    padding: 12px 14px !important;
-  }
-
-  .gs-modal-window .gs-modal-body {
-    padding: 12px 14px !important;
-  }
-
+  .gs-modal-window .gs-modal-header { padding: 12px 14px !important; }
+  .gs-modal-window .gs-modal-body { padding: 12px 14px !important; }
   .gs-modal button,
   .gs-modal-window button,
   .gs-side-panel button {
@@ -3902,7 +3192,6 @@ body.theme-light .gs-comment-pin-close-btn:hover { background: #ef4444; border-c
     white-space: normal !important;
     line-height: 1.25;
   }
-
   #recycleBinModal #btnRestoreSelectedBinScans,
   #recycleBinModal #btnPurgeSelectedBinScans,
   #recycleBinModal #btnClearAllBinScans,
@@ -3915,13 +3204,11 @@ body.theme-light .gs-comment-pin-close-btn:hover { background: #ef4444; border-c
     min-height: 32px !important;
     justify-content: center !important;
   }
-
   .gs-table-scroll-wrap {
     overflow-x: auto !important;
     -webkit-overflow-scrolling: touch;
     max-width: 100% !important;
   }
-
   /* Recycle Bin Item Card Responsive Stacking */
   .gs-bin-item-row,
   .recycle-bin-item {
@@ -3929,13 +3216,8 @@ body.theme-light .gs-comment-pin-close-btn:hover { background: #ef4444; border-c
     gap: 8px !important;
     padding: 10px !important;
   }
-
   .gs-bin-item-row > label,
-  .recycle-bin-item > label {
-    flex: 1 1 100% !important;
-    min-width: 0 !important;
-  }
-
+  .recycle-bin-item > label { flex: 1 1 100% !important; min-width: 0 !important; }
   .gs-bin-item-actions,
   .recycle-bin-item-actions {
     width: 100% !important;
@@ -3943,14 +3225,12 @@ body.theme-light .gs-comment-pin-close-btn:hover { background: #ef4444; border-c
     display: flex !important;
     gap: 6px !important;
   }
-
   .gs-bin-item-actions .btn-xs {
     flex: 1 1 auto;
     justify-content: center;
     min-height: 30px !important;
   }
 }
-
 /* ============================================================================
    ADVANCED SURVEYING, COMPARE ΔZ PROBE, MULTI-EPOCH PROFILE & PHOTO FRUSTUM OVERLAY
    ============================================================================ */
@@ -3964,9 +3244,7 @@ body.theme-light .gs-comment-pin-close-btn:hover { background: #ef4444; border-c
   pointer-events: none;
   overflow: hidden;
 }
-
 .gs-photo-frustum-overlay img { width: 100%; height: 100%; object-fit: cover; }
-
 .gs-photo-frustum-badge {
   position: absolute;
   bottom: 78px;
@@ -3980,7 +3258,6 @@ body.theme-light .gs-comment-pin-close-btn:hover { background: #ef4444; border-c
   font-size: 11px;
   font-weight: 700;
 }
-
 .gs-compare-dz-readout {
   position: absolute;
   top: 74px;
@@ -3994,7 +3271,6 @@ body.theme-light .gs-comment-pin-close-btn:hover { background: #ef4444; border-c
   box-shadow: var(--ui-shadow-hud);
   backdrop-filter: blur(12px);
 }
-
 .gs-compare-profile-drawer {
   position: absolute;
   bottom: 92px !important;
@@ -4009,7 +3285,6 @@ body.theme-light .gs-comment-pin-close-btn:hover { background: #ef4444; border-c
   box-shadow: var(--ui-shadow-hud);
   backdrop-filter: blur(14px);
 }
-
 .gs-compare-profile-header {
   display: flex;
   justify-content: space-between;
@@ -4018,15 +3293,11 @@ body.theme-light .gs-comment-pin-close-btn:hover { background: #ef4444; border-c
   margin-bottom: 8px;
   flex-wrap: wrap;
 }
-
 .gs-rtk-photo-card.dragging { opacity: 0.55; border-color: var(--ui-accent) !important; }
-
 .gs-comment-drop-target.drag-over,
 .gs-comment-card.drag-over,
 #commentsInspectorDropZone.drag-over { border-color: #38bdf8 !important; background: rgba(56, 189, 248, 0.16) !important; box-shadow: 0 0 0 2px rgba(56, 189, 248, 0.35); }
-
 .gs-scan-comment-pin.drag-over .gs-comment-pin-icon { transform: scale(1.28); box-shadow: 0 0 0 4px rgba(56, 189, 248, 0.75); }
-
 /* ============================================================================
    BRIGHT THEME ([data-theme="light"]) OVERRIDES FOR ALL TOOLTIPS, AZIMUTH PILLS & FLOATING DRAW HUD
    ============================================================================ */
@@ -4034,55 +3305,40 @@ html[data-theme="light"] .gs-mobile-tool-hud,
 html[data-theme="light"] #studioMobileToolHud,
 body.theme-light .gs-mobile-tool-hud,
 body.theme-light #studioMobileToolHud { background: rgba(255, 255, 255, 0.95); border-color: rgba(15, 23, 42, 0.16); box-shadow: 0 8px 24px rgba(15, 23, 42, 0.14); color: #0f172a; }
-
 html[data-theme="light"] .gs-mob-hud-label,
 html[data-theme="light"] .gs-mobile-hud-label,
 body.theme-light .gs-mob-hud-label,
 body.theme-light .gs-mobile-hud-label { color: #0f172a; }
-
 html[data-theme="light"] .gs-mob-hud-btn,
 html[data-theme="light"] .gs-mobile-hud-btn,
 body.theme-light .gs-mob-hud-btn,
 body.theme-light .gs-mobile-hud-btn { background: rgba(241, 245, 249, 0.96); border-color: rgba(100, 116, 139, 0.35); color: #0f172a; }
-
 html[data-theme="light"] .gs-mob-hud-btn.danger,
 html[data-theme="light"] .gs-mobile-hud-btn.danger,
 body.theme-light .gs-mob-hud-btn.danger,
 body.theme-light .gs-mobile-hud-btn.danger { background: rgba(254, 226, 226, 0.95); border-color: rgba(239, 68, 68, 0.55); color: #b91c1c; }
-
 html[data-theme="light"] .autodesk-azimuth-badge,
 body.theme-light .autodesk-azimuth-badge { background: rgba(255, 251, 235, 0.96); color: #b45309; border-color: rgba(245, 158, 11, 0.75); box-shadow: 0 4px 12px rgba(15, 23, 42, 0.12); }
-
 html[data-theme="light"] .autodesk-coord-badge,
 body.theme-light .autodesk-coord-badge { background: rgba(255, 255, 255, 0.95); color: #0f172a; border-color: rgba(2, 132, 199, 0.65); box-shadow: 0 4px 14px rgba(15, 23, 42, 0.14); }
-
 html[data-theme="light"] .autodesk-coord-badge.pinned,
 body.theme-light .autodesk-coord-badge.pinned { border-color: rgba(16, 185, 129, 0.78); }
-
 html[data-theme="light"] .autodesk-coord-badge .coord-row-name,
 body.theme-light .autodesk-coord-badge .coord-row-name { color: #0284c7; border-bottom-color: rgba(15, 23, 42, 0.12); }
-
 html[data-theme="light"] .autodesk-coord-badge.pinned .coord-row-name,
 body.theme-light .autodesk-coord-badge.pinned .coord-row-name { color: #059669; }
-
 html[data-theme="light"] .laser-bubble-w,
 body.theme-light .laser-bubble-w { background: rgba(255, 241, 242, 0.96); color: #be123c; border-color: rgba(225, 29, 72, 0.65); }
-
 html[data-theme="light"] .laser-bubble-l,
 body.theme-light .laser-bubble-l { background: rgba(240, 249, 255, 0.96); color: #0369a1; border-color: rgba(2, 132, 199, 0.65); }
-
 html[data-theme="light"] .laser-bubble-slope,
 body.theme-light .laser-bubble-slope { background: rgba(255, 251, 235, 0.96); color: #b45309; border-color: rgba(217, 119, 6, 0.55); }
-
 html[data-theme="light"] .gs-photo-frustum-badge,
 body.theme-light .gs-photo-frustum-badge { background: rgba(255, 255, 255, 0.95); color: #0284c7; border-color: rgba(2, 132, 199, 0.55); box-shadow: 0 4px 12px rgba(15, 23, 42, 0.12); }
-
 html[data-theme="light"] .gs-fp-dpad-grid,
 body.theme-light .gs-fp-dpad-grid { background: rgba(255, 255, 255, 0.88); border-color: rgba(15, 23, 42, 0.16); }
-
 html[data-theme="light"] .gs-fp-touch-btn,
 body.theme-light .gs-fp-touch-btn { background: rgba(241, 245, 249, 0.92); color: #0f172a; border-color: rgba(100, 116, 139, 0.35); }
-
 /* Vertical Zoom Sidebar inside Picture Lightbox Modal (1x - 25x) */
 .gs-photo-zoom-sidebar {
   position: absolute;
@@ -4101,7 +3357,6 @@ body.theme-light .gs-fp-touch-btn { background: rgba(241, 245, 249, 0.92); color
   border: 1px solid rgba(148, 163, 184, 0.32);
   box-shadow: 0 12px 28px rgba(0, 0, 0, 0.45);
 }
-
 .gs-photo-zoom-btn,
 .gs-photo-zoom-reset {
   width: 30px;
@@ -4118,10 +3373,8 @@ body.theme-light .gs-fp-touch-btn { background: rgba(241, 245, 249, 0.92); color
   justify-content: center;
   transition: background 0.15s ease, border-color 0.15s ease;
 }
-
 .gs-photo-zoom-btn:hover,
 .gs-photo-zoom-reset:hover { background: rgba(56, 189, 248, 0.24); border-color: #38bdf8; }
-
 .gs-photo-zoom-slider-wrap {
   height: 150px;
   width: 28px;
@@ -4129,7 +3382,6 @@ body.theme-light .gs-fp-touch-btn { background: rgba(241, 245, 249, 0.92); color
   align-items: center;
   justify-content: center;
 }
-
 .gs-photo-zoom-slider {
   width: 140px;
   height: 6px;
@@ -4137,7 +3389,6 @@ body.theme-light .gs-fp-touch-btn { background: rgba(241, 245, 249, 0.92); color
   accent-color: #38bdf8;
   cursor: pointer;
 }
-
 .gs-photo-zoom-badge {
   font-family: var(--font-mono);
   font-size: 10.5px;
@@ -4147,13 +3398,11 @@ body.theme-light .gs-fp-touch-btn { background: rgba(241, 245, 249, 0.92); color
   text-align: center;
   min-width: 36px;
 }
-
 /* Bright / Light Theme Overrides for Photo Lightbox & Zoom Sidebar */
 html[data-theme="light"] .gs-lightbox-backdrop,
 html[data-theme="bright"] .gs-lightbox-backdrop,
 body.theme-light .gs-lightbox-backdrop,
 .gs-lightbox-backdrop.is-light-theme { background: rgba(241, 245, 249, 0.86) !important; backdrop-filter: blur(10px); }
-
 html[data-theme="light"] .gs-lightbox-card,
 html[data-theme="bright"] .gs-lightbox-card,
 body.theme-light .gs-lightbox-card,
@@ -4163,7 +3412,6 @@ body.theme-light .gs-lightbox-card,
   box-shadow: 0 20px 50px rgba(15, 23, 42, 0.18) !important;
   color: #0f172a !important;
 }
-
 html[data-theme="light"] .gs-lightbox-header,
 html[data-theme="bright"] .gs-lightbox-header,
 body.theme-light .gs-lightbox-header,
@@ -4172,27 +3420,22 @@ html[data-theme="light"] .gs-lightbox-filmstrip,
 html[data-theme="bright"] .gs-lightbox-filmstrip,
 body.theme-light .gs-lightbox-filmstrip,
 .gs-lightbox-backdrop.is-light-theme .gs-lightbox-filmstrip { background: #f8fafc !important; color: #0f172a !important; border-color: rgba(15, 23, 42, 0.10) !important; }
-
 html[data-theme="light"] .gs-lightbox-stage,
 html[data-theme="bright"] .gs-lightbox-stage,
 body.theme-light .gs-lightbox-stage,
 .gs-lightbox-backdrop.is-light-theme .gs-lightbox-stage { background: #f1f5f9 !important; border-color: rgba(15, 23, 42, 0.12) !important; }
-
 html[data-theme="light"] .gs-lightbox-meta,
 html[data-theme="bright"] .gs-lightbox-meta,
 body.theme-light .gs-lightbox-meta,
 .gs-lightbox-backdrop.is-light-theme .gs-lightbox-meta { color: #475569 !important; }
-
 html[data-theme="light"] .gs-lightbox-btn:not(.accent),
 html[data-theme="bright"] .gs-lightbox-btn:not(.accent),
 body.theme-light .gs-lightbox-btn:not(.accent),
 .gs-lightbox-backdrop.is-light-theme .gs-lightbox-btn:not(.accent) { background: #ffffff !important; color: #0f172a !important; border: 1px solid rgba(15, 23, 42, 0.16) !important; }
-
 html[data-theme="light"] .gs-lightbox-btn:not(.accent):hover,
 html[data-theme="bright"] .gs-lightbox-btn:not(.accent):hover,
 body.theme-light .gs-lightbox-btn:not(.accent):hover,
 .gs-lightbox-backdrop.is-light-theme .gs-lightbox-btn:not(.accent):hover { background: #e2e8f0 !important; }
-
 html[data-theme="light"] .gs-photo-zoom-sidebar,
 html[data-theme="bright"] .gs-photo-zoom-sidebar,
 body.theme-light .gs-photo-zoom-sidebar,
@@ -4201,7 +3444,6 @@ body.theme-light .gs-photo-zoom-sidebar,
   border-color: rgba(15, 23, 42, 0.14) !important;
   box-shadow: 0 10px 24px rgba(15, 23, 42, 0.14) !important;
 }
-
 html[data-theme="light"] .gs-photo-zoom-btn,
 html[data-theme="bright"] .gs-photo-zoom-btn,
 body.theme-light .gs-photo-zoom-btn,
@@ -4210,12 +3452,10 @@ html[data-theme="light"] .gs-photo-zoom-reset,
 html[data-theme="bright"] .gs-photo-zoom-reset,
 body.theme-light .gs-photo-zoom-reset,
 .gs-lightbox-backdrop.is-light-theme .gs-photo-zoom-reset { background: #ffffff !important; color: #0f172a !important; border-color: rgba(15, 23, 42, 0.16) !important; }
-
 html[data-theme="light"] .gs-photo-zoom-badge,
 html[data-theme="bright"] .gs-photo-zoom-badge,
 body.theme-light .gs-photo-zoom-badge,
 .gs-lightbox-backdrop.is-light-theme .gs-photo-zoom-badge { color: #0284c7 !important; }
-
 /* Immediate Photo Upload Placeholder Square & Rotating Ring */
 .gs-photo-upload-placeholder {
   width: 68px;
@@ -4229,7 +3469,6 @@ body.theme-light .gs-photo-zoom-badge,
   position: relative;
   flex-shrink: 0;
 }
-
 .gs-upload-spinner-ring {
   width: 20px;
   height: 20px;
@@ -4238,13 +3477,9 @@ body.theme-light .gs-photo-zoom-badge,
   border-radius: 50%;
   animation: gsSpin 0.75s linear infinite;
 }
-
 @keyframes gsSpin {
-  to {
-    transform: rotate(360deg);
-  }
+  to { transform: rotate(360deg); }
 }
-
 /* Comment Folders & Icon-Only Controls */
 .gs-comment-folder-section {
   border: 1px solid var(--ui-border);
@@ -4254,12 +3489,9 @@ body.theme-light .gs-photo-zoom-badge,
   margin-top: 8px;
   transition: border-color 0.15s ease, background 0.15s ease;
 }
-
 html[data-theme="light"] .gs-comment-folder-section,
 body.theme-light .gs-comment-folder-section { background: rgba(241, 245, 249, 0.65); }
-
 .gs-comment-folder-section.drag-over { border-color: var(--ui-accent); background: rgba(56, 189, 248, 0.10); }
-
 .gs-comment-folder-header {
   display: flex;
   align-items: center;
@@ -4267,7 +3499,6 @@ body.theme-light .gs-comment-folder-section { background: rgba(241, 245, 249, 0.
   gap: 6px;
   padding: 2px 3px;
 }
-
 .gs-comment-folder-icon-btn {
   width: 24px;
   height: 22px;
@@ -4278,13 +3509,9 @@ body.theme-light .gs-comment-folder-section { background: rgba(241, 245, 249, 0.
   border-radius: 5px;
   flex-shrink: 0;
 }
-
 .gs-comment-folder-icon-btn.is-visible-3d { color: var(--ui-accent); border-color: rgba(56, 189, 248, 0.45); }
-
 .gs-comment-folder-icon-btn.is-hidden-3d { color: var(--ui-text-muted); opacity: 0.65; }
-
 .gs-comment-folder-icon-btn.danger { color: #ef4444; border-color: rgba(239, 68, 68, 0.35); }
-
 /* ============================================================================
  * 11. Half-Screen (960x1000, 820x950), Tablet (768x1024) & Mobile (412x915) Responsive Overrides
  * ============================================================================ */
@@ -4301,7 +3528,6 @@ body.theme-light .gs-comment-folder-section { background: rgba(241, 245, 249, 0.
 #gsNorthArrowCompass svg { width: 40px !important; height: 40px !important; }
 .gs-compare-hud { flex-wrap: wrap !important; gap: 6px !important; max-width: calc(100vw - 24px) !important; box-sizing: border-box !important; }
 .gs-compare-project-badge, .gs-compare-heatmap-badge, .gs-compare-latest-badge { flex-wrap: wrap !important; max-width: 100% !important; box-sizing: border-box !important; }
-
 @media (max-width: 1360px) {
   .gs-studio-top-bar { flex-wrap: wrap !important; gap: 6px !important; align-items: flex-start !important; }
   .gs-studio-main-pill { flex-wrap: wrap !important; max-width: calc(100vw - 24px) !important; overflow: visible !important; height: auto !important; border-radius: 14px !important; padding: 6px 10px !important; row-gap: 5px !important; column-gap: 6px !important; }
@@ -4372,13 +3598,11 @@ body.theme-light .gs-comment-folder-section { background: rgba(241, 245, 249, 0.
   #modalSharing .gs-share-url-group { gap: 3px !important; flex-wrap: nowrap !important; }
   #modalSharing .gs-share-copy-btn, #modalSharing .gs-share-open-btn { padding: 2px 5px !important; font-size: 9.5px !important; }
 }
-
 .gs-lod-mode-switcher { display: inline-flex; align-items: center; padding: 1px; border-radius: 6px; flex-shrink: 0; gap: 1px; }
 .gs-lod-mode-switcher .btn-seg { padding: 2px 6px; font-size: 10.5px; line-height: 1.25; white-space: nowrap; }
 @media (max-width: 767px) {
   .gs-lod-mode-switcher .btn-seg { padding: 2px 4.5px; font-size: 9.5px; }
 }
-
 /* ============================================================================
  * 12. 6-Section Color-Coded Pipeline Progress Bar & Sub-Items UI (Queue Modal)
  * ============================================================================ */
@@ -4406,7 +3630,6 @@ body.theme-light .gs-comment-folder-section { background: rgba(241, 245, 249, 0.
 .gs-queue-mini-chip { display: inline-flex; align-items: center; gap: 3px; font-size: 9.5px; font-weight: 600; padding: 1px 5px; border-radius: 4px; background: var(--ui-bg-surface); border: 1px solid var(--ui-border); color: var(--ui-text-secondary); line-height: 1.3; white-space: nowrap; }
 .gs-queue-mini-chip.is-active { font-weight: 800; color: var(--ui-text-primary); background: var(--ui-bg-subtle); }
 .gs-queue-mini-chip.is-pending { opacity: 0.58; }
-
 /* Non-Blocking Progressive Detail Streaming Indicator Pill (Bright Theme Default) */
 .gs-detail-stream-pill {
   position: absolute;
@@ -4438,22 +3661,14 @@ html[data-theme="dark"]:not(.gs-embed-mode) .gs-detail-stream-pill {
   box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35);
 }
 html.gs-embed-mode #studioDetailStreamPill,
-body.gs-embed-mode #studioDetailStreamPill {
-  bottom: 14px;
-  right: 14px;
-}
+body.gs-embed-mode #studioDetailStreamPill { bottom: 14px; right: 14px; }
 #previewDetailStreamPill {
   bottom: 14px;
   left: 14px;
   right: auto;
 }
-.gs-detail-stream-pill.active {
-  opacity: 1;
-  transform: translateY(0);
-}
-.gs-detail-stream-pill.done {
-  border-color: rgba(16, 185, 129, 0.55);
-}
+.gs-detail-stream-pill.active { opacity: 1; transform: translateY(0); }
+.gs-detail-stream-pill.done { border-color: rgba(16, 185, 129, 0.55); }
 .gs-detail-stream-spinner {
   width: 12px;
   height: 12px;
@@ -4463,10 +3678,7 @@ body.gs-embed-mode #studioDetailStreamPill {
   animation: gsDetailSpin 0.8s linear infinite;
   flex-shrink: 0;
 }
-html[data-theme="dark"]:not(.gs-embed-mode) .gs-detail-stream-spinner {
-  border-color: rgba(56, 189, 248, 0.28);
-  border-top-color: #38bdf8;
-}
+html[data-theme="dark"]:not(.gs-embed-mode) .gs-detail-stream-spinner { border-color: rgba(56, 189, 248, 0.28); border-top-color: #38bdf8; }
 .gs-detail-stream-pill.done .gs-detail-stream-spinner {
   border-color: #10b981;
   background: #10b981;
@@ -4483,9 +3695,7 @@ html[data-theme="dark"]:not(.gs-embed-mode) .gs-detail-stream-spinner {
   overflow: hidden;
   flex-shrink: 0;
 }
-html[data-theme="dark"]:not(.gs-embed-mode) .gs-detail-stream-bar {
-  background: rgba(148, 163, 184, 0.28);
-}
+html[data-theme="dark"]:not(.gs-embed-mode) .gs-detail-stream-bar { background: rgba(148, 163, 184, 0.28); }
 .gs-detail-stream-bar-fill {
   display: block;
   height: 100%;
@@ -4494,10 +3704,7 @@ html[data-theme="dark"]:not(.gs-embed-mode) .gs-detail-stream-bar {
   border-radius: 999px;
   transition: width 0.2s ease;
 }
-.gs-detail-stream-pill.done .gs-detail-stream-bar-fill {
-  background: #10b981;
-}
-
+.gs-detail-stream-pill.done .gs-detail-stream-bar-fill { background: #10b981; }
 /* ==========================================================================
    Hostinger / External Website Minimal 3D Embed Mode (?embed=1 & ?embed=poster)
    ========================================================================== */
@@ -4522,9 +3729,7 @@ body.gs-embed-mode #studioBottomDock,
 html.gs-embed-mode #btnMobileMeasureUmbrella,
 body.gs-embed-mode #btnMobileMeasureUmbrella,
 html.gs-embed-mode #viewMap,
-body.gs-embed-mode #viewMap {
-  display: none !important;
-}
+body.gs-embed-mode #viewMap { display: none !important; }
 html.gs-embed-mode .gs-main,
 body.gs-embed-mode .gs-main {
   height: 100vh !important;
@@ -4532,10 +3737,7 @@ body.gs-embed-mode .gs-main {
   top: 0 !important;
 }
 html.gs-embed-mode #viewStudio,
-body.gs-embed-mode #viewStudio {
-  display: block !important;
-  height: 100% !important;
-}
+body.gs-embed-mode #viewStudio { display: block !important; height: 100% !important; }
 .gs-embed-floating-hud {
   position: absolute;
   top: 12px;
@@ -4559,9 +3761,7 @@ body.gs-embed-mode #viewStudio {
   box-shadow: 0 6px 20px rgba(15, 23, 42, 0.12);
 }
 html.gs-embed-mode .gs-embed-floating-hud,
-body.gs-embed-mode .gs-embed-floating-hud {
-  display: flex !important;
-}
+body.gs-embed-mode .gs-embed-floating-hud { display: flex !important; }
 .gs-embed-hud-brand {
   display: flex;
   align-items: center;
@@ -4589,10 +3789,7 @@ body.gs-embed-mode .gs-embed-floating-hud {
   min-width: 0;
   flex: 1 1 auto;
 }
-#gsEmbedScanSelect {
-  min-width: 0;
-  flex: 0 1 170px;
-}
+#gsEmbedScanSelect { min-width: 0; flex: 0 1 170px; }
 .gs-embed-hud-actions {
   display: flex;
   align-items: center;
@@ -4615,14 +3812,8 @@ body.gs-embed-mode .gs-embed-floating-hud {
   color: #334155;
   white-space: nowrap;
 }
-.gs-embed-floating-hud .segmented-pill {
-  background: #f1f5f9;
-  border: 1px solid rgba(15, 23, 42, 0.12);
-}
-.gs-embed-floating-hud .segmented-pill .btn-seg {
-  color: #475569;
-  font-weight: 600;
-}
+.gs-embed-floating-hud .segmented-pill { background: #f1f5f9; border: 1px solid rgba(15, 23, 42, 0.12); }
+.gs-embed-floating-hud .segmented-pill .btn-seg { color: #475569; font-weight: 600; }
 .gs-embed-floating-hud .segmented-pill .btn-seg.active {
   background: #0284c7;
   color: #ffffff;
@@ -4667,10 +3858,7 @@ body.gs-embed-mode .gs-embed-floating-hud {
   filter: brightness(0.92) saturate(1.05);
   transition: transform 0.35s ease, filter 0.35s ease;
 }
-.gs-embed-poster-overlay:hover .gs-embed-poster-img {
-  transform: scale(1.02);
-  filter: brightness(0.98) saturate(1.08);
-}
+.gs-embed-poster-overlay:hover .gs-embed-poster-img { transform: scale(1.02); filter: brightness(0.98) saturate(1.08); }
 .gs-embed-poster-scrim {
   position: relative;
   z-index: 2;
@@ -4751,24 +3939,15 @@ body.gs-embed-mode .gs-scan-loader-card {
 html[data-theme="light"] .gs-scan-loader-void,
 body.theme-light .gs-scan-loader-void,
 html.gs-embed-mode .gs-scan-loader-void,
-body.gs-embed-mode .gs-scan-loader-void {
-  fill: rgba(241, 245, 249, 0.85);
-  stroke: #e2e8f0;
-}
+body.gs-embed-mode .gs-scan-loader-void { fill: rgba(241, 245, 249, 0.85); stroke: #e2e8f0; }
 html[data-theme="light"] .gs-scan-loader-pct,
 body.theme-light .gs-scan-loader-pct,
 html.gs-embed-mode .gs-scan-loader-pct,
-body.gs-embed-mode .gs-scan-loader-pct {
-  color: #0f172a;
-  text-shadow: none;
-}
+body.gs-embed-mode .gs-scan-loader-pct { color: #0f172a; text-shadow: none; }
 html[data-theme="light"] .gs-scan-loader-label,
 body.theme-light .gs-scan-loader-label,
 html.gs-embed-mode .gs-scan-loader-label,
-body.gs-embed-mode .gs-scan-loader-label {
-  color: #0369a1;
-}
-
+body.gs-embed-mode .gs-scan-loader-label { color: #0369a1; }
 /* ============================================================
    3D Model Library & Folders Overlay (Non-Map / Local Models)
    ============================================================ */
@@ -4814,10 +3993,7 @@ body.gs-embed-mode .gs-scan-loader-label {
   white-space: nowrap;
   transition: all 0.16s ease;
 }
-.gs-lib-folder-pill:hover {
-  border-color: rgba(56, 189, 248, 0.5);
-  color: var(--ui-text-primary);
-}
+.gs-lib-folder-pill:hover { border-color: rgba(56, 189, 248, 0.5); color: var(--ui-text-primary); }
 .gs-lib-folder-pill.active {
   background: rgba(56, 189, 248, 0.18);
   border-color: #38bdf8;
@@ -4860,10 +4036,7 @@ body.gs-embed-mode .gs-scan-loader-label {
   border-color: rgba(56, 189, 248, 0.55);
   box-shadow: 0 8px 22px rgba(2, 6, 23, 0.45);
 }
-.gs-lib-card.active {
-  border-color: #38bdf8;
-  box-shadow: 0 0 0 1px #38bdf8, 0 8px 24px rgba(56, 189, 248, 0.22);
-}
+.gs-lib-card.active { border-color: #38bdf8; box-shadow: 0 0 0 1px #38bdf8, 0 8px 24px rgba(56, 189, 248, 0.22); }
 .gs-lib-card-thumb-wrap {
   position: relative;
   height: 126px;
@@ -4939,18 +4112,11 @@ body.gs-embed-mode .gs-scan-loader-label {
   margin-top: 4px;
 }
 html[data-theme="light"] .gs-model-library-overlay,
-body.theme-light .gs-model-library-overlay {
-  background: linear-gradient(160deg, rgba(248, 250, 252, 0.97) 0%, rgba(241, 245, 249, 0.99) 100%);
-}
+body.theme-light .gs-model-library-overlay { background: linear-gradient(160deg, rgba(248, 250, 252, 0.97) 0%, rgba(241, 245, 249, 0.99) 100%); }
 html[data-theme="light"] .gs-lib-card,
-body.theme-light .gs-lib-card {
-  background: rgba(255, 255, 255, 0.92);
-  border-color: rgba(148, 163, 184, 0.35);
-}
+body.theme-light .gs-lib-card { background: rgba(255, 255, 255, 0.92); border-color: rgba(148, 163, 184, 0.35); }
 html[data-theme="light"] .gs-lib-folder-pill,
-body.theme-light .gs-lib-folder-pill {
-  background: rgba(255, 255, 255, 0.85);
-}
+body.theme-light .gs-lib-folder-pill { background: rgba(255, 255, 255, 0.85); }
 .gs-share-banner { gap: 10px; white-space: nowrap; }
 .gs-share-banner strong { white-space: nowrap; flex-shrink: 0; }
 body.gs-single-scan-share #mainModeSwitcher { display: none !important; }
@@ -4960,4 +4126,755 @@ body.gs-single-scan-share #mainModeSwitcher { display: none !important; }
 @media (max-width: 768px) {
   .gs-share-banner,
   #externalShareBanner { display: none !important; }
+}
+
+/* ============================================================================
+   12. Gatheren Cloud Unified OAuth Login Gate (Matching files.gatheren.cloud)
+   ============================================================================ */
+body.gs-auth-locked .gs-topbar,
+body.gs-auth-locked .gs-share-banner,
+body.gs-auth-locked .gs-main {
+  display: none !important;
+  visibility: hidden !important;
+  pointer-events: none !important;
+  user-select: none !important;
+}
+#userProfileGateModal.oauth-login-gate {
+  padding: 20px;
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  background: rgba(11, 16, 27, 0.78);
+}
+html[data-theme="light"] #userProfileGateModal.oauth-login-gate,
+body.theme-light #userProfileGateModal.oauth-login-gate {
+  background: rgba(241, 245, 249, 0.82);
+}
+body.gs-auth-locked #userProfileGateModal.oauth-login-gate {
+  display: flex !important;
+  background:
+    radial-gradient(circle at 20% 20%, rgba(56, 189, 248, 0.14), transparent 45%),
+    radial-gradient(circle at 80% 80%, rgba(99, 102, 241, 0.14), transparent 45%),
+    #0b101b;
+}
+html[data-theme="light"] body.gs-auth-locked #userProfileGateModal.oauth-login-gate,
+body.theme-light.gs-auth-locked #userProfileGateModal.oauth-login-gate {
+  background:
+    radial-gradient(circle at 20% 20%, rgba(2, 132, 199, 0.12), transparent 46%),
+    radial-gradient(circle at 80% 80%, rgba(99, 102, 241, 0.10), transparent 46%),
+    #f1f5f9;
+}
+#userProfileGateModal .oauth-login-card {
+  position: relative;
+  max-width: 446px;
+  width: 100%;
+  max-height: calc(100dvh - 32px);
+  overflow-y: auto;
+  background: #0f172a;
+  border: 1px solid rgba(148, 163, 184, 0.26);
+  border-radius: 16px;
+  padding: 28px 26px 22px;
+  box-shadow: 0 14px 34px rgba(0, 0, 0, 0.52);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 13px;
+  animation: gsOauthCardEnter 0.22s cubic-bezier(0.16, 1, 0.3, 1);
+}
+html[data-theme="light"] #userProfileGateModal .oauth-login-card,
+body.theme-light #userProfileGateModal .oauth-login-card {
+  background: #ffffff;
+  border-color: rgba(15, 23, 42, 0.18);
+  box-shadow: 0 12px 30px rgba(15, 23, 42, 0.14);
+}
+@keyframes gsOauthCardEnter {
+  from { opacity: 0; transform: translateY(8px) scale(0.985); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+.oauth-top-controls {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  z-index: 2;
+}
+.oauth-util-btn {
+  height: 27px !important;
+  min-height: 27px !important;
+  padding: 0 9px !important;
+  border-radius: 999px !important;
+  font-size: 11px !important;
+  font-weight: 700 !important;
+  background: rgba(148, 163, 184, 0.12) !important;
+  border: 1px solid rgba(148, 163, 184, 0.28) !important;
+  color: var(--ui-text-secondary) !important;
+}
+.oauth-util-btn:hover { color: var(--ui-text-primary) !important; border-color: var(--ui-accent) !important; }
+.oauth-brand-row {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-top: 6px;
+}
+.oauth-logo { height: 42px; width: auto; object-fit: contain; display: block; }
+.oauth-brand-row .brand-logo-light { display: none; }
+html[data-theme="light"] .oauth-brand-row .brand-logo-dark,
+body.theme-light .oauth-brand-row .brand-logo-dark { display: none; }
+html[data-theme="light"] .oauth-brand-row .brand-logo-light,
+body.theme-light .oauth-brand-row .brand-logo-light { display: block; }
+.oauth-domain-pill {
+  font-size: 11px;
+  font-weight: 600;
+  color: #38bdf8;
+  background: rgba(56, 189, 248, 0.14);
+  border: 1px solid rgba(56, 189, 248, 0.28);
+  padding: 2px 9px;
+  border-radius: 999px;
+  letter-spacing: 0.02em;
+}
+html[data-theme="light"] .oauth-domain-pill,
+body.theme-light .oauth-domain-pill {
+  color: #0284c7;
+  background: rgba(2, 132, 199, 0.11);
+  border-color: rgba(2, 132, 199, 0.26);
+}
+.oauth-title {
+  margin: 2px 0 0;
+  font-size: 19px;
+  font-weight: 700;
+  color: var(--ui-text-primary);
+  letter-spacing: 0.01em;
+}
+.oauth-subtitle {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--ui-text-secondary);
+  max-width: 390px;
+}
+.oauth-security-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  padding: 6px 12px;
+  border-radius: 999px;
+  background: rgba(16, 185, 129, 0.15);
+  color: #10b981;
+  border: 1px solid rgba(16, 185, 129, 0.30);
+  font-size: 11.5px;
+  font-weight: 600;
+  max-width: 100%;
+}
+html[data-theme="light"] .oauth-security-badge,
+body.theme-light .oauth-security-badge {
+  background: rgba(5, 150, 105, 0.12);
+  color: #059669;
+  border-color: rgba(5, 150, 105, 0.28);
+}
+.oauth-google-mount {
+  min-height: 46px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 9px;
+  width: 100%;
+  margin-top: 2px;
+}
+.oauth-google-signin-wrap {
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+}
+.oauth-account-chooser-btn {
+  appearance: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  height: 34px;
+  padding: 0 14px;
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: 600;
+  background: rgba(148, 163, 184, 0.10);
+  border: 1px solid rgba(148, 163, 184, 0.30);
+  color: var(--ui-text-primary);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+.oauth-account-chooser-btn:hover {
+  border-color: var(--ui-accent);
+  background: var(--ui-accent-soft);
+}
+.oauth-remember-row {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--ui-text-secondary);
+  cursor: pointer;
+  user-select: none;
+}
+.oauth-remember-row input[type="checkbox"] {
+  width: 15px;
+  height: 15px;
+  accent-color: #38bdf8;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+.oauth-error-banner {
+  width: 100%;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: rgba(244, 63, 94, 0.15);
+  border: 1px solid rgba(244, 63, 94, 0.40);
+  color: #fb7185;
+  font-size: 12px;
+  line-height: 1.45;
+  text-align: left;
+}
+html[data-theme="light"] .oauth-error-banner,
+body.theme-light .oauth-error-banner {
+  background: rgba(225, 29, 72, 0.11);
+  color: #e11d48;
+}
+.oauth-error-banner.hidden { display: none !important; }
+.oauth-status-message {
+  font-size: 11.5px;
+  color: var(--ui-text-muted);
+  line-height: 1.45;
+}
+.oauth-local-origin-warning {
+  width: 100%;
+  padding: 8px 11px;
+  background: rgba(245, 158, 11, 0.12);
+  border: 1px solid rgba(245, 158, 11, 0.42);
+  border-radius: 8px;
+  font-size: 11px;
+  color: #f59e0b;
+  text-align: left;
+  line-height: 1.45;
+}
+.oauth-local-origin-warning a { color: var(--ui-accent); font-weight: 700; text-decoration: underline; }
+.oauth-origin-notice {
+  width: 100%;
+  padding: 6px 10px;
+  background: rgba(148, 163, 184, 0.06);
+  border: 1px dashed rgba(148, 163, 184, 0.24);
+  border-radius: 8px;
+  font-size: 10.5px;
+  color: var(--ui-text-muted);
+  text-align: left;
+}
+.oauth-origin-notice.is-production-origin { display: none; }
+.oauth-origin-notice-inner { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
+.oauth-origin-notice code {
+  background: rgba(148, 163, 184, 0.14);
+  padding: 1px 6px;
+  border-radius: 4px;
+  color: var(--ui-text-primary);
+  font-weight: 600;
+  user-select: all;
+}
+.oauth-roster-section {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-top: 10px;
+  border-top: 1px solid rgba(148, 163, 184, 0.18);
+  text-align: left;
+}
+.oauth-roster-header { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
+.oauth-roster-title { font-size: 11px; font-weight: 700; color: var(--ui-text-secondary); letter-spacing: 0.04em; }
+.oauth-roster-search { height: 26px !important; font-size: 11.5px !important; width: 165px !important; padding: 0 8px !important; }
+.oauth-roster-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(185px, 1fr));
+  gap: 7px;
+  max-height: 185px;
+  overflow-y: auto;
+  padding: 2px;
+}
+.oauth-card-footer {
+  width: 100%;
+  margin-top: 2px;
+  padding-top: 12px;
+  border-top: 1px solid rgba(148, 163, 184, 0.18);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.oauth-active-status {
+  font-size: 11.5px;
+  color: var(--ui-text-secondary);
+  font-weight: 500;
+  text-align: left;
+  flex: 1 1 160px;
+}
+.oauth-footer-actions { display: inline-flex; align-items: center; gap: 7px; flex-wrap: wrap; margin-left: auto; }
+.oauth-footer-btn { height: 32px !important; min-height: 32px !important; padding: 0 13px !important; border-radius: 8px !important; font-size: 12px !important; font-weight: 600 !important; }
+.oauth-guest-btn {
+  background: rgba(56, 189, 248, 0.10) !important;
+  border-color: rgba(56, 189, 248, 0.34) !important;
+  color: var(--ui-accent) !important;
+}
+.oauth-guest-btn:hover { background: rgba(56, 189, 248, 0.20) !important; }
+@media (max-width: 520px) {
+  #userProfileGateModal.oauth-login-gate { padding: 12px; }
+  #userProfileGateModal .oauth-login-card { padding: 24px 16px 18px; border-radius: 14px; gap: 11px; max-height: calc(100dvh - 24px); }
+  .oauth-logo { height: 36px; }
+  .oauth-title { font-size: 17px; }
+  .oauth-subtitle { font-size: 12.2px; }
+  .oauth-security-badge { font-size: 10.8px; padding: 5px 10px; }
+  .oauth-card-footer { flex-direction: column; align-items: stretch; text-align: center; gap: 8px; }
+  .oauth-active-status { text-align: center; flex: none; }
+  .oauth-footer-actions { width: 100%; justify-content: center; margin-left: 0; }
+  .oauth-footer-btn { flex: 1 1 auto; justify-content: center; }
+  .oauth-roster-search { width: 100% !important; }
+}
+
+/* ============================================================================
+   13. Zero-Scroll Studio Toolbar (#bimBottomDock), Top Bar & Popover Sheets
+   ============================================================================ */
+#viewStudio nav#bimBottomDock.bim-bottom-dock {
+  overflow-x: hidden !important;
+  overflow-y: visible !important;
+  max-width: calc(100vw - 12px) !important;
+  box-sizing: border-box !important;
+  scrollbar-width: none !important;
+}
+#viewStudio nav#bimBottomDock.bim-bottom-dock::-webkit-scrollbar { display: none !important; }
+
+/* Default on Wide Desktop (>= 1361px when not space-constrained): show full dock, hide compact slots */
+#viewStudio nav#bimBottomDock.bim-bottom-dock:not(.gs-dock-force-compact) .gs-dock-compact-only,
+#viewStudio nav#bimBottomDock.bim-bottom-dock:not(.gs-dock-force-compact) .gs-dock-compact-trigger {
+  display: none !important;
+}
+
+/* Compact Active Dot & Staged Count Badge on Category Triggers */
+.gs-dock-active-dot {
+  display: none;
+  position: absolute;
+  top: -3px;
+  right: -5px;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #38bdf8;
+  box-shadow: 0 0 0 1.5px var(--ui-bg-surface);
+}
+.gs-dock-compact-trigger.has-active-subtool .gs-dock-active-dot { display: block; }
+.gs-dock-compact-trigger.popover-open {
+  border-color: rgba(56, 189, 248, 0.55) !important;
+  background: var(--ui-accent-soft) !important;
+}
+.gs-dock-compact-badge {
+  position: absolute;
+  top: -5px;
+  right: -8px;
+  min-width: 15px;
+  height: 15px;
+  padding: 0 4px;
+  border-radius: 999px;
+  background: #f59e0b;
+  color: #0f172a;
+  font-size: 9.5px;
+  font-weight: 800;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+}
+
+/* Space-Constrained Desktop (when #studioSidePanel leaves <1010px) & Tablet/Small Laptop (768px – 1360px) */
+#viewStudio nav#bimBottomDock.bim-bottom-dock.gs-dock-force-compact {
+  width: max-content !important;
+  max-width: calc(100vw - 16px) !important;
+  gap: 4px !important;
+  padding: 5px 8px !important;
+}
+#viewStudio nav#bimBottomDock.bim-bottom-dock.gs-dock-force-compact > *:not(#btnDockOrbitNav):not(#btnDockCatMeasure):not(#btnMeasureClear):not(#btnDockVolume):not(#btnDockCatCivil):not(#btnDockCategorize):not(#btnDockCatLayers):not(#btnDockMoreTools) {
+  display: none !important;
+}
+#viewStudio nav#bimBottomDock.bim-bottom-dock.gs-dock-force-compact > .gs-dock-compact-only,
+#viewStudio nav#bimBottomDock.bim-bottom-dock.gs-dock-force-compact > .gs-dock-compact-trigger {
+  display: inline-flex !important;
+}
+@media (min-width: 768px) and (max-width: 1360px) {
+  #viewStudio nav#bimBottomDock.bim-bottom-dock {
+    width: max-content !important;
+    max-width: calc(100vw - 16px) !important;
+    gap: 3px !important;
+    padding: 5px 8px !important;
+    left: 50% !important;
+    transform: translateX(-50%) !important;
+  }
+  #viewStudio nav#bimBottomDock.bim-bottom-dock > *:not(#btnDockOrbitNav):not(#btnDockCatMeasure):not(#btnMeasureClear):not(#btnDockVolume):not(#btnDockCatCivil):not(#btnDockCategorize):not(#btnDockCatLayers):not(#btnDockMoreTools) {
+    display: none !important;
+  }
+  #viewStudio nav#bimBottomDock.bim-bottom-dock > .gs-dock-compact-only,
+  #viewStudio nav#bimBottomDock.bim-bottom-dock > .gs-dock-compact-trigger {
+    display: inline-flex !important;
+  }
+  #viewStudio nav#bimBottomDock.bim-bottom-dock .bim-dock-btn {
+    min-width: 52px !important;
+    min-height: 44px !important;
+    padding: 4px 7px !important;
+  }
+}
+
+/* Mobile Zero-Scroll Fitted Primary Dock (<= 767px — Fits 100% inside 320px–430px with >=44px Touch Targets) */
+@media (max-width: 767px) {
+  #viewStudio nav#bimBottomDock.bim-bottom-dock {
+    position: fixed !important;
+    left: 6px !important;
+    right: 6px !important;
+    bottom: max(6px, env(safe-area-inset-bottom, 0px)) !important;
+    transform: none !important;
+    width: auto !important;
+    max-width: calc(100vw - 12px) !important;
+    height: auto !important;
+    min-height: 48px !important;
+    padding: 3px 4px !important;
+    gap: 3px !important;
+    border-radius: 14px !important;
+    justify-content: space-between !important;
+    overflow-x: hidden !important;
+  }
+  #viewStudio nav#bimBottomDock.bim-bottom-dock > *:not(#btnDockOrbitNav):not(#btnDockCatMeasure):not(#btnDockCatCivil):not(#btnDockCatLayers):not(#btnDockMoreTools) {
+    display: none !important;
+  }
+  #viewStudio nav#bimBottomDock.bim-bottom-dock > #btnDockOrbitNav,
+  #viewStudio nav#bimBottomDock.bim-bottom-dock > .gs-dock-compact-trigger {
+    display: flex !important;
+    flex: 1 1 0 !important;
+    min-width: 0 !important;
+    min-height: 44px !important;
+    height: 44px !important;
+    padding: 3px 2px !important;
+    border-radius: 10px !important;
+    gap: 2px !important;
+  }
+  #viewStudio nav#bimBottomDock.bim-bottom-dock .bim-dock-label {
+    display: block !important;
+    font-size: 10px !important;
+    line-height: 1.1 !important;
+    max-width: 100% !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+    white-space: nowrap !important;
+  }
+  /* Hide legacy redundant umbrella floating button since Edit tools live cleanly inside Tools popover (keep DOM element intact) */
+  #viewStudio #btnMobileEditingUmbrella { display: none !important; }
+  /* Guarantee #studioEditingDock never horizontally scrolls if programmatically uncollapsed on mobile */
+  #viewStudio aside#studioEditingDock:not(.gs-edit-dock-collapsed) {
+    left: 6px !important;
+    right: 6px !important;
+    bottom: calc(58px + env(safe-area-inset-bottom, 0px)) !important;
+    transform: none !important;
+    width: auto !important;
+    max-width: calc(100vw - 12px) !important;
+    overflow-x: hidden !important;
+    justify-content: space-between !important;
+    gap: 2px !important;
+    padding: 3px 4px !important;
+  }
+  #viewStudio aside#studioEditingDock:not(.gs-edit-dock-collapsed) .bim-dock-btn,
+  #viewStudio aside#studioEditingDock:not(.gs-edit-dock-collapsed) .gs-edit-dock-badge {
+    flex: 1 1 0 !important;
+    min-width: 0 !important;
+    padding: 3px 2px !important;
+  }
+}
+
+/* Studio Top Bar Zero-Scroll Responsive Layout */
+.gs-studio-top-more-btn { display: none; align-items: center; gap: 4px; flex-shrink: 0; }
+.gs-studio-top-bar {
+  overflow-x: hidden !important;
+  max-width: 100% !important;
+  box-sizing: border-box !important;
+}
+.gs-studio-main-pill {
+  overflow-x: hidden !important;
+  max-width: 100% !important;
+  box-sizing: border-box !important;
+  flex-wrap: wrap !important;
+}
+.gs-studio-main-pill.gs-top-pill-compact > .gs-studio-top-more-btn { display: inline-flex !important; }
+.gs-studio-main-pill.gs-top-pill-compact > #btnRenameStudioSite,
+.gs-studio-main-pill.gs-top-pill-compact > #btnRenameStudioScan,
+.gs-studio-main-pill.gs-top-pill-compact > #btnMoveStudioScan,
+.gs-studio-main-pill.gs-top-pill-compact > #btnRerunStudioScan,
+.gs-studio-main-pill.gs-top-pill-compact > #btnDeleteStudioScan,
+.gs-studio-main-pill.gs-top-pill-compact > .gs-brightness-control,
+.gs-studio-main-pill.gs-top-pill-compact > #studioGoogleMapControl,
+.gs-studio-main-pill.gs-top-pill-compact > #btnStudioSetHomeView,
+.gs-studio-main-pill.gs-top-pill-compact > #btnStudioToggleCategorizeLabels,
+.gs-studio-main-pill.gs-top-pill-compact > #btnStudioSavedViews {
+  display: none !important;
+}
+@media (max-width: 1480px) {
+  .gs-studio-top-more-btn { display: inline-flex !important; }
+  .gs-studio-main-pill > #btnRenameStudioSite,
+  .gs-studio-main-pill > #btnRenameStudioScan,
+  .gs-studio-main-pill > #btnMoveStudioScan,
+  .gs-studio-main-pill > #btnRerunStudioScan,
+  .gs-studio-main-pill > #btnDeleteStudioScan,
+  .gs-studio-main-pill > .gs-brightness-control,
+  .gs-studio-main-pill > #studioGoogleMapControl,
+  .gs-studio-main-pill > #btnStudioSetHomeView,
+  .gs-studio-main-pill > #btnStudioToggleCategorizeLabels,
+  .gs-studio-main-pill > #btnStudioSavedViews {
+    display: none !important;
+  }
+}
+@media (max-width: 860px) {
+  .gs-studio-main-pill > #btnStudioAutoRotate,
+  .gs-studio-main-pill > #btnStudioQuickShare,
+  .gs-studio-main-pill > #btnStudioDownloadObj,
+  .gs-studio-main-pill > #btnStudioSurveyReport,
+  .gs-studio-main-pill > #studioRenderModeSwitcher {
+    display: none !important;
+  }
+  .gs-studio-coord-pill { display: none !important; }
+}
+@media (max-width: 767px) {
+  .gs-studio-top-bar { left: 6px !important; right: 6px !important; top: 6px !important; }
+  .gs-studio-main-pill {
+    width: 100% !important;
+    display: flex !important;
+    flex-wrap: wrap !important;
+    align-items: center !important;
+    gap: 4px !important;
+    padding: 5px 6px !important;
+  }
+  .gs-studio-main-pill > #btnStudioBackToTimeline { padding: 0 7px !important; height: 30px !important; }
+  .gs-studio-main-pill > #studioProjectSelect { flex: 1 1 92px !important; min-width: 0 !important; max-width: 42vw !important; height: 30px !important; font-size: 11.5px !important; }
+  .gs-studio-main-pill > #studioScanSelect { flex: 1.3 1 110px !important; min-width: 0 !important; max-width: 52vw !important; height: 30px !important; font-size: 11.5px !important; }
+  .gs-studio-main-pill > #studioLodModeSwitcher { flex-shrink: 0 !important; }
+  .gs-studio-main-pill > #studioLodModeSwitcher .btn-seg { padding: 3px 6px !important; font-size: 10.5px !important; }
+  .gs-studio-main-pill > #btnStudioResetCamera,
+  .gs-studio-main-pill > #btnStudioTopMore { height: 30px !important; min-height: 30px !important; padding: 0 8px !important; }
+}
+
+/* Compact Studio Popover Sheets (#studioCompactToolsPopover & #studioTopMorePopover) */
+.gs-studio-compact-popover,
+.gs-studio-top-more-popover {
+  position: fixed;
+  z-index: 260;
+  width: min(380px, calc(100vw - 16px));
+  max-height: min(64dvh, 450px);
+  display: flex;
+  flex-direction: column;
+  background: rgba(15, 23, 42, 0.96);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+  border: 1px solid rgba(148, 163, 184, 0.28);
+  border-radius: 16px;
+  box-shadow: 0 16px 40px rgba(2, 6, 23, 0.62);
+  overflow: hidden;
+  color: #f1f5f9;
+}
+html[data-theme="light"] .gs-studio-compact-popover,
+body.theme-light .gs-studio-compact-popover,
+html[data-theme="light"] .gs-studio-top-more-popover,
+body.theme-light .gs-studio-top-more-popover {
+  background: rgba(255, 255, 255, 0.97);
+  border-color: rgba(15, 23, 42, 0.16);
+  box-shadow: 0 14px 36px rgba(15, 23, 42, 0.18);
+  color: #0f172a;
+}
+.gs-studio-compact-popover[hidden],
+.gs-studio-top-more-popover[hidden] { display: none !important; }
+.gs-studio-top-more-popover { right: 8px; top: 56px; }
+@media (max-width: 640px) {
+  .gs-studio-compact-popover,
+  .gs-studio-top-more-popover {
+    width: auto !important;
+    left: 8px !important;
+    right: 8px !important;
+    transform: none !important;
+  }
+}
+.gs-compact-popover-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 10px;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.18);
+  flex-shrink: 0;
+}
+.gs-top-more-title { font-size: 12.5px; font-weight: 700; padding-left: 4px; }
+.gs-compact-popover-tabs { display: flex; align-items: center; gap: 4px; flex: 1; min-width: 0; }
+.gs-compact-tab-btn {
+  appearance: none;
+  flex: 1 1 0;
+  min-width: 0;
+  height: 30px;
+  padding: 0 6px;
+  border-radius: 8px;
+  border: 1px solid transparent;
+  background: rgba(148, 163, 184, 0.10);
+  color: var(--ui-text-secondary);
+  font-size: 11.5px;
+  font-weight: 700;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.gs-compact-tab-btn.active {
+  background: var(--ui-accent-soft);
+  border-color: rgba(56, 189, 248, 0.45);
+  color: var(--ui-accent);
+}
+.gs-compact-close-btn {
+  appearance: none;
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
+  border: 1px solid rgba(148, 163, 184, 0.22);
+  background: transparent;
+  color: var(--ui-text-secondary);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+.gs-compact-popover-body {
+  padding: 10px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.gs-compact-sec-title {
+  font-size: 10.5px;
+  font-weight: 700;
+  color: var(--ui-text-muted);
+  letter-spacing: 0.04em;
+  padding: 2px 2px 0;
+}
+.gs-compact-tool-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+}
+@media (max-width: 350px) {
+  .gs-compact-tool-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+.gs-compact-tool-tile {
+  appearance: none;
+  position: relative;
+  min-height: 52px;
+  padding: 7px 6px;
+  border-radius: 11px;
+  border: 1px solid rgba(148, 163, 184, 0.20);
+  background: rgba(30, 41, 59, 0.62);
+  color: var(--ui-text-primary);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  cursor: pointer;
+  text-align: center;
+  transition: all 0.14s ease;
+}
+html[data-theme="light"] .gs-compact-tool-tile,
+body.theme-light .gs-compact-tool-tile {
+  background: rgba(241, 245, 249, 0.85);
+  border-color: rgba(15, 23, 42, 0.12);
+}
+.gs-compact-tool-tile:hover { border-color: var(--ui-accent); }
+.gs-compact-tool-tile.active {
+  background: var(--ui-accent-soft);
+  border-color: var(--ui-accent);
+  color: var(--ui-accent);
+  box-shadow: inset 0 0 0 1px rgba(56, 189, 248, 0.25);
+}
+.gs-compact-tool-tile.is-danger { color: #f87171; border-color: rgba(239, 68, 68, 0.30); }
+.gs-compact-tool-tile.is-disabled { opacity: 0.42; }
+.gs-compact-tile-icon { position: relative; display: inline-flex; align-items: center; justify-content: center; }
+.gs-compact-tile-label {
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.2;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.gs-compact-toggle-pill {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  font-size: 8.5px;
+  font-weight: 800;
+  padding: 1px 4px;
+  border-radius: 999px;
+  background: rgba(148, 163, 184, 0.22);
+}
+.gs-compact-tool-tile.active .gs-compact-toggle-pill { background: var(--ui-accent); color: #ffffff; }
+.gs-compact-saved-dot {
+  position: absolute;
+  top: -2px;
+  right: -5px;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #10b981;
+}
+.gs-compact-staged-pill {
+  position: absolute;
+  top: -4px;
+  right: -8px;
+  min-width: 14px;
+  height: 14px;
+  padding: 0 3px;
+  border-radius: 999px;
+  background: #f59e0b;
+  color: #0f172a;
+  font-size: 9px;
+  font-weight: 800;
+}
+.gs-top-more-slider-row {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  background: rgba(148, 163, 184, 0.08);
+  border: 1px solid rgba(148, 163, 184, 0.16);
+}
+.gs-top-more-slider-head { display: flex; align-items: center; justify-content: space-between; font-size: 11.5px; font-weight: 600; }
+.gs-top-more-val { font-family: var(--mono); font-size: 11px; color: var(--ui-accent); }
+.gs-top-more-slider-ctrl { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+
+/* Tablet Top Navbar & Mobile Modal Viewport Clamping Polish */
+@media (max-width: 1040px) {
+  .gs-topbar .portfolio-switcher { display: none !important; }
+  .gs-topbar { gap: 6px; padding: 0 10px; overflow-x: hidden; }
+  .gs-topbar-actions { gap: 4px; }
+}
+@media (max-width: 767px) {
+  .gs-modal-backdrop:not(.oauth-login-gate) .gs-modal,
+  .gs-modal-backdrop .gs-modal-window {
+    max-width: calc(100vw - 16px) !important;
+    max-height: calc(100dvh - 20px) !important;
+  }
+  #viewStudio .gs-side-panel,
+  #viewStudio #studioSidePanel {
+    bottom: calc(60px + env(safe-area-inset-bottom, 0px)) !important;
+  }
 }

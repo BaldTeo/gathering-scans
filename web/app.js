@@ -1677,19 +1677,33 @@
       if (btnLogout) btnLogout.style.display = "none";
       if (gateStatus) {
         gateStatus.textContent = tr(
-          "需要身分授權 — 請使用 Google 登入或以訪客模式進入",
-          "Authorization required — Sign in with Google or use Guest Mode"
+          "尚未登入 · 可使用唯讀訪客模式瀏覽",
+          "Not signed in · Read-Only Guest Mode available"
         );
       }
+      const errBanner = document.getElementById("oauthErrorBanner");
+      if (errBanner) {
+        errBanner.classList.add("hidden");
+        errBanner.textContent = "";
+      }
       applyRolePermissionsToUI();
+      if (typeof window.syncCompactStudioDockUI === "function") window.syncCompactStudioDockUI();
       return;
     }
 
     if (markAuthorized) {
       STATE.isAuthorized = true;
       try {
+        const rememberChk = document.getElementById("chkOauthRememberMe");
+        const persist30d = !rememberChk || Boolean(rememberChk.checked);
+        localStorage.setItem("gs_oauth_remember_30d", persist30d ? "1" : "0");
         localStorage.setItem("gs_auth_verified_v1", "1");
       } catch (e) {}
+    }
+    const errBannerOk = document.getElementById("oauthErrorBanner");
+    if (errBannerOk) {
+      errBannerOk.classList.add("hidden");
+      errBannerOk.textContent = "";
     }
     if (STATE.isAuthorized || STATE.shareToken) {
       document.body?.classList.remove("gs-auth-locked");
@@ -1838,6 +1852,7 @@
       btnLogout.style.display = STATE.isAuthorized ? "inline-flex" : "none";
     }
     applyRolePermissionsToUI();
+    if (typeof window.syncCompactStudioDockUI === "function") window.syncCompactStudioDockUI();
   }
 
   async function loadTeamUserProfiles() {
@@ -1982,6 +1997,10 @@
     if (originEl) {
       originEl.textContent = curOrigin;
     }
+    const originNotice = document.getElementById("googleAuthOriginNotice");
+    if (originNotice) {
+      originNotice.classList.toggle("is-production-origin", REGISTERED_GOOGLE_OAUTH_ORIGINS.has(curOrigin));
+    }
 
     const warnBox = document.getElementById("localOriginOAuthWarning");
     const warnLbl = document.getElementById("unregisteredOriginLabel");
@@ -1997,6 +2016,10 @@
     const btnContainer = document.getElementById("googleSignInButtonContainer");
     if (window.google && window.google.accounts && window.google.accounts.id && btnContainer) {
       try {
+        const desiredGisTheme =
+          (document.documentElement.getAttribute("data-theme") || STATE.resolvedTheme) === "dark"
+            ? "filled_black"
+            : "outline";
         window.google.accounts.id.initialize({
           client_id: GOOGLE_OAUTH_CLIENT_ID,
           callback: window.handleGoogleSignIn,
@@ -2005,16 +2028,17 @@
           itp_support: true,
           use_fedcm_for_prompt: false,
         });
-        if (!btnContainer.querySelector("iframe")) {
+        if (!btnContainer.querySelector("iframe") || btnContainer.dataset.gisRenderedTheme !== desiredGisTheme) {
           btnContainer.innerHTML = "";
+          btnContainer.dataset.gisRenderedTheme = desiredGisTheme;
           window.google.accounts.id.renderButton(btnContainer, {
             type: "standard",
-            theme: STATE.resolvedTheme === "dark" ? "filled_black" : "outline",
+            theme: desiredGisTheme,
             size: "large",
             text: "continue_with",
             shape: "rectangular",
             logo_alignment: "left",
-            width: 260,
+            width: Math.min(280, Math.max(220, (window.innerWidth || 360) - 96)),
           });
         }
       } catch (e) {
@@ -2027,14 +2051,22 @@
 
   async function completeGoogleProfileSignIn(profileData, rawCredential = "") {
     const msgEl = document.getElementById("googleAuthMessage");
+    const errBanner = document.getElementById("oauthErrorBanner");
+    if (errBanner) {
+      errBanner.classList.add("hidden");
+      errBanner.textContent = "";
+    }
     if (msgEl) {
       msgEl.style.color = "var(--ui-accent)";
-      msgEl.textContent = "Verifying Google account & role permissions...";
+      msgEl.textContent = tr("正在驗證 Google 帳號與權限...", "Verifying Google account & role permissions...");
     }
     try {
+      const rememberChk = document.getElementById("chkOauthRememberMe");
+      const rememberMe = !rememberChk || Boolean(rememberChk.checked);
       const res = await apiPost("/api/auth/google", {
         credential: rawCredential,
         profile: profileData,
+        remember_me: rememberMe,
       });
       const verifiedUser = res.user || profileData;
       if (Array.isArray(res.profiles)) {
@@ -2046,7 +2078,7 @@
       renderTeamProfilesGrid();
       if (msgEl) {
         msgEl.style.color = "var(--ui-accent)";
-        msgEl.innerHTML = `Verified Google Account: <b>${escapeHtml(verifiedUser.name)}</b> (${escapeHtml(verifiedUser.email)})`;
+        msgEl.innerHTML = `${escapeHtml(tr("已通過驗證：", "Verified Google Account:"))} <b>${escapeHtml(verifiedUser.name)}</b> (${escapeHtml(verifiedUser.email)})`;
       }
       showToast(`Signed in with Google OAuth as ${verifiedUser.name} (${verifiedUser.email})`);
       setTimeout(() => {
@@ -2061,6 +2093,10 @@
       }, 550);
     } catch (err) {
       const errMsg = err?.message || "Unable to verify Google Sign-In token";
+      if (errBanner) {
+        errBanner.textContent = tr(`Google 登入驗證失敗：${errMsg}`, `Google Sign-In verification failed: ${errMsg}`);
+        errBanner.classList.remove("hidden");
+      }
       if (msgEl) {
         msgEl.style.color = "#ef4444";
         msgEl.textContent = `Google Sign-In verification failed: ${errMsg}`;
@@ -2138,6 +2174,12 @@
   }
 
   async function openUserProfileGateModal() {
+    try {
+      const rememberChk = document.getElementById("chkOauthRememberMe");
+      if (rememberChk) {
+        rememberChk.checked = localStorage.getItem("gs_oauth_remember_30d") !== "0";
+      }
+    } catch (_) {}
     openModal("userProfileGateModal");
     await loadTeamUserProfiles();
     applyUserProfileToUI(STATE.currentUser, false);
@@ -2580,6 +2622,9 @@
     if (STATE.activeView === "studio" && typeof window.syncSidePanelMinimizedState === "function") {
       window.syncSidePanelMinimizedState();
     }
+    if (typeof window.syncCompactStudioDockUI === "function") {
+      window.syncCompactStudioDockUI();
+    }
   }
 
   window.addEventListener("resize", handleResize);
@@ -2977,6 +3022,7 @@
       if (typeof syncFirstPersonHudUI === "function") syncFirstPersonHudUI();
       if (typeof syncStudioMobileToolHud === "function") syncStudioMobileToolHud();
       if (typeof syncMultiAlignToolAvailability === "function") syncMultiAlignToolAvailability();
+      if (typeof window.syncCompactStudioDockUI === "function") window.syncCompactStudioDockUI();
       if (typeof window.syncSidePanelMinimizedState === "function") {
         window.syncSidePanelMinimizedState();
       }
@@ -3079,6 +3125,614 @@
   }
   window.syncEmbedHudUI = syncEmbedHudUI;
 
+  // ============================================================================
+  // ZERO-SCROLL COMPACT STUDIO TOOLBAR & TOP BAR POPOVER CONTROLLER
+  // ============================================================================
+  const COMPACT_DOCK_GROUPS = {
+    measure: {
+      zh: "空間量測",
+      en: "Measure",
+      triggerId: "btnDockCatMeasure",
+      items: [
+        { id: "btnMeasureDistance", tool: "distance" },
+        { id: "btnMeasureAngle", tool: "angle" },
+        { id: "btnMeasureArea", tool: "area" },
+        { id: "btnMeasureCoordinates", tool: "coordinates" },
+        { id: "btnMeasureLaser", tool: "laser" },
+        { id: "btnMeasureSnap", tool: "snap", isToggle: true },
+        { id: "btnMeasureClear", tool: "", isAction: true },
+      ],
+    },
+    civil: {
+      zh: "土木測量與品管",
+      en: "Civil & QA",
+      triggerId: "btnDockCatCivil",
+      items: [
+        { id: "btnDockVolume", tool: "volume" },
+        { id: "btnMeasureProfile", tool: "profile" },
+        { id: "btnDockContours", tool: "contours" },
+        { id: "btnDockStakeout", tool: "stakeout" },
+        { id: "btnDockStationing", tool: "stationing" },
+        { id: "btnDockGcpQa", tool: "gcp_qa" },
+        { id: "btnDockFlatness", tool: "flatness" },
+        { id: "btnDockDrainage", tool: "drainage" },
+        { id: "btnDockTrench", tool: "trench" },
+      ],
+    },
+    layers: {
+      zh: "圖層與空間檢視",
+      en: "Layers & Overlays",
+      triggerId: "btnDockCatLayers",
+      items: [
+        { id: "btnDockCategorize", tool: "categorize" },
+        { id: "btnDockUtilities", tool: "utilities" },
+        { id: "btnMeasurePhotos", tool: "photos" },
+        { id: "btnDockSection", tool: "section" },
+        { id: "btnDockComments", tool: "comments" },
+        { id: "btnDockBookmarks", tool: "bookmarks" },
+      ],
+    },
+    more: {
+      zh: "漫遊與 3D 模型編輯",
+      en: "Walk & 3D Editing",
+      triggerId: "btnDockMoreTools",
+      items: [
+        { id: "btnToggleFirstPerson", tool: "first_person" },
+        { id: "btnDockLassoDelete", tool: "crop_delete" },
+        { id: "btnDockLassoKeep", tool: "crop" },
+        { id: "btnDockFlatten", tool: "flatten_zone" },
+        { id: "btnDockAlignMerge", tool: "align_merge" },
+        { id: "btnDockOptimizer", tool: "optimizer" },
+        { id: "btnDockCrs", tool: "crs" },
+        { id: "btnDockGenerateScan", tool: "generate_scan" },
+      ],
+    },
+  };
+
+  let _activeCompactCategory = null;
+  let _studioTopMoreOpen = false;
+
+  function _isElementPermitted(el) {
+    if (!el) return false;
+    return el.style.display !== "none";
+  }
+
+  function closeCompactStudioPopovers() {
+    const popEl = document.getElementById("studioCompactToolsPopover");
+    if (popEl && !popEl.hidden) {
+      popEl.hidden = true;
+      popEl.classList.remove("open");
+    }
+    _activeCompactCategory = null;
+    document.querySelectorAll("#bimBottomDock .gs-dock-compact-trigger").forEach((b) => {
+      b.classList.remove("popover-open");
+      b.setAttribute("aria-expanded", "false");
+    });
+    const topPop = document.getElementById("studioTopMorePopover");
+    if (topPop && !topPop.hidden) {
+      topPop.hidden = true;
+      topPop.classList.remove("open");
+    }
+    _studioTopMoreOpen = false;
+    const topMoreBtn = document.getElementById("btnStudioTopMore");
+    if (topMoreBtn) {
+      topMoreBtn.classList.remove("active");
+      topMoreBtn.setAttribute("aria-expanded", "false");
+    }
+  }
+  window.closeCompactStudioPopovers = closeCompactStudioPopovers;
+
+  function _checkAndApplyDesktopDockOverflowFit() {
+    const dock = document.getElementById("bimBottomDock");
+    if (!dock || STATE.activeView !== "studio") return;
+    const vw = window.innerWidth || 1280;
+    if (vw <= 1360) {
+      dock.classList.remove("gs-dock-force-compact");
+      return;
+    }
+    const sidePanel = document.getElementById("studioSidePanel");
+    const panelOpen =
+      sidePanel &&
+      !sidePanel.classList.contains("hidden") &&
+      !sidePanel.classList.contains("gs-panel-minimized") &&
+      window.getComputedStyle(sidePanel).display !== "none";
+    const panelW = panelOpen ? Math.max(340, sidePanel.offsetWidth || 380) + 28 : 24;
+    const editDock = document.getElementById("studioEditingDock");
+    const editExpanded =
+      editDock &&
+      editDock.style.display !== "none" &&
+      !editDock.classList.contains("gs-edit-dock-collapsed");
+    const editW = editExpanded ? 74 : 44;
+    const availableW = vw - panelW - editW;
+    // Full 19-slot desktop dock requires ~980px; compact cleanly whenever space is tighter
+    dock.classList.toggle("gs-dock-force-compact", availableW < 1010);
+    const topPill = document.querySelector(".gs-studio-main-pill");
+    if (topPill) {
+      topPill.classList.toggle("gs-top-pill-compact", availableW < 1180);
+    }
+  }
+
+  function syncCompactStudioDockUI() {
+    const dock = document.getElementById("bimBottomDock");
+    if (!dock) return;
+    _checkAndApplyDesktopDockOverflowFit();
+
+    const activeTool = String(STATE.activeTool || "orbit");
+    const fpActive = Boolean(STATE.fpMode?.active);
+    const orbitBtn = document.getElementById("btnDockOrbitNav");
+    if (orbitBtn) {
+      orbitBtn.classList.toggle("active", !fpActive && activeTool === "orbit");
+    }
+
+    const stagedBadgeSrc = document.getElementById("lblStagedEditsBadge");
+    const compactStagedBadge = document.getElementById("lblCompactDockStagedBadge");
+    if (stagedBadgeSrc && compactStagedBadge) {
+      const vis = stagedBadgeSrc.style.display !== "none" && stagedBadgeSrc.textContent.trim() !== "0";
+      compactStagedBadge.style.display = vis ? "inline-flex" : "none";
+      compactStagedBadge.textContent = stagedBadgeSrc.textContent || "0";
+    }
+
+    Object.entries(COMPACT_DOCK_GROUPS).forEach(([catKey, group]) => {
+      const triggerBtn = document.getElementById(group.triggerId);
+      if (!triggerBtn) return;
+      const baseTitle = tr(group.zh.slice(0, 2), group.en.split(" ")[0]);
+      let activeItemLabel = "";
+      let hasActiveSubtool = false;
+      group.items.forEach((item) => {
+        if (item.isToggle || item.isAction) return;
+        const isMatch = item.tool === "first_person" ? fpActive : (!fpActive && activeTool === item.tool);
+        if (isMatch) {
+          hasActiveSubtool = true;
+          const realBtn = document.getElementById(item.id);
+          const lblSpan = realBtn?.querySelector(".bim-dock-label");
+          if (lblSpan) activeItemLabel = (lblSpan.textContent || "").trim();
+        }
+      });
+      triggerBtn.classList.toggle("active", hasActiveSubtool);
+      triggerBtn.classList.toggle("has-active-subtool", hasActiveSubtool);
+      const titleSpan = triggerBtn.querySelector(".gs-dock-cat-title");
+      if (titleSpan) {
+        if (catKey === "all" || catKey === "more") {
+          titleSpan.textContent = hasActiveSubtool && activeItemLabel ? activeItemLabel : tr("工具", "Tools");
+        } else {
+          titleSpan.textContent = hasActiveSubtool && activeItemLabel ? activeItemLabel : baseTitle;
+        }
+      }
+    });
+
+    if (_activeCompactCategory) {
+      renderCompactStudioPopover(_activeCompactCategory);
+    }
+    if (_studioTopMoreOpen) {
+      renderStudioTopMorePopover();
+    }
+  }
+  window.syncCompactStudioDockUI = syncCompactStudioDockUI;
+
+  function _buildCompactToolTile(item) {
+    const realBtn = document.getElementById(item.id);
+    if (!realBtn || !_isElementPermitted(realBtn)) return null;
+    // Skip #studioEditingDock buttons if the entire editing dock is hidden for Viewer/Guest
+    const editDock = realBtn.closest("#studioEditingDock");
+    if (editDock && !_isElementPermitted(editDock)) return null;
+
+    const tile = document.createElement("button");
+    tile.type = "button";
+    tile.className = "gs-compact-tool-tile";
+    const activeTool = String(STATE.activeTool || "orbit");
+    const fpActive = Boolean(STATE.fpMode?.active);
+    const isActive = item.isToggle
+      ? Boolean(STATE.snapEnabled)
+      : item.tool === "first_person"
+      ? fpActive
+      : !item.isAction && !fpActive && activeTool === item.tool;
+    if (isActive) tile.classList.add("active");
+    if (item.isAction) tile.classList.add("is-action");
+    if (realBtn.classList.contains("multi-align-disabled")) {
+      tile.classList.add("is-disabled");
+    }
+
+    const svgEl = realBtn.querySelector("svg");
+    const svgHtml = svgEl ? svgEl.outerHTML : "";
+    const lblText = (realBtn.querySelector(".bim-dock-label")?.textContent || realBtn.textContent || "").trim();
+    const savedDot = item.id === "btnDockCategorize" && document.getElementById("lblCategorizeSavedDot")?.style.display !== "none";
+    const stagedCnt =
+      item.id === "btnDockGenerateScan" && document.getElementById("lblStagedEditsBadge")?.style.display !== "none"
+        ? document.getElementById("lblStagedEditsBadge")?.textContent || ""
+        : "";
+
+    tile.innerHTML = `
+      <span class="gs-compact-tile-icon">
+        ${svgHtml}
+        ${savedDot ? '<span class="gs-compact-saved-dot"></span>' : ""}
+        ${stagedCnt ? `<span class="gs-compact-staged-pill">${escapeHtml(stagedCnt)}</span>` : ""}
+      </span>
+      <span class="gs-compact-tile-label">${escapeHtml(lblText)}</span>
+      ${item.isToggle ? `<span class="gs-compact-toggle-pill">${STATE.snapEnabled ? "ON" : "OFF"}</span>` : ""}
+    `;
+    tile.title = realBtn.title || lblText;
+    tile.addEventListener("click", (ev) => {
+      ev.preventDefault();
+      ev.stopPropagation();
+      realBtn.click();
+      if (item.isToggle) {
+        renderCompactStudioPopover(_activeCompactCategory || "measure");
+        syncCompactStudioDockUI();
+      } else {
+        closeCompactStudioPopovers();
+        syncCompactStudioDockUI();
+      }
+    });
+    return tile;
+  }
+
+  function renderCompactStudioPopover(catKey) {
+    const popEl = document.getElementById("studioCompactToolsPopover");
+    if (!popEl) return;
+    popEl.innerHTML = "";
+
+    const header = document.createElement("div");
+    header.className = "gs-compact-popover-header";
+    const tabsWrap = document.createElement("div");
+    tabsWrap.className = "gs-compact-popover-tabs";
+    const tabDefs = [
+      { key: "measure", zh: "量測", en: "Measure" },
+      { key: "civil", zh: "土木", en: "Civil" },
+      { key: "layers", zh: "圖層", en: "Layers" },
+      { key: "all", zh: "全部", en: "All" },
+    ];
+    tabDefs.forEach((tb) => {
+      const tBtn = document.createElement("button");
+      tBtn.type = "button";
+      tBtn.className = `gs-compact-tab-btn${catKey === tb.key ? " active" : ""}`;
+      tBtn.textContent = tr(tb.zh, tb.en);
+      tBtn.addEventListener("click", (ev) => {
+        ev.preventDefault();
+        ev.stopPropagation();
+        openCompactStudioPopover(tb.key, document.getElementById(tb.key === "all" ? "btnDockMoreTools" : COMPACT_DOCK_GROUPS[tb.key]?.triggerId));
+      });
+      tabsWrap.appendChild(tBtn);
+    });
+    const closeBtn = document.createElement("button");
+    closeBtn.type = "button";
+    closeBtn.className = "gs-compact-close-btn";
+    closeBtn.setAttribute("aria-label", tr("關閉工具選單", "Close tools menu"));
+    closeBtn.innerHTML = '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>';
+    closeBtn.addEventListener("click", (ev) => {
+      ev.preventDefault();
+      ev.stopPropagation();
+      closeCompactStudioPopovers();
+    });
+    header.appendChild(tabsWrap);
+    header.appendChild(closeBtn);
+    popEl.appendChild(header);
+
+    const body = document.createElement("div");
+    body.className = "gs-compact-popover-body";
+    const sections =
+      catKey === "all"
+        ? ["more", "measure", "civil", "layers"]
+        : COMPACT_DOCK_GROUPS[catKey]
+        ? [catKey]
+        : ["more"];
+
+    sections.forEach((secKey) => {
+      const grp = COMPACT_DOCK_GROUPS[secKey];
+      if (!grp) return;
+      const tiles = grp.items.map(_buildCompactToolTile).filter(Boolean);
+      if (!tiles.length) return;
+      if (sections.length > 1) {
+        const secTitle = document.createElement("div");
+        secTitle.className = "gs-compact-sec-title";
+        secTitle.textContent = tr(grp.zh, grp.en);
+        body.appendChild(secTitle);
+      }
+      const grid = document.createElement("div");
+      grid.className = "gs-compact-tool-grid";
+      tiles.forEach((t) => grid.appendChild(t));
+      body.appendChild(grid);
+    });
+    popEl.appendChild(body);
+  }
+
+  function openCompactStudioPopover(catKey, anchorBtn) {
+    const popEl = document.getElementById("studioCompactToolsPopover");
+    const dock = document.getElementById("bimBottomDock");
+    if (!popEl || !dock) return;
+
+    const topPop = document.getElementById("studioTopMorePopover");
+    if (topPop && !topPop.hidden) {
+      topPop.hidden = true;
+      topPop.classList.remove("open");
+      _studioTopMoreOpen = false;
+      document.getElementById("btnStudioTopMore")?.classList.remove("active");
+      document.getElementById("btnStudioTopMore")?.setAttribute("aria-expanded", "false");
+    }
+
+    _activeCompactCategory = catKey;
+    renderCompactStudioPopover(catKey);
+    popEl.hidden = false;
+    popEl.classList.add("open");
+
+    document.querySelectorAll("#bimBottomDock .gs-dock-compact-trigger").forEach((b) => {
+      const match = b.getAttribute("data-compact-cat") === catKey;
+      b.classList.toggle("popover-open", match);
+      b.setAttribute("aria-expanded", match ? "true" : "false");
+    });
+
+    const dockRect = dock.getBoundingClientRect();
+    const bottomOffset = Math.max(58, Math.round(window.innerHeight - dockRect.top + 8));
+    popEl.style.bottom = `${bottomOffset}px`;
+    if ((window.innerWidth || 360) <= 640) {
+      popEl.style.left = "8px";
+      popEl.style.right = "8px";
+      popEl.style.transform = "none";
+    } else {
+      const btnRect = (anchorBtn || dock).getBoundingClientRect();
+      const popW = Math.min(380, (window.innerWidth || 768) - 16);
+      const halfW = Math.ceil(popW * 0.5) + 8;
+      const cx = Math.max(halfW, Math.min((window.innerWidth || 768) - halfW, btnRect.left + btnRect.width * 0.5));
+      popEl.style.right = "auto";
+      popEl.style.left = `${Math.round(cx)}px`;
+      popEl.style.transform = "translateX(-50%)";
+    }
+  }
+
+  function renderStudioTopMorePopover() {
+    const popEl = document.getElementById("studioTopMorePopover");
+    if (!popEl) return;
+    popEl.innerHTML = "";
+
+    const head = document.createElement("div");
+    head.className = "gs-compact-popover-header";
+    head.innerHTML = `<span class="gs-top-more-title">${escapeHtml(tr("檢視設定與掃描操作", "View Controls & Scan Actions"))}</span>`;
+    const cBtn = document.createElement("button");
+    cBtn.type = "button";
+    cBtn.className = "gs-compact-close-btn";
+    cBtn.innerHTML = '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>';
+    cBtn.addEventListener("click", (ev) => {
+      ev.preventDefault();
+      ev.stopPropagation();
+      closeCompactStudioPopovers();
+    });
+    head.appendChild(cBtn);
+    popEl.appendChild(head);
+
+    const body = document.createElement("div");
+    body.className = "gs-compact-popover-body";
+
+    // 1. Brightness Slider Proxy
+    const realBright = document.getElementById("studioBrightnessSlider");
+    const realBrightLbl = document.getElementById("lblStudioBrightness");
+    if (realBright) {
+      const bRow = document.createElement("div");
+      bRow.className = "gs-top-more-slider-row";
+      bRow.innerHTML = `
+        <div class="gs-top-more-slider-head">
+          <span>${escapeHtml(tr("模型亮度", "Scan Brightness"))}</span>
+          <span class="gs-top-more-val" id="lblCompactTopBrightness">${escapeHtml(realBrightLbl?.textContent || `${Number(realBright.value || 1).toFixed(1)}x`)}</span>
+        </div>
+        <div class="gs-top-more-slider-ctrl">
+          <input type="range" min="0.1" max="4.0" step="0.05" value="${escapeHtml(realBright.value || "1.0")}" class="gs-brightness-slider" style="flex:1;width:auto;" />
+          <button type="button" class="btn-xs">${escapeHtml(tr("重設", "1.0x"))}</button>
+        </div>
+      `;
+      const rng = bRow.querySelector("input[type='range']");
+      const valOut = bRow.querySelector("#lblCompactTopBrightness");
+      rng?.addEventListener("input", () => {
+        realBright.value = rng.value;
+        realBright.dispatchEvent(new Event("input", { bubbles: true }));
+        if (valOut) valOut.textContent = realBrightLbl?.textContent || `${Number(rng.value).toFixed(1)}x`;
+      });
+      bRow.querySelector("button")?.addEventListener("click", () => {
+        document.getElementById("btnResetBrightness")?.click();
+        if (rng) rng.value = realBright.value || "1.0";
+        if (valOut) valOut.textContent = realBrightLbl?.textContent || "1.0x";
+      });
+      body.appendChild(bRow);
+    }
+
+    // 2. 3D Google Map Layer Toggle + Type + Opacity
+    const gmapToggle = document.getElementById("btnStudioToggleGoogleMap");
+    const gmapSlider = document.getElementById("studioGoogleMapOpacitySlider");
+    const gmapOpacityLbl = document.getElementById("lblStudioGoogleMapOpacity");
+    if (gmapToggle) {
+      const gRow = document.createElement("div");
+      gRow.className = "gs-top-more-slider-row";
+      const isGmapOn = gmapToggle.classList.contains("active");
+      const curLyrsBtn = document.querySelector("#studioGoogleMapTypeSwitcher .btn-seg.active");
+      const curLyrs = curLyrsBtn?.getAttribute("data-gmap-lyrs") || "y";
+      gRow.innerHTML = `
+        <div class="gs-top-more-slider-head">
+          <span>${escapeHtml(tr("3D Google 周邊底圖", "3D Google Surroundings"))}</span>
+          <span class="gs-top-more-val" id="lblCompactGmapVal">${escapeHtml(gmapOpacityLbl?.textContent || "50%")}</span>
+        </div>
+        <div class="gs-top-more-slider-ctrl">
+          <button type="button" class="btn-xs ${isGmapOn ? "primary active" : ""}" data-act="toggle-gmap">${escapeHtml(isGmapOn ? tr("開啟", "ON") : tr("關閉", "OFF"))}</button>
+          <button type="button" class="btn-xs ${curLyrs === "y" ? "active" : ""}" data-act="gmap-sat">${escapeHtml(tr("衛星", "Sat"))}</button>
+          <button type="button" class="btn-xs ${curLyrs === "m" ? "active" : ""}" data-act="gmap-road">${escapeHtml(tr("街道", "Map"))}</button>
+          <input type="range" min="0.05" max="1.0" step="0.05" value="${escapeHtml(gmapSlider?.value || "0.5")}" class="gs-brightness-slider" style="flex:1;min-width:64px;width:auto;" />
+        </div>
+      `;
+      gRow.querySelector("[data-act='toggle-gmap']")?.addEventListener("click", () => {
+        gmapToggle.click();
+        renderStudioTopMorePopover();
+      });
+      gRow.querySelector("[data-act='gmap-sat']")?.addEventListener("click", () => {
+        document.querySelector("#studioGoogleMapTypeSwitcher [data-gmap-lyrs='y']")?.click();
+        renderStudioTopMorePopover();
+      });
+      gRow.querySelector("[data-act='gmap-road']")?.addEventListener("click", () => {
+        document.querySelector("#studioGoogleMapTypeSwitcher [data-gmap-lyrs='m']")?.click();
+        renderStudioTopMorePopover();
+      });
+      const gRng = gRow.querySelector("input[type='range']");
+      const gVal = gRow.querySelector("#lblCompactGmapVal");
+      gRng?.addEventListener("input", () => {
+        if (!gmapSlider) return;
+        gmapSlider.value = gRng.value;
+        gmapSlider.dispatchEvent(new Event("input", { bubbles: true }));
+        if (gVal) gVal.textContent = gmapOpacityLbl?.textContent || `${Math.round(Number(gRng.value) * 100)}%`;
+      });
+      body.appendChild(gRow);
+    }
+
+    // 3. Action Buttons Grid (View, Export & Scan Management)
+    const actionDefs = [
+      { id: "btnStudioAutoRotate", zh: "自動旋轉", en: "Auto Spin", keepOpen: true },
+      { id: "btnStudioToggleCategorizeLabels", zh: "2D 標籤", en: "2D Labels", keepOpen: true },
+      { id: "btnStudioSavedViews", zh: "視角書籤", en: "Saved Views" },
+      { id: "btnStudioSurveyReport", zh: "測量報告", en: "Survey Report" },
+      { id: "btnStudioQuickShare", zh: "快速分享", en: "Quick Share" },
+      { id: "btnStudioDownloadObj", zh: "下載模型", en: "Download 3D" },
+      { id: "btnSetPrimaryStudioScan", zh: "設為主掃描", en: "Set Primary" },
+      { id: "btnStudioSetHomeView", zh: "設為首頁", en: "Set Home" },
+      { id: "btnStudioToggle3dgsMode", zh: "3DGS 實景", en: "3DGS Splat", keepOpen: true },
+      { id: "btnRenameStudioSite", zh: "工區改名", en: "Rename Site" },
+      { id: "btnRenameStudioScan", zh: "掃描改名", en: "Rename Scan" },
+      { id: "btnMoveStudioScan", zh: "移動掃描", en: "Move Scan" },
+      { id: "btnRerunStudioScan", zh: "重新建模", en: "Re-run Scan" },
+      { id: "btnDeleteStudioScan", zh: "移至回收桶", en: "Recycle Bin", danger: true },
+    ];
+    const grid = document.createElement("div");
+    grid.className = "gs-compact-tool-grid";
+    actionDefs.forEach((act) => {
+      const realEl = document.getElementById(act.id);
+      if (!realEl || !_isElementPermitted(realEl)) return;
+      if (act.id === "btnStudioToggle3dgsMode") {
+        const sw = document.getElementById("studioRenderModeSwitcher");
+        if (sw && sw.style.display === "none") return;
+      }
+      const btn = document.createElement("button");
+      btn.type = "button";
+      const isAct = realEl.classList.contains("active") || realEl.getAttribute("aria-pressed") === "true";
+      btn.className = `gs-compact-tool-tile${isAct ? " active" : ""}${act.danger ? " is-danger" : ""}`;
+      const svgHtml = realEl.querySelector("svg")?.outerHTML || "";
+      btn.innerHTML = `
+        <span class="gs-compact-tile-icon">${svgHtml}</span>
+        <span class="gs-compact-tile-label">${escapeHtml(tr(act.zh, act.en))}</span>
+      `;
+      btn.addEventListener("click", (ev) => {
+        ev.preventDefault();
+        ev.stopPropagation();
+        if (act.id === "btnStudioQuickShare" || act.id === "btnStudioDownloadObj") {
+          closeCompactStudioPopovers();
+          // Dispatch click anchored cleanly to #btnStudioTopMore when original button is collapsed on mobile
+          const topMoreBtn = document.getElementById("btnStudioTopMore");
+          if (act.id === "btnStudioDownloadObj" && typeof openDownloadFormatMenu === "function" && topMoreBtn && window.getComputedStyle(realEl).display === "none") {
+            const activeScan = STATE.activeScan || (STATE.scans || []).find((s) => s.scan_id === STATE.activeScanId);
+            if (activeScan) {
+              openDownloadFormatMenu(topMoreBtn, activeScan, false);
+              return;
+            }
+          }
+          realEl.click();
+          return;
+        }
+        realEl.click();
+        if (act.keepOpen) {
+          renderStudioTopMorePopover();
+        } else {
+          closeCompactStudioPopovers();
+        }
+      });
+      grid.appendChild(btn);
+    });
+    body.appendChild(grid);
+    popEl.appendChild(body);
+  }
+
+  function initCompactStudioToolbarAndPopovers() {
+    if (window.__gsCompactStudioToolbarInited) return;
+    window.__gsCompactStudioToolbarInited = true;
+
+    // Hook setActiveStudioTool & applyRolePermissionsToUI so dock badges stay 100% synced
+    if (typeof setActiveStudioTool === "function" && !setActiveStudioTool.__gsWrappedCompact) {
+      const origSetTool = setActiveStudioTool;
+      setActiveStudioTool = function (...args) {
+        const res = origSetTool.apply(this, args);
+        syncCompactStudioDockUI();
+        return res;
+      };
+      setActiveStudioTool.__gsWrappedCompact = true;
+      window.setActiveStudioTool = setActiveStudioTool;
+    }
+
+    document.querySelectorAll("#bimBottomDock .gs-dock-compact-trigger").forEach((triggerBtn) => {
+      triggerBtn.addEventListener("click", (ev) => {
+        ev.preventDefault();
+        ev.stopPropagation();
+        const catKey = triggerBtn.getAttribute("data-compact-cat") || "all";
+        if (_activeCompactCategory === catKey && !document.getElementById("studioCompactToolsPopover")?.hidden) {
+          closeCompactStudioPopovers();
+        } else {
+          openCompactStudioPopover(catKey, triggerBtn);
+        }
+      });
+    });
+
+    const topMoreBtn = document.getElementById("btnStudioTopMore");
+    topMoreBtn?.addEventListener("click", (ev) => {
+      ev.preventDefault();
+      ev.stopPropagation();
+      const topPop = document.getElementById("studioTopMorePopover");
+      if (!topPop) return;
+      if (_studioTopMoreOpen && !topPop.hidden) {
+        closeCompactStudioPopovers();
+        return;
+      }
+      closeCompactStudioPopovers();
+      _studioTopMoreOpen = true;
+      renderStudioTopMorePopover();
+      topPop.hidden = false;
+      topPop.classList.add("open");
+      topMoreBtn.classList.add("active");
+      topMoreBtn.setAttribute("aria-expanded", "true");
+      const topBarRect = document.querySelector(".gs-studio-main-pill")?.getBoundingClientRect() || topMoreBtn.getBoundingClientRect();
+      topPop.style.top = `${Math.max(48, Math.round(topBarRect.bottom + 6))}px`;
+    });
+
+    document.addEventListener("pointerdown", (ev) => {
+      if (!_activeCompactCategory && !_studioTopMoreOpen) return;
+      const t = ev.target;
+      if (!t || typeof t.closest !== "function") return;
+      if (
+        t.closest("#studioCompactToolsPopover") ||
+        t.closest("#studioTopMorePopover") ||
+        t.closest(".gs-dock-compact-trigger") ||
+        t.closest("#btnStudioTopMore")
+      ) {
+        return;
+      }
+      closeCompactStudioPopovers();
+    });
+
+    document.addEventListener("keydown", (ev) => {
+      if (ev.key === "Escape" && (_activeCompactCategory || _studioTopMoreOpen)) {
+        closeCompactStudioPopovers();
+      }
+    });
+
+    // Re-sync Google Sign-In button theme automatically whenever data-theme changes
+    if (typeof MutationObserver === "function") {
+      const themeObs = new MutationObserver(() => {
+        const gateEl = document.getElementById("userProfileGateModal");
+        if (gateEl && (gateEl.classList.contains("active") || document.body.classList.contains("gs-auth-locked"))) {
+          initGoogleIdentityServicesButton(10);
+        }
+      });
+      themeObs.observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
+
+      const sidePanel = document.getElementById("studioSidePanel");
+      if (sidePanel) {
+        const panelObs = new MutationObserver(() => syncCompactStudioDockUI());
+        panelObs.observe(sidePanel, { attributes: true, attributeFilter: ["class", "style"] });
+      }
+    }
+
+    syncCompactStudioDockUI();
+  }
+
   function initEmbedHudControls() {
     document.getElementById("btnEmbedAutoRotate")?.addEventListener("click", () => {
       if (typeof toggleAutoRotate === "function") toggleAutoRotate(false, "embed");
@@ -3141,6 +3795,9 @@
       window.applyStaticDomTranslations(document);
     }
     initEmbedHudControls();
+    if (typeof initCompactStudioToolbarAndPopovers === "function") {
+      initCompactStudioToolbarAndPopovers();
+    }
     await applyTheme(STATE.themePreference, false);
     applyUserProfileToUI(STATE.currentUser, false);
     if (!STATE.isAuthorized && !STATE.shareToken && !STATE.isEmbedded) {
@@ -3312,6 +3969,8 @@
 
   window.__GS_API = {
     STATE,
+    applyUserProfileToUI,
+    syncCompactStudioDockUI,
     getContexts: () => ({ previewThree, studioThree, compareCtx }),
     switchView,
     openSiteTimeline,

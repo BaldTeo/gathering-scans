@@ -4214,11 +4214,21 @@
         if (!STATE.snapEnabled && typeof updateStudioSnapIndicator === "function") {
           updateStudioSnapIndicator(null, false);
         }
+        if (typeof window.syncCompactStudioDockUI === "function") window.syncCompactStudioDockUI();
         showToast(`Snapping ${STATE.snapEnabled ? "Enabled" : "Disabled"}`);
         return;
       }
       if (tool === "first_person" || btn.id === "btnToggleFirstPerson") {
         toggleFirstPersonMode();
+        if (typeof window.syncCompactStudioDockUI === "function") window.syncCompactStudioDockUI();
+        return;
+      }
+      if (tool === "orbit" || btn.id === "btnDockOrbitNav") {
+        preserveLassoSelectionBeforeToolSwitch();
+        if (STATE.fpMode?.active && typeof exitFirstPersonMode === "function") exitFirstPersonMode(false);
+        setActiveStudioTool("orbit");
+        if (typeof syncStudioMobileToolHud === "function") syncStudioMobileToolHud();
+        if (typeof window.syncCompactStudioDockUI === "function") window.syncCompactStudioDockUI();
         return;
       }
       if (!tool) return;
@@ -4377,6 +4387,7 @@
         document.getElementById("btnDockSurveyGroup")?.setAttribute("aria-expanded", "false");
       }
       if (typeof syncStudioMobileToolHud === "function") syncStudioMobileToolHud();
+      if (typeof window.syncCompactStudioDockUI === "function") window.syncCompactStudioDockUI();
     });
   });
 
@@ -4419,13 +4430,14 @@
         }
         const rect = groupBtn.getBoundingClientRect();
         const hasRect = Boolean(rect && (rect.width > 0 || rect.height > 0));
-        const centerX = hasRect
-          ? Math.max(84, Math.min(window.innerWidth - 84, rect.left + rect.width * 0.5))
-          : Math.round(window.innerWidth * 0.5);
         const bottomPx = hasRect ? Math.max(52, window.innerHeight - rect.top + 8) : 64;
-        menuEl.style.left = `${Math.round(centerX)}px`;
         menuEl.style.bottom = `${Math.round(bottomPx)}px`;
         menuEl.classList.add("open");
+        const measuredHalfW = Math.max(84, Math.ceil((menuEl.offsetWidth || 180) * 0.5) + 8);
+        const centerX = hasRect
+          ? Math.max(measuredHalfW, Math.min(window.innerWidth - measuredHalfW, rect.left + rect.width * 0.5))
+          : Math.round(window.innerWidth * 0.5);
+        menuEl.style.left = `${Math.round(centerX)}px`;
         groupBtn.setAttribute("aria-expanded", "true");
       }
 
@@ -4528,6 +4540,7 @@
       uBtn.classList.toggle("active", !isCollapsed);
       uBtn.setAttribute("aria-expanded", isCollapsed ? "false" : "true");
     }
+    if (typeof window.syncCompactStudioDockUI === "function") window.syncCompactStudioDockUI();
   }
 
   document.getElementById("btnMobileEditingUmbrella")?.addEventListener("click", (e) => {

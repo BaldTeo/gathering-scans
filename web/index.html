@@ -2,7 +2,7 @@
 <html lang="zh-Hant">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <!-- GS_SHARE_OG_START -->
   <title>GatheringCloud 3D Scans</title>
   <meta name="description" content="Interactive 3D site scan viewer &amp; spatial review on GatheringCloud." />
@@ -18,8 +18,8 @@
   <meta name="twitter:image" content="https://scans.gatheren.cloud/assets/gathering_cloud_logo.png" />
   <!-- GS_SHARE_OG_END -->
   <link rel="icon" type="image/png" href="/assets/gathering_cloud_logo.png" />
-  <link rel="stylesheet" href="/app.css?v=20261110_v316" />
-  <link rel="stylesheet" href="/survey-bim.css?v=20261110_v316" />
+  <link rel="stylesheet" href="/app.css?v=20261111_v317" />
+  <link rel="stylesheet" href="/survey-bim.css?v=20261111_v317" />
   <script src="https://accounts.google.com/gsi/client" async defer></script>
 
 </head>
@@ -780,6 +780,14 @@
             </svg>
             <span data-i18n-zh="報告" data-i18n-en="Report">報告</span>
           </button>
+          <button type="button" class="btn-xs gs-studio-top-more-btn" id="btnStudioTopMore" title="更多檢視與掃描管理選項" data-i18n-title-zh="更多檢視與掃描管理選項" data-i18n-title-en="More View &amp; Scan Controls" aria-haspopup="true" aria-expanded="false" aria-controls="studioTopMorePopover">
+            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
+              <line x1="4" y1="6" x2="20" y2="6"/><circle cx="9" cy="6" r="2"/>
+              <line x1="4" y1="12" x2="20" y2="12"/><circle cx="15" cy="12" r="2"/>
+              <line x1="4" y1="18" x2="20" y2="18"/><circle cx="11" cy="18" r="2"/>
+            </svg>
+            <span data-i18n-zh="更多" data-i18n-en="More">更多</span>
+          </button>
         </div>
 
         <div class="gs-active-scan-pill gs-studio-coord-pill" style="gap:8px;">
@@ -788,6 +796,9 @@
           </span>
         </div>
       </div>
+
+      <!-- Compact Studio Top Bar Overflow Popover (Mobile/Tablet/Small Laptop Zero-Scroll Controls) -->
+      <div class="gs-studio-top-more-popover" id="studioTopMorePopover" role="dialog" aria-label="Studio View &amp; Scan Controls" hidden></div>
 
       <!-- First-Person Video-Game Camera HUD & Center Crosshair -->
       <div class="gs-fp-hud" id="studioFirstPersonHud" aria-live="polite">
@@ -901,6 +912,18 @@
 
       <!-- Unified Bottom Segmented Dock (All Surveying, Measurement & BIM Tools in One Bar) -->
       <nav class="bim-bottom-dock" id="bimBottomDock" aria-label="GatheringScans 3D Surveying &amp; Measurement Dock">
+        <!-- 0. Orbit / Navigate (Compact Responsive Primary Slot) -->
+        <button type="button" class="bim-dock-btn gs-dock-compact-only" id="btnDockOrbitNav" data-tool="orbit" title="自由旋轉與平移視角 (Esc)" data-i18n-title-zh="自由旋轉與平移視角 (Esc)" data-i18n-title-en="Orbit &amp; Pan 3D Camera (Esc)" aria-label="Orbit &amp; Navigate">
+          <div class="bim-dock-icon">
+            <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="12" cy="12" r="8"/>
+              <ellipse cx="12" cy="12" rx="10" ry="4" transform="rotate(-24 12 12)"/>
+              <circle cx="12" cy="12" r="1.8" fill="currentColor"/>
+            </svg>
+          </div>
+          <span class="bim-dock-label" data-i18n-zh="視角" data-i18n-en="Orbit">視角</span>
+        </button>
+
         <!-- 1. Distance -->
         <button type="button" class="bim-dock-btn autodesk-measure-btn active" id="btnMeasureDistance" data-tool="distance" data-dock="measure" title="空間距離與高程差量測" data-i18n-title-zh="空間距離與高程差量測" data-i18n-title-en="Distance &amp; Elevation Δh" aria-label="Distance Measurement">
           <div class="bim-dock-icon">
@@ -1202,7 +1225,61 @@
           </div>
           <span class="bim-dock-label" data-i18n-zh="捕捉" data-i18n-en="Snap">捕捉</span>
         </button>
+
+        <!-- Compact Responsive Category Triggers (Zero-Scroll Mobile/Tablet/Laptop Toolbar) -->
+        <button type="button" class="bim-dock-btn gs-dock-compact-trigger" id="btnDockCatMeasure" data-compact-cat="measure" title="量測工具選單 (距離、角度、面積、座標、雷射、捕捉、清除)" data-i18n-title-zh="量測工具選單 (距離、角度、面積、座標、雷射、捕捉、清除)" data-i18n-title-en="Measurement Tools (Distance, Angle, Area, Coord, Laser, Snap, Clear)" aria-haspopup="true" aria-expanded="false">
+          <div class="bim-dock-icon" style="position:relative;">
+            <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M3 17l14-14 4 4-14 14-4-4z"/>
+              <line x1="13" y1="7" x2="15" y2="9"/>
+              <line x1="9.5" y1="10.5" x2="11.5" y2="12.5"/>
+              <line x1="6" y1="14" x2="8" y2="16"/>
+            </svg>
+            <span class="gs-dock-active-dot" aria-hidden="true"></span>
+          </div>
+          <span class="bim-dock-label"><span class="gs-dock-cat-title" data-i18n-zh="量測" data-i18n-en="Measure">量測</span></span>
+        </button>
+
+        <button type="button" class="bim-dock-btn gs-dock-compact-trigger" id="btnDockCatCivil" data-compact-cat="civil" title="土木與檢核工具 (土方、等高線、剖面、施工測量、品質檢核)" data-i18n-title-zh="土木與檢核工具 (土方、等高線、剖面、施工測量、品質檢核)" data-i18n-title-en="Civil &amp; QA Tools (Volume, Contours, Profile, Survey, QA)" aria-haspopup="true" aria-expanded="false">
+          <div class="bim-dock-icon" style="position:relative;">
+            <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M2 18L9 9l5 6 4-4 4 7H2z"/>
+              <line x1="2" y1="21" x2="22" y2="21"/>
+            </svg>
+            <span class="gs-dock-active-dot" aria-hidden="true"></span>
+          </div>
+          <span class="bim-dock-label"><span class="gs-dock-cat-title" data-i18n-zh="土木" data-i18n-en="Civil">土木</span></span>
+        </button>
+
+        <button type="button" class="bim-dock-btn gs-dock-compact-trigger" id="btnDockCatLayers" data-compact-cat="layers" title="圖層與環境檢視 (地物分類、公共管線、RTK 相片、剖切盒、標註)" data-i18n-title-zh="圖層與環境檢視 (地物分類、公共管線、RTK 相片、剖切盒、標註)" data-i18n-title-en="Layers &amp; Overlays (Classify, Utilities, RTK Photos, Clip Box, Notes)" aria-haspopup="true" aria-expanded="false">
+          <div class="bim-dock-icon" style="position:relative;">
+            <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+              <polygon points="12 2 2 7 12 12 22 7 12 2"/>
+              <polyline points="2 12 12 17 22 12"/>
+              <polyline points="2 17 12 22 22 17"/>
+            </svg>
+            <span class="gs-dock-active-dot" aria-hidden="true"></span>
+          </div>
+          <span class="bim-dock-label"><span class="gs-dock-cat-title" data-i18n-zh="圖層" data-i18n-en="Layers">圖層</span></span>
+        </button>
+
+        <button type="button" class="bim-dock-btn gs-dock-compact-trigger" id="btnDockMoreTools" data-compact-cat="all" title="更多工具與 3D 編輯對齊 (漫遊、套索裁切、輕量化、多掃描對齊)" data-i18n-title-zh="更多工具與 3D 編輯對齊 (漫遊、套索裁切、輕量化、多掃描對齊)" data-i18n-title-en="More Tools &amp; 3D Editing (Walk, Lasso Crop, Optimize, Multi-Scan Align)" aria-haspopup="true" aria-expanded="false">
+          <div class="bim-dock-icon" style="position:relative;">
+            <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="3" y="3" width="7" height="7" rx="1.5"/>
+              <rect x="14" y="3" width="7" height="7" rx="1.5"/>
+              <rect x="3" y="14" width="7" height="7" rx="1.5"/>
+              <rect x="14" y="14" width="7" height="7" rx="1.5"/>
+            </svg>
+            <span class="gs-dock-active-dot" aria-hidden="true"></span>
+            <span id="lblCompactDockStagedBadge" class="gs-dock-compact-badge" style="display:none;">0</span>
+          </div>
+          <span class="bim-dock-label"><span class="gs-dock-cat-title" data-i18n-zh="工具" data-i18n-en="Tools">工具</span></span>
+        </button>
       </nav>
+
+      <!-- Compact Studio Tools Popover Sheet (Zero-Scroll Mobile/Tablet/Laptop Category Drawer) -->
+      <div class="gs-studio-compact-popover" id="studioCompactToolsPopover" role="dialog" aria-label="Studio Surveying &amp; Editing Tools" hidden></div>
 
       <!-- Freehand 2D/3D Lasso Selection SVG Overlay -->
       <svg id="studioLassoSvg" class="gs-studio-lasso-svg" aria-hidden="true">
@@ -2069,50 +2146,50 @@
        MODAL 4: GATHERINGCLOUD GOOGLE OAUTH & USER PROFILE GATE MODAL
        (Exact same Google OAuth Client ID & Gate Architecture as GatheringCloud)
        ======================================================================== -->
-  <div id="userProfileGateModal" class="gs-modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="userProfileGateTitle" style="z-index:5000;">
-    <div class="gs-modal" style="max-width:520px;padding:0;overflow:hidden;">
-      <!-- Top Header -->
-      <div style="padding:18px 20px 14px;background:linear-gradient(135deg,#0f172a,#1e293b);color:#ffffff;display:flex;align-items:center;justify-content:space-between;gap:12px;">
-        <div style="display:flex;align-items:center;gap:14px;min-width:0;">
-          <img src="/assets/gathering_cloud_logo_dark.png" alt="GatheringCloud" style="height:36px;width:auto;object-fit:contain;flex-shrink:0;" />
-          <div style="min-width:0;">
-            <h3 id="userProfileGateTitle" style="margin:0;font-size:15.5px;font-weight:700;letter-spacing:0.3px;" data-i18n-zh="GatheringCloud 身分驗證" data-i18n-en="GatheringCloud Identity Verification">GatheringCloud 身分驗證</h3>
-            <p style="margin:3px 0 0;font-size:11.5px;color:#94a3b8;" data-i18n-zh="請登入授權帳號以存取 GatheringCloud 3D 掃描系統 (gatheren.cloud)" data-i18n-en="Authorization required to access GatheringCloud Scans (gatheren.cloud)">請登入授權帳號以存取 GatheringCloud 3D 掃描系統 (gatheren.cloud)</p>
-          </div>
-        </div>
-        <div style="display:flex;align-items:center;gap:6px;flex-shrink:0;">
-          <button type="button" class="btn-xs gs-lang-toggle-btn" id="btnAuthToggleLanguage" title="Switch to English" aria-label="Switch Interface Language" style="background:rgba(255,255,255,0.12);border-color:rgba(255,255,255,0.25);color:#f8fafc;font-weight:700;height:28px;padding:0 9px;">
-            <span id="lblAuthToggleLanguage">EN</span>
-          </button>
-          <button type="button" class="btn-xs" id="btnCloseAuthGateModal" title="關閉" data-i18n-title-zh="關閉" data-i18n-title-en="Close" aria-label="Close Identity Verification Modal" style="display:none;background:rgba(255,255,255,0.1);border-color:rgba(255,255,255,0.2);color:#f8fafc;flex-shrink:0;">
-            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2">
-              <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
-            </svg>
-          </button>
-        </div>
+  <div id="userProfileGateModal" class="gs-modal-backdrop oauth-login-gate" role="dialog" aria-modal="true" aria-labelledby="userProfileGateTitle" style="z-index:5000;">
+    <div class="gs-modal oauth-login-card">
+      <!-- Top-Right Language & Close Controls -->
+      <div class="oauth-top-controls">
+        <button type="button" class="btn-xs gs-lang-toggle-btn oauth-util-btn" id="btnAuthToggleLanguage" title="Switch to English" aria-label="Switch Interface Language">
+          <span id="lblAuthToggleLanguage">EN</span>
+        </button>
+        <button type="button" class="btn-xs oauth-util-btn" id="btnCloseAuthGateModal" title="關閉" data-i18n-title-zh="關閉" data-i18n-title-en="Close" aria-label="Close Identity Verification Modal" style="display:none;">
+          <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2">
+            <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+          </svg>
+        </button>
       </div>
 
-      <!-- Body -->
-      <div style="padding:18px 20px;max-height:74vh;overflow-y:auto;display:flex;flex-direction:column;gap:14px;">
-        <!-- Google OAuth Card (Exact same Client ID as GatheringCloud) -->
-        <div id="googleAuthGateCard" class="gs-oauth-card" style="background:var(--ui-bg-subtle);border:1px solid var(--ui-border-strong);border-radius:12px;padding:16px 18px;display:flex;flex-direction:column;align-items:center;gap:10px;text-align:center;">
-          <div style="display:flex;align-items:center;gap:8px;font-size:13px;font-weight:700;color:var(--ui-accent);">
-            <svg width="18" height="18" viewBox="0 0 24 24" style="flex-shrink:0;">
-              <path fill="#4285F4" d="M23.745 12.27c0-.7-.06-1.4-.19-2.07H12v4.51h6.6c-.29 1.52-1.14 2.82-2.4 3.68v3.05h3.88c2.27-2.09 3.665-5.17 3.665-9.17z"/>
-              <path fill="#34A853" d="M12 24c3.24 0 5.95-1.08 7.93-2.91l-3.88-3.05c-1.08.72-2.45 1.16-4.05 1.16-3.12 0-5.77-2.11-6.72-4.96H1.29v3.14C3.26 21.3 7.31 24 12 24z"/>
-              <path fill="#FBBC05" d="M5.28 14.24c-.24-.72-.38-1.49-.38-2.24s.14-1.52.38-2.24V6.62H1.29C.47 8.24 0 10.06 0 12s.47 3.76 1.29 5.38l3.99-3.14z"/>
-              <path fill="#EA4335" d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.42-3.42C17.95 1.19 15.24 0 12 0 7.31 0 3.26 2.7 1.29 6.62l3.99 3.14c.95-2.85 3.6-4.96 6.72-4.96z"/>
-            </svg>
-            <span data-i18n-zh="Google 帳號單一簽入 (GatheringCloud SSO)" data-i18n-en="Google Account Sign-In (GatheringCloud SSO)">Google 帳號單一簽入 (GatheringCloud SSO)</span>
-          </div>
+      <!-- Brand Lockup & Domain Pill (Matching files.gatheren.cloud) -->
+      <div class="oauth-brand-row">
+        <img src="/assets/logo_dark.png" alt="聚Gathering 雲Cloud" class="brand-logo-img brand-logo-dark oauth-logo" />
+        <img src="/assets/logo_transparent.png" alt="聚Gathering 雲Cloud" class="brand-logo-img brand-logo-light oauth-logo" />
+        <span class="domain-pill oauth-domain-pill">scans.gatheren.cloud</span>
+      </div>
 
-          <div
-            id="g_id_onload"
-            data-client_id="753778992341-hpe65ilnti31j0m7etmq5rn7a1q802da.apps.googleusercontent.com"
-            data-callback="handleGoogleSignIn"
-            data-auto_prompt="false"
-            data-itp_support="true">
-          </div>
+      <h1 id="userProfileGateTitle" class="oauth-title" data-i18n-zh="聚人雲端 3D 實景掃描中樞" data-i18n-en="Gatheren Cloud 3D Scans Hub">聚人雲端 3D 實景掃描中樞</h1>
+      <p id="oauthGateSubtitle" class="oauth-subtitle" data-i18n-zh="請使用授權的 Google 帳號登入，以存取 3D 實景模型、土木測量工具與團隊掃描專案。" data-i18n-en="Sign in with your authorized Google account to access 3D reality models, civil surveying tools, and team scan projects.">
+        請使用授權的 Google 帳號登入，以存取 3D 實景模型、土木測量工具與團隊掃描專案。
+      </p>
+
+      <div id="oauthSecurityBadge" class="oauth-security-badge">
+        <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;">
+          <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+          <polyline points="9 12 11 14 15 10"/>
+        </svg>
+        <span data-i18n-zh="Google OAuth 單一簽入 · 角色權限控管 · 訪客唯讀預覽" data-i18n-en="Google OAuth SSO · Role-Based Access · Read-Only Guest Mode">Google OAuth 單一簽入 · 角色權限控管 · 訪客唯讀預覽</span>
+      </div>
+
+      <!-- Google Identity Services Sign-In Mount (Exact same Client ID as GatheringCloud) -->
+      <div id="googleAuthGateCard" class="gs-oauth-card oauth-google-mount">
+        <div
+          id="g_id_onload"
+          data-client_id="753778992341-hpe65ilnti31j0m7etmq5rn7a1q802da.apps.googleusercontent.com"
+          data-callback="handleGoogleSignIn"
+          data-auto_prompt="false"
+          data-itp_support="true">
+        </div>
+        <div class="oauth-google-signin-wrap">
           <div
             class="g_id_signin"
             id="googleSignInButtonContainer"
@@ -2123,73 +2200,76 @@
             data-size="large"
             data-logo_alignment="left">
           </div>
-
-          <!-- Explicit Google Account Chooser Button (always prompts account selection) -->
-          <button
-            type="button"
-            id="btnChooseGoogleAccountOAuth"
-            class="btn-xs"
-            style="height:34px;padding:0 14px;border-radius:8px;font-size:12px;font-weight:700;display:inline-flex;align-items:center;gap:8px;background:var(--ui-bg-surface);border:1.5px solid var(--ui-accent);color:var(--ui-text-primary);cursor:pointer;box-shadow:0 1px 3px rgba(0,0,0,0.08);"
-            title="開啟 Google 帳號選擇視窗以指定登入帳號"
-            data-i18n-title-zh="開啟 Google 帳號選擇視窗以指定登入帳號"
-            data-i18n-title-en="Open Google's Account Chooser popup to pick which Google account to sign in with">
-            <svg width="15" height="15" viewBox="0 0 24 24" style="flex-shrink:0;">
-              <path fill="#4285F4" d="M23.745 12.27c0-.7-.06-1.4-.19-2.07H12v4.51h6.6c-.29 1.52-1.14 2.82-2.4 3.68v3.05h3.88c2.27-2.09 3.665-5.17 3.665-9.17z"/>
-              <path fill="#34A853" d="M12 24c3.24 0 5.95-1.08 7.93-2.91l-3.88-3.05c-1.08.72-2.45 1.16-4.05 1.16-3.12 0-5.77-2.11-6.72-4.96H1.29v3.14C3.26 21.3 7.31 24 12 24z"/>
-              <path fill="#FBBC05" d="M5.28 14.24c-.24-.72-.38-1.49-.38-2.24s.14-1.52.38-2.24V6.62H1.29C.47 8.24 0 10.06 0 12s.47 3.76 1.29 5.38l3.99-3.14z"/>
-              <path fill="#EA4335" d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.42-3.42C17.95 1.19 15.24 0 12 0 7.31 0 3.26 2.7 1.29 6.62l3.99 3.14c.95-2.85 3.6-4.96 6.72-4.96z"/>
-            </svg>
-            <span data-i18n-zh="切換帳號" data-i18n-en="Accounts">切換帳號</span>
-          </button>
-
-          <div id="googleAuthMessage" style="font-size:11.5px;color:var(--ui-accent);" data-i18n-zh="請使用 Google 帳號登入，或點擊「切換帳號」選擇不同帳號。" data-i18n-en="Sign in with your Google account or click &ldquo;Accounts&rdquo; to pick between accounts.">
-            請使用 Google 帳號登入，或點擊「切換帳號」選擇不同帳號。
-          </div>
-
-          <!-- Unregistered Local Origin Warning (shown automatically when opened via http://127.0.0.1:8095) -->
-          <div id="localOriginOAuthWarning" style="display:none;width:100%;padding:8px 11px;background:rgba(245,158,11,0.12);border:1px solid rgba(245,158,11,0.45);border-radius:8px;font-size:11px;color:#f59e0b;text-align:left;line-height:1.45;">
-            <b data-i18n-zh="提示：" data-i18n-en="Note:">提示：</b> <code id="unregisteredOriginLabel">http://127.0.0.1:8095</code> <span data-i18n-zh="為本機工作站位址，可直接從下方團隊成員名單點選帳號登入，或前往 " data-i18n-en="is a local workstation address. Select your profile from the Team Roster below, or open ">為本機工作站位址，可直接從下方團隊成員名單點選帳號登入，或前往 </span><a href="https://scans.gatheren.cloud" style="color:var(--ui-accent);font-weight:700;text-decoration:underline;">https://scans.gatheren.cloud</a><span data-i18n-zh=" 使用 Google OAuth 視窗登入。" data-i18n-en=" for Google OAuth popup sign-in."> 使用 Google OAuth 視窗登入。</span>
-          </div>
-
-          <!-- Origin Helper Notice -->
-          <div id="googleAuthOriginNotice" style="width:100%;margin-top:2px;padding:7px 10px;background:var(--ui-bg-surface);border:1px dashed var(--ui-border-strong);border-radius:8px;font-size:11px;color:var(--ui-text-muted);text-align:left;line-height:1.45;">
-            <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;">
-              <span style="min-width:0;word-break:break-all;"><span data-i18n-zh="已授權網域：" data-i18n-en="Authorized JavaScript Origin:">已授權網域：</span> <code id="currentOriginCode" style="background:var(--ui-bg-subtle);padding:2px 6px;border-radius:4px;color:var(--ui-text-primary);font-weight:700;user-select:all;">https://scans.gatheren.cloud</code></span>
-              <button type="button" id="btnCopyCurrentOriginGate" class="btn-xs" style="height:22px;font-size:10.5px;" data-i18n-zh="複製" data-i18n-en="Copy">複製</button>
-            </div>
-          </div>
         </div>
 
-        <!-- GatheringCloud Team Roster (Admin-Only Account & Role Inspector) -->
-        <div id="gateExistingUsersSection" style="display:none;flex-direction:column;gap:8px;">
-          <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;">
-            <div style="display:flex;align-items:center;gap:6px;">
-              <span style="font-size:11.5px;font-weight:700;color:var(--ui-text-secondary);text-transform:uppercase;letter-spacing:0.05em;" data-i18n-zh="已驗證之 GatheringCloud 團隊成員帳號" data-i18n-en="Verified GatheringCloud Team Accounts">已驗證之 GatheringCloud 團隊成員帳號</span>
-              <span id="gateRosterCountBadge" class="gs-crs-pill" style="font-size:10px;padding:1px 7px;" data-i18n-zh="18 位成員" data-i18n-en="18 Members">18 位成員</span>
-            </div>
-            <input
-              type="search"
-              id="gateUserSearchInput"
-              class="input-sm"
-              placeholder="搜尋姓名或信箱..."
-              data-i18n-placeholder-zh="搜尋姓名或信箱..."
-              data-i18n-placeholder-en="Search name or email..."
-              style="height:26px;font-size:11.5px;width:185px;padding:0 8px;" />
-          </div>
-          <div
-            id="gateExistingUsersGrid"
-            style="display:grid;grid-template-columns:repeat(auto-fill,minmax(215px,1fr));gap:7px;max-height:210px;overflow-y:auto;padding:2px;">
-          </div>
+        <!-- Secondary Account Switcher Action -->
+        <button
+          type="button"
+          id="btnChooseGoogleAccountOAuth"
+          class="oauth-account-chooser-btn"
+          title="開啟 Google 帳號選擇視窗以指定登入帳號"
+          data-i18n-title-zh="開啟 Google 帳號選擇視窗以指定登入帳號"
+          data-i18n-title-en="Open Google's Account Chooser popup to pick which Google account to sign in with">
+          <svg width="14" height="14" viewBox="0 0 24 24" style="flex-shrink:0;">
+            <path fill="#4285F4" d="M23.745 12.27c0-.7-.06-1.4-.19-2.07H12v4.51h6.6c-.29 1.52-1.14 2.82-2.4 3.68v3.05h3.88c2.27-2.09 3.665-5.17 3.665-9.17z"/>
+            <path fill="#34A853" d="M12 24c3.24 0 5.95-1.08 7.93-2.91l-3.88-3.05c-1.08.72-2.45 1.16-4.05 1.16-3.12 0-5.77-2.11-6.72-4.96H1.29v3.14C3.26 21.3 7.31 24 12 24z"/>
+            <path fill="#FBBC05" d="M5.28 14.24c-.24-.72-.38-1.49-.38-2.24s.14-1.52.38-2.24V6.62H1.29C.47 8.24 0 10.06 0 12s.47 3.76 1.29 5.38l3.99-3.14z"/>
+            <path fill="#EA4335" d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.42-3.42C17.95 1.19 15.24 0 12 0 7.31 0 3.26 2.7 1.29 6.62l3.99 3.14c.95-2.85 3.6-4.96 6.72-4.96z"/>
+          </svg>
+          <span data-i18n-zh="切換其他 Google 帳號" data-i18n-en="Choose another Google account">切換其他 Google 帳號</span>
+        </button>
+      </div>
+
+      <!-- Persistent 30-Day Session Checkbox (Matching files.gatheren.cloud) -->
+      <label class="oauth-remember-row" for="chkOauthRememberMe">
+        <input type="checkbox" id="chkOauthRememberMe" checked />
+        <span data-i18n-zh="保持登入狀態 30 天（與 gatheren.cloud · files 同步）" data-i18n-en="Keep me signed in for 30 days (synced with gatheren.cloud · files)">保持登入狀態 30 天（與 gatheren.cloud · files 同步）</span>
+      </label>
+
+      <!-- Auth Error Banner & Status Feedback -->
+      <div id="oauthErrorBanner" class="oauth-error-banner hidden" role="alert"></div>
+      <div id="googleAuthMessage" class="oauth-status-message" data-i18n-zh="請使用 Google 帳號登入，或點選下方「訪客唯讀瀏覽」預覽。" data-i18n-en="Sign in with Google or choose Read-Only Guest Mode below.">
+        請使用 Google 帳號登入，或點選下方「訪客唯讀瀏覽」預覽。
+      </div>
+
+      <!-- Unregistered Local Origin Warning (shown automatically when opened via http://127.0.0.1:8095) -->
+      <div id="localOriginOAuthWarning" class="oauth-local-origin-warning" style="display:none;">
+        <b data-i18n-zh="提示：" data-i18n-en="Note:">提示：</b> <code id="unregisteredOriginLabel">http://127.0.0.1:8095</code> <span data-i18n-zh="為本機工作站位址，可直接從下方團隊成員名單點選帳號登入，或前往 " data-i18n-en="is a local workstation address. Select your profile from the Team Roster below, or open ">為本機工作站位址，可直接從下方團隊成員名單點選帳號登入，或前往 </span><a href="https://scans.gatheren.cloud">https://scans.gatheren.cloud</a><span data-i18n-zh=" 使用 Google OAuth 視窗登入。" data-i18n-en=" for Google OAuth popup sign-in."> 使用 Google OAuth 視窗登入。</span>
+      </div>
+
+      <!-- Origin Helper Notice (Hidden on production origin, expandable/visible on custom origins) -->
+      <div id="googleAuthOriginNotice" class="oauth-origin-notice">
+        <div class="oauth-origin-notice-inner">
+          <span style="min-width:0;word-break:break-all;"><span data-i18n-zh="目前網域：" data-i18n-en="Current Origin:">目前網域：</span> <code id="currentOriginCode">https://scans.gatheren.cloud</code></span>
+          <button type="button" id="btnCopyCurrentOriginGate" class="btn-xs" style="height:22px;font-size:10.5px;" data-i18n-zh="複製" data-i18n-en="Copy">複製</button>
         </div>
       </div>
 
-      <!-- Footer -->
-      <div style="padding:12px 20px;background:var(--ui-bg-subtle);border-top:1px solid var(--ui-border);display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;">
-        <span id="gateActiveUserStatusText" style="font-size:12px;color:var(--ui-text-secondary);font-weight:600;" data-i18n-zh="請使用 Google 登入或以唯讀訪客模式瀏覽" data-i18n-en="Sign in with Google or browse in Read-Only Guest Mode">請使用 Google 登入或以唯讀訪客模式瀏覽</span>
-        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
-          <button type="button" id="btnUserLogout" class="btn-xs" style="display:none;" title="登出目前帳號" data-i18n-zh="登出" data-i18n-en="Logout" data-i18n-title-zh="登出目前帳號" data-i18n-title-en="Sign out of current profile">登出</button>
-          <button type="button" id="btnGateGuestEnter" class="btn-xs" title="以唯讀訪客模式瀏覽所有專案與掃描" data-i18n-zh="訪客瀏覽" data-i18n-en="Guest" data-i18n-title-zh="以唯讀訪客模式瀏覽所有專案與掃描" data-i18n-title-en="Browse all projects &amp; scans in Read-Only Guest Mode">訪客瀏覽</button>
-          <button type="button" id="btnGateConfirmEnter" class="btn-xs primary" style="display:none;" title="進入 GatheringScans 3D 工作坊" data-i18n-zh="進入系統" data-i18n-en="Continue" data-i18n-title-zh="進入 GatheringScans 3D 工作坊" data-i18n-title-en="Continue to GatheringScans Studio">進入系統</button>
+      <!-- GatheringCloud Team Roster (Admin-Only Account & Role Inspector) -->
+      <div id="gateExistingUsersSection" class="oauth-roster-section" style="display:none;">
+        <div class="oauth-roster-header">
+          <div style="display:flex;align-items:center;gap:6px;">
+            <span class="oauth-roster-title" data-i18n-zh="已驗證團隊成員帳號" data-i18n-en="Verified Team Accounts">已驗證團隊成員帳號</span>
+            <span id="gateRosterCountBadge" class="gs-crs-pill" style="font-size:10px;padding:1px 7px;" data-i18n-zh="18 位成員" data-i18n-en="18 Members">18 位成員</span>
+          </div>
+          <input
+            type="search"
+            id="gateUserSearchInput"
+            class="input-sm oauth-roster-search"
+            placeholder="搜尋姓名或信箱..."
+            data-i18n-placeholder-zh="搜尋姓名或信箱..."
+            data-i18n-placeholder-en="Search name or email..." />
+        </div>
+        <div id="gateExistingUsersGrid" class="oauth-roster-grid"></div>
+      </div>
+
+      <!-- Footer Action Bar (Guest Mode / Active Session Actions) -->
+      <div class="oauth-card-footer">
+        <span id="gateActiveUserStatusText" class="oauth-active-status" data-i18n-zh="尚未登入 · 可使用唯讀訪客模式瀏覽" data-i18n-en="Not signed in · Read-Only Guest Mode available">尚未登入 · 可使用唯讀訪客模式瀏覽</span>
+        <div class="oauth-footer-actions">
+          <button type="button" id="btnUserLogout" class="btn-xs oauth-footer-btn" style="display:none;" title="登出目前帳號" data-i18n-zh="登出" data-i18n-en="Logout" data-i18n-title-zh="登出目前帳號" data-i18n-title-en="Sign out of current profile">登出</button>
+          <button type="button" id="btnGateGuestEnter" class="btn-xs oauth-footer-btn oauth-guest-btn" title="以唯讀訪客模式瀏覽所有專案與掃描" data-i18n-zh="訪客唯讀瀏覽" data-i18n-en="Continue as Guest" data-i18n-title-zh="以唯讀訪客模式瀏覽所有專案與掃描" data-i18n-title-en="Browse all projects &amp; scans in Read-Only Guest Mode">訪客唯讀瀏覽</button>
+          <button type="button" id="btnGateConfirmEnter" class="btn-xs primary oauth-footer-btn oauth-confirm-btn" style="display:none;" title="進入 GatheringScans 3D 工作坊" data-i18n-zh="進入系統" data-i18n-en="Continue" data-i18n-title-zh="進入 GatheringScans 3D 工作坊" data-i18n-title-en="Continue to GatheringScans Studio">進入系統</button>
         </div>
       </div>
     </div>
@@ -2610,25 +2690,25 @@
   <!-- Three.js + 3D Tileset / KTX2 / Meshopt Libraries -->
   <script src="/lib/three.min.js"></script>
   <script src="/lib/OrbitControls.js?v=20261029_v48"></script>
-  <script src="/lib/GLTFLoader.js?v=20261110_v316"></script>
+  <script src="/lib/GLTFLoader.js?v=20261111_v317"></script>
   <script src="/lib/KTX2Loader.js"></script>
   <script src="/lib/meshopt_decoder.js"></script>
-  <script src="/lib/3d-tiles-renderer.bundle.js?v=20261110_v316"></script>
+  <script src="/lib/3d-tiles-renderer.bundle.js?v=20261111_v317"></script>
 
   <!-- Main GatheringScans Bilingual Translation & Modular Application Logic (< 5,000 lines per module) -->
-  <script src="/i18n.js?v=20261110_v316"></script>
-  <script src="/src/gatheren-loading-animation.js?v=20261110_v316"></script>
-  <script src="/src/01-core-state.js?v=20261110_v316"></script>
-  <script src="/src/02-map-and-timeline.js?v=20261110_v316"></script>
-  <script src="/src/03-studio-core.js?v=20261110_v316"></script>
-  <script src="/src/04-studio-lasso-and-edits.js?v=20261110_v316"></script>
-  <script src="/src/05-studio-civil-inspectors.js?v=20261110_v316"></script>
-  <script src="/src/06-studio-align-and-optimizer.js?v=20261110_v316"></script>
-  <script src="/src/07-compare-and-queue.js?v=20261110_v316"></script>
-  <script src="/src/08-advanced-surveying-and-qa.js?v=20261110_v316"></script>
-  <script src="/src/09-construction-survey-and-bim.js?v=20261110_v316"></script>
-  <script src="/src/10-construction-qa-and-stakeout.js?v=20261110_v316"></script>
-  <script src="/src/12-public-utilities-gis.js?v=20261110_v316"></script>
-  <script src="/app.js?v=20261110_v316"></script>
+  <script src="/i18n.js?v=20261111_v317"></script>
+  <script src="/src/gatheren-loading-animation.js?v=20261111_v317"></script>
+  <script src="/src/01-core-state.js?v=20261111_v317"></script>
+  <script src="/src/02-map-and-timeline.js?v=20261111_v317"></script>
+  <script src="/src/03-studio-core.js?v=20261111_v317"></script>
+  <script src="/src/04-studio-lasso-and-edits.js?v=20261111_v317"></script>
+  <script src="/src/05-studio-civil-inspectors.js?v=20261111_v317"></script>
+  <script src="/src/06-studio-align-and-optimizer.js?v=20261111_v317"></script>
+  <script src="/src/07-compare-and-queue.js?v=20261111_v317"></script>
+  <script src="/src/08-advanced-surveying-and-qa.js?v=20261111_v317"></script>
+  <script src="/src/09-construction-survey-and-bim.js?v=20261111_v317"></script>
+  <script src="/src/10-construction-qa-and-stakeout.js?v=20261111_v317"></script>
+  <script src="/src/12-public-utilities-gis.js?v=20261111_v317"></script>
+  <script src="/app.js?v=20261111_v317"></script>
 </body>
 </html>
