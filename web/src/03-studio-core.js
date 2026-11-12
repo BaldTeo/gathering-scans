@@ -567,6 +567,9 @@
     const MB = 1024 * 1024;
     if (lodMode === "rough") return { maxHdBytes: 32 * MB, maxHdTiles: 8 };
     if (isIOS || isPhone) {
+      if (!isIOS) { // Android phones: Chrome tolerates more GPU memory than iOS WebKit
+        return lodMode === "max" ? { maxHdBytes: 288 * MB, maxHdTiles: 56 } : { maxHdBytes: 224 * MB, maxHdTiles: 44 };
+      }
       return lodMode === "max" ? { maxHdBytes: 176 * MB, maxHdTiles: 34 } : { maxHdBytes: 128 * MB, maxHdTiles: 24 };
     }
     if (isMobOrTab) {
@@ -791,8 +794,12 @@
   function bumpStudioErrorTarget(tr, factor) {
     if (!tr || !(tr._gsBaseErrorTarget > 0)) return;
     const prev = tr._gsErrBump || 1;
-    const next = Math.max(1, Math.min(80, prev * factor));
+    const nowB = performance.now();
+    // Coarsen at most once per 450 ms (was per tile request => runaway to max coarseness) and never beyond 6x.
+    if (factor > 1 && nowB - (tr._gsLastBumpMs || 0) < 450) return;
+    const next = Math.max(1, Math.min(6, prev * factor));
     if (next === prev) return;
+    if (factor > 1) tr._gsLastBumpMs = nowB;
     tr._gsErrBump = next;
     tr.errorTarget = Math.min(16, tr._gsBaseErrorTarget * next);
     tr._gsNeedsUpdate = true;

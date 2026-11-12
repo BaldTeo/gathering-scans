@@ -2312,7 +2312,7 @@
       tr.maxDepth = Infinity;
       if (isIOS || isPhone) {
         tr._maxActiveTiles = 85;
-        tr.errorTarget = 5.0;
+        tr.errorTarget = 4.0;
       } else if (isMobOrTab) {
         tr._maxActiveTiles = 115;
         tr.errorTarget = 3.5;
