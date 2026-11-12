@@ -561,7 +561,7 @@
   }
 
   // HD tile memory budget: sized by device RAM, then scaled by a learned factor that shrinks automatically
-  // after a WebGL context loss or a suspected tab crash (iOS jetsam / Android OOM kill) and persists per device.
+  // after a confirmed WebGL context loss and persists per device (no crash guessing).
   const HD_SCALE_KEY = "gs_hd_budget_scale_v1";
   function getLearnedHdScale() {
     try { return Math.max(0.3, Math.min(1, Number(localStorage.getItem(HD_SCALE_KEY)) || 1)); } catch (_) { return 1; }
@@ -569,20 +569,6 @@
   function shrinkHdBudgetAfterCrash() {
     try { localStorage.setItem(HD_SCALE_KEY, String(Math.max(0.3, getLearnedHdScale() * 0.65))); } catch (_) {}
   }
-  // Crash heuristic (mobile only): flag "1" = Studio tiles were streaming while the page was VISIBLE. Any hide / pagehide /
-  // background / swipe-away / normal close clears it, so an abrupt user close never shrinks the budget; only a kill that
-  // happens while the page is still visible in the foreground (OOM) counts. Context loss shrinks it on every platform.
-  let _hdSessionMarked = false;
-  const setHdLiveFlag = (v) => { try { sessionStorage.setItem("gs_studio_open", v); } catch (_) {} };
-  try {
-    if (sessionStorage.getItem("gs_studio_open") === "1") shrinkHdBudgetAfterCrash();
-    setHdLiveFlag("0");
-    const onHide = () => setHdLiveFlag("0");
-    window.addEventListener("pagehide", onHide);
-    window.addEventListener("freeze", onHide);
-    document.addEventListener("visibilitychange", () => setHdLiveFlag(document.hidden ? "0" : (_hdSessionMarked ? "1" : "0")));
-  } catch (_) {}
-
   function getStudioHdTileBudget(lodMode) {
     const isIOS = typeof isIOSOrIPadDevice === "function" && isIOSOrIPadDevice();
     const isPhone = typeof isIPhoneOrMobilePhone === "function" && isIPhoneOrMobilePhone();
@@ -594,7 +580,6 @@
     let mb;
     if (isMobOrTab) {
       // iOS exposes no deviceMemory: assume at least a 6 GB-class device. Learned scale protects weaker ones.
-      if (!_hdSessionMarked) { _hdSessionMarked = true; if (!document.hidden) setHdLiveFlag("1"); }
       mb = dm >= 8 ? (max ? 896 : 640) : dm >= 6 ? (max ? 704 : 512) : dm >= 4 ? (max ? 512 : 384) : (max ? 320 : 256);
     } else {
       mb = dm >= 8 ? (max ? 1024 : 640) : (max ? 768 : 480);
