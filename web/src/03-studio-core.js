@@ -460,7 +460,7 @@
   const STUDIO_HD_IDLE_DELAY_MS = 65;
   const STUDIO_GLIDE_STREAM_INTERVAL_MS = 55;
   const STUDIO_FAST_LIN_SPEED = 0.52; // relative camera units/sec (posDelta / targetDist / dt)
-  const STUDIO_FAST_ANG_SPEED = 0.72; // rad/sec camera rotation whip threshold
+  const STUDIO_FAST_ANG_SPEED = 2.6; // rad/sec camera rotation whip threshold
   const TILE_STATE_UNLOADED = 0, TILE_STATE_QUEUED = 1, TILE_STATE_LOADING = 2, TILE_STATE_PARSING = 3, TILE_STATE_LOADED = 4;
   const _prioSphere = new THREE.Sphere();
   const _prioVec = new THREE.Vector3();
@@ -560,8 +560,6 @@
     };
   }
 
-  // HD tile memory budget: sized by device RAM, then scaled by a learned factor that shrinks automatically
-  // after a confirmed WebGL context loss and persists per device (no crash guessing).
   const HD_SCALE_KEY = "gs_hd_budget_scale_v1";
   function getLearnedHdScale() {
     try { return Math.max(0.3, Math.min(1, Number(localStorage.getItem(HD_SCALE_KEY)) || 1)); } catch (_) { return 1; }
@@ -579,10 +577,9 @@
     const max = lodMode === "max";
     let mb;
     if (isMobOrTab) {
-      // iOS exposes no deviceMemory: assume at least a 6 GB-class device. Learned scale protects weaker ones.
       mb = dm >= 8 ? (max ? 896 : 640) : dm >= 6 ? (max ? 704 : 512) : dm >= 4 ? (max ? 512 : 384) : (max ? 320 : 256);
     } else {
-      mb = dm >= 8 ? (max ? 1024 : 640) : (max ? 768 : 480);
+      mb = dm >= 8 ? (max ? 1536 : 640) : (max ? 1024 : 480);
     }
     mb = Math.round(mb * getLearnedHdScale());
     return { maxHdBytes: mb * MB, maxHdTiles: Math.max(12, Math.round(mb / 5.0)) };
@@ -708,8 +705,7 @@
           if (removeFn.call(tr.lruCache, t)) aborted++;
         }
       } else if (st === TILE_STATE_QUEUED || (st === TILE_STATE_LOADING && t.traversal?.inFrustum === false)) {
-        // During fast camera motion, keep in-frustum downloads & already-downloaded PARSING decodes alive!
-        if (removeFn.call(tr.lruCache, t)) aborted++;
+          if (removeFn.call(tr.lruCache, t)) aborted++;
       }
     }
     if (tr.queuedTiles && tr.queuedTiles.length > 0) {
@@ -737,7 +733,27 @@
     return checked > 0;
   }
 
+  // Show every resident in-frustum HD tile immediately. The stock "optimized replace" strategy hides ALL loaded
+  // children until every in-view neighbour is loaded, so a tiny rotation exposing one unloaded tile hid loaded HD.
+  function revealResidentHdTiles(tr) {
+    const walk = (t) => {
+      const v = t.traversal;
+      if (!v || v.lastFrameVisited !== tr.frameCount || !v.used || !v.inFrustum) return false;
+      let below = false;
+      const ch = t.children || [];
+      for (let i = 0; i < ch.length; i++) if (walk(ch[i])) below = true;
+      if (t.__gsPinnedCoarse || t.__gsPinnedContainer) return below;
+      if (t.internal?.hasRenderableContent && t.internal.loadingState === TILE_STATE_LOADED && t.engineData?.scene) {
+        setTileSceneVisibleImmediate(tr, t, !below);
+        return true;
+      }
+      return below;
+    };
+    if (tr?.root) walk(tr.root);
+  }
+
   function ensureZeroGapCoarseCoverage(tr, isMoving = false) {
+    revealResidentHdTiles(tr);
     if (!tr || !tr._gsPinnedCoarseSet || tr._gsPinnedCoarseSet.size === 0) return;
     let anyVisible = (tr.visibleTiles?.size || 0) > 0;
     tr._gsPinnedCoarseSet.forEach((coarse) => {
@@ -795,8 +811,7 @@
     return true;
   }
 
-  // Budget-adaptive detail: when visible HD demand exceeds the VRAM/tile budget, coarsen errorTarget so the
-  // visible set FITS the budget (complete coverage, no missing tiles / thrash) instead of blocking tile loads.
+  // Budget pressure raises _gsErrBump (distance-based coarsening of far tiles) instead of blocking tile loads.
   function bumpStudioErrorTarget(tr, factor) {
     if (!tr || !(tr._gsBaseErrorTarget > 0)) return;
     const prev = tr._gsErrBump || 1;
@@ -895,14 +910,12 @@
     tr._gsHdResidentCount = 0;
     syncStudioTilesLruLimits(tr, lodMode);
 
-    // Budget pressure => coarsen FAR tiles first (error falloff by distance) so near-field detail never degrades,
-    // whatever the camera orientation (looking along the horizon puts huge far terrain in view).
     const origViewError = tr.calculateTileViewError.bind(tr);
     tr.calculateTileViewError = function (tile, target) {
       origViewError(tile, target);
       const press = ((tr._gsErrBump || 1) - 1) * 0.5;
       if (press > 0 && target.inView) {
-        const r = (target.distanceFromCamera || 0) / 20.0;
+        const r = (target.distanceFromCamera || 0) / (tr._gsLodMode === "max" ? 60.0 : 20.0);
         target.error /= 1 + r * r * press;
       }
     };

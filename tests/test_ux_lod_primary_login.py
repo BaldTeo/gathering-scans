@@ -94,8 +94,8 @@ class UxLodPrimaryLoginTests(unittest.TestCase):
         self.assertIn("MutationObserver", app_js)
 
         # 4. Asset cache-busting version synchronization between index.html and sw.js
-        self.assertIn("?v=20261112_v327", html)
-        self.assertIn("gathering-scans-offline-v327", sw_js)
+        self.assertIn("?v=20261112_v328", html)
+        self.assertIn("gathering-scans-offline-v328", sw_js)
 
     def test_62_primary_scan_star_api_persistence_and_default_selection(self):
         """Verify Primary Scan HTTP API, RBAC, disk persistence, site rename migration, and default site selection."""
