@@ -560,26 +560,38 @@
     };
   }
 
+  // HD tile memory budget: sized by device RAM, then scaled by a learned factor that shrinks automatically
+  // after a WebGL context loss or a suspected tab crash (iOS jetsam / Android OOM kill) and persists per device.
+  const HD_SCALE_KEY = "gs_hd_budget_scale_v1";
+  function getLearnedHdScale() {
+    try { return Math.max(0.3, Math.min(1, Number(localStorage.getItem(HD_SCALE_KEY)) || 1)); } catch (_) { return 1; }
+  }
+  function shrinkHdBudgetAfterCrash() {
+    try { localStorage.setItem(HD_SCALE_KEY, String(Math.max(0.3, getLearnedHdScale() * 0.65))); } catch (_) {}
+  }
+  try {
+    if (sessionStorage.getItem("gs_studio_open") === "1") shrinkHdBudgetAfterCrash();
+    sessionStorage.setItem("gs_studio_open", "1");
+    window.addEventListener("pagehide", () => { try { sessionStorage.setItem("gs_studio_open", "0"); } catch (_) {} });
+  } catch (_) {}
+
   function getStudioHdTileBudget(lodMode) {
     const isIOS = typeof isIOSOrIPadDevice === "function" && isIOSOrIPadDevice();
     const isPhone = typeof isIPhoneOrMobilePhone === "function" && isIPhoneOrMobilePhone();
     const isMobOrTab = isIOS || isPhone || (typeof isMobileOrTabletDevice === "function" && isMobileOrTabletDevice());
     const MB = 1024 * 1024;
     if (lodMode === "rough") return { maxHdBytes: 32 * MB, maxHdTiles: 8 };
-    if (isIOS || isPhone) {
-      if (!isIOS) { // Android phones: Chrome tolerates more GPU memory than iOS WebKit
-        return lodMode === "max" ? { maxHdBytes: 288 * MB, maxHdTiles: 56 } : { maxHdBytes: 224 * MB, maxHdTiles: 44 };
-      }
-      return lodMode === "max" ? { maxHdBytes: 176 * MB, maxHdTiles: 34 } : { maxHdBytes: 128 * MB, maxHdTiles: 24 };
-    }
+    const dm = Number((typeof navigator !== "undefined" && navigator.deviceMemory) || (isIOS ? 4 : 8));
+    const max = lodMode === "max";
+    let mb;
     if (isMobOrTab) {
-      return lodMode === "max" ? { maxHdBytes: 264 * MB, maxHdTiles: 52 } : { maxHdBytes: 196 * MB, maxHdTiles: 38 };
+      // iOS exposes no deviceMemory: assume a 4 GB-class device. Learned scale protects weaker ones.
+      mb = dm >= 8 ? (max ? 896 : 640) : dm >= 6 ? (max ? 704 : 512) : dm >= 4 ? (max ? 512 : 384) : (max ? 320 : 256);
+    } else {
+      mb = dm >= 8 ? (max ? 1024 : 640) : (max ? 768 : 480);
     }
-    const hiMem = Number((typeof navigator !== "undefined" && navigator.deviceMemory) || 8) >= 8;
-    if (lodMode === "max") {
-      return hiMem ? { maxHdBytes: 1024 * MB, maxHdTiles: 320 } : { maxHdBytes: 768 * MB, maxHdTiles: 240 };
-    }
-    return hiMem ? { maxHdBytes: 640 * MB, maxHdTiles: 200 } : { maxHdBytes: 480 * MB, maxHdTiles: 150 };
+    mb = Math.round(mb * getLearnedHdScale());
+    return { maxHdBytes: mb * MB, maxHdTiles: Math.max(12, Math.round(mb / 5.0)) };
   }
   window.getStudioHdTileBudget = getStudioHdTileBudget;
 
@@ -1148,6 +1160,7 @@
       ev.preventDefault();
       if (studioThree) {
         studioThree._contextLost = true;
+        shrinkHdBudgetAfterCrash();
         if (studioThree.tilesRenderer) abortInFlightHdTiles(studioThree.tilesRenderer);
       }
     }, false);
