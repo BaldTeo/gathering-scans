@@ -786,6 +786,18 @@
     return true;
   }
 
+  // Budget-adaptive detail: when visible HD demand exceeds the VRAM/tile budget, coarsen errorTarget so the
+  // visible set FITS the budget (complete coverage, no missing tiles / thrash) instead of blocking tile loads.
+  function bumpStudioErrorTarget(tr, factor) {
+    if (!tr || !(tr._gsBaseErrorTarget > 0)) return;
+    const prev = tr._gsErrBump || 1;
+    const next = Math.max(1, Math.min(80, prev * factor));
+    if (next === prev) return;
+    tr._gsErrBump = next;
+    tr.errorTarget = Math.min(16, tr._gsBaseErrorTarget * next);
+    tr._gsNeedsUpdate = true;
+  }
+
   function enforceStudioHdGpuBudget(tr) {
     if (!tr || !tr._gsHdTileMeta) return 0;
     const budget = getStudioHdTileBudget(tr._gsLodMode || STATE.scanLodMode || "auto");
@@ -838,11 +850,7 @@
     }
     tr._gsHdResidentBytes = totalBytes;
     tr._gsHdResidentCount = totalCount;
-    if (maxEvictedVisPrio > 0 && studioThree) {
-      // Prevent low-priority horizon tiles from thrashing while still allowing higher-priority focal tiles in!
-      tr._gsBudgetSaturatedCamSig = studioThree._lastCamSig || "saturated";
-      tr._gsEvictedVisFloorPrio = Math.max(tr._gsEvictedVisFloorPrio || 0, maxEvictedVisPrio);
-    }
+    if (maxEvictedVisPrio > 0) bumpStudioErrorTarget(tr, 1.5);
     if (evicted > 0) ensureZeroGapCoarseCoverage(tr, Boolean(studioThree?._camMoving));
     return evicted;
   }
@@ -873,7 +881,6 @@
     tr._gsNeedsUpdate = true;
     tr._gsHdResidentBytes = 0;
     tr._gsHdResidentCount = 0;
-    tr._gsEvictedVisFloorPrio = 0;
     syncStudioTilesLruLimits(tr, lodMode);
 
     const foveatedQueuePriority = (a, b) => {
@@ -915,14 +922,17 @@
       if (!tile) return;
       const isPinned = Boolean(tile.__gsPinnedCoarse || tile.__gsPinnedContainer || tile.internal?.hasUnrenderableContent);
       if (!isPinned) {
+        tr._gsDeferred = true; // cleared by the retry loop once the request is actually issued
         if (studioThree?._camMoving) return;
-        if (tr._gsBudgetSaturatedCamSig && studioThree && tr._gsBudgetSaturatedCamSig === studioThree._lastCamSig) {
-          if (computeStudioTilePriority(tr, tile) <= (tr._gsEvictedVisFloorPrio || 0) * 1.15) return;
-        }
+        tr._gsDeferred = false;
         const budget = getStudioHdTileBudget(tr._gsLodMode || "auto");
-        if ((tr._gsHdResidentBytes || 0) >= budget.maxHdBytes && (tr._gsHdResidentCount || 0) >= 4) {
+        if ((tr._gsHdResidentBytes || 0) >= budget.maxHdBytes * 0.97 || (tr._gsHdResidentCount || 0) >= budget.maxHdTiles) {
           enforceStudioHdGpuBudget(tr);
-          if ((tr._gsHdResidentBytes || 0) >= budget.maxHdBytes) return;
+          if ((tr._gsHdResidentBytes || 0) >= budget.maxHdBytes * 0.97 || (tr._gsHdResidentCount || 0) >= budget.maxHdTiles) {
+            tr._gsDeferred = true;
+            bumpStudioErrorTarget(tr, 1.35);
+            return;
+          }
         }
       }
       return origRequest(tile);
@@ -977,8 +987,8 @@
     studioThree._camIdleAtMs = nowMs + STUDIO_HD_IDLE_DELAY_MS;
     const tr = studioThree.tilesRenderer;
     if (tr) {
-      tr._gsBudgetSaturatedCamSig = null;
-      tr._gsEvictedVisFloorPrio = 0;
+      tr._gsDeferred = true;
+      bumpStudioErrorTarget(tr, 1 / 1.25); // relax toward base detail for the new view
       if (tr.loadingTiles && tr.loadingTiles.size > 0) abortInFlightHdTiles(tr, forceAbort);
     }
   }
@@ -996,9 +1006,11 @@
     const sig = computeCameraPoseSig(cam);
     const poseChanged = studioThree._lastCamSig !== undefined && studioThree._lastCamSig !== sig;
     studioThree._lastCamSig = sig;
-    if (poseChanged && tr._gsBudgetSaturatedCamSig && tr._gsBudgetSaturatedCamSig !== sig) {
-      tr._gsBudgetSaturatedCamSig = null;
-      tr._gsEvictedVisFloorPrio = 0;
+    // Retry deferred tile requests (rejected while moving / budget-full) until everything visible is resident
+    if (tr._gsDeferred && !studioThree._camMoving && nowMs - (studioThree._lastDeferRetryMs || 0) > 160) {
+      studioThree._lastDeferRetryMs = nowMs;
+      tr._gsDeferred = false;
+      tr._gsNeedsUpdate = true;
     }
 
     // Measure actual camera linear & angular velocity so gentle orbit/zoom & OrbitControls damping stream HD live
@@ -4244,7 +4256,7 @@
         const tr = studioThree.tilesRenderer;
         if (typeof configureTilesRendererLodAndCaps === "function") configureTilesRendererLodAndCaps(tr, validMode, "studio");
         installStudioSmartLodEngine(tr, validMode);
-        tr._gsBudgetSaturatedCamSig = null; tr._gsEvictedVisFloorPrio = 0;
+
         tr._gsNeedsUpdate = true;
         studioThree._lastSettledCamSig = "";
         if (validMode === "rough") abortInFlightHdTiles(tr);

@@ -2325,6 +2325,7 @@
       }
     }
 
+    tr._gsBaseErrorTarget = Math.max(0.05, tr.errorTarget); tr._gsErrBump = 1;
     if (tr.downloadQueue) {
       tr.downloadQueue.maxJobs = isPreviewTileset
         ? (isIOS ? 6 : 14)
