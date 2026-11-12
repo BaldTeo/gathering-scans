@@ -1363,7 +1363,7 @@ class GatheringScansHandler(CloudAndTunnelHandlerMixin, ServerWriteRoutesMixin, 
                     return "2K"
                 return f"{d}px"
 
-            if not tex_label:
+            if not tex_label or is_preview_stage or single_obj_sliced or (ts_path and os.path.isfile(ts_path)):
                 if is_preview_stage:
                     tex_label = f"{_dim_k_tag(eff_res)} Preview (Pass 1/2)"
                 elif tex_cnt > 1 and eff_res > tile_max_dim:
