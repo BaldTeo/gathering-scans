@@ -94,8 +94,8 @@ class UxLodPrimaryLoginTests(unittest.TestCase):
         self.assertIn("MutationObserver", app_js)
 
         # 4. Asset cache-busting version synchronization between index.html and sw.js
-        self.assertIn("?v=20261111_v320", html)
-        self.assertIn("gathering-scans-offline-v320", sw_js)
+        self.assertIn("?v=20261112_v321", html)
+        self.assertIn("gathering-scans-offline-v321", sw_js)
 
     def test_62_primary_scan_star_api_persistence_and_default_selection(self):
         """Verify Primary Scan HTTP API, RBAC, disk persistence, site rename migration, and default site selection."""
@@ -461,13 +461,18 @@ class UxLodPrimaryLoginTests(unittest.TestCase):
 
     def test_64_hd_tile_idle_gating_pinned_coarse_and_bounded_gpu_cache(self):
         """Verify Studio 3D Tiles smart LOD engine pins coarse tiles, idle-gates HD fetches during camera motion, bounded-evicts GPU memory, and keeps native DPR."""
+        with open(os.path.join(BASE_DIR, "web", "src", "02-map-and-timeline.js"), "r", encoding="utf-8") as f:
+            js02 = f.read()
         with open(os.path.join(BASE_DIR, "web", "src", "03-studio-core.js"), "r", encoding="utf-8") as f:
             js03 = f.read()
         with open(os.path.join(BASE_DIR, "web", "app.js"), "r", encoding="utf-8") as f:
             app_js = f.read()
 
-        # 1. Verify pinned coarse base tile protection & zero-gap ancestor fallback
+        # 1. Verify pinned coarse base tile protection, leaf-direct ancestor skip & zero-gap ancestor fallback
+        self.assertIn("tr.loadAncestors =", js02)
         self.assertIn("STUDIO_HD_IDLE_DELAY_MS", js03)
+        self.assertIn("STUDIO_GLIDE_STREAM_INTERVAL_MS", js03)
+        self.assertIn("computeStudioTilePriority", js03)
         self.assertIn("identifyAndPinCoarseBaseTiles", js03)
         self.assertIn("ensureZeroGapCoarseCoverage", js03)
         self.assertIn("unhideNearestLoadedAncestor", js03)

@@ -357,7 +357,6 @@
       if (!cam || !ctrls || !ctrls.enabled || ctrls.enableZoom === false) return;
       if (opts.isStudio && (STATE.fpMode?.active || STATE.activeView !== "studio")) return;
       const now = performance.now();
-      if (opts.isStudio) markStudioCameraActivity(now);
       if (e.deltaY >= 0) {
         lastRayMs = 0;
         return; // Zoom-out works normally
@@ -456,10 +455,15 @@
   window.installSurfaceAwareOrbitZoom = installSurfaceAwareOrbitZoom;
 
   // =========================================================================
-  // STUDIO SMART LOD, PINNED COARSE BASE, CAMERA-IDLE GATE & BOUNDED HD GPU LRU
+  // STUDIO SMART LOD, PINNED COARSE BASE, VELOCITY-ADAPTIVE GATE & BOUNDED HD GPU LRU
   // =========================================================================
-  const STUDIO_HD_IDLE_DELAY_MS = 260;
+  const STUDIO_HD_IDLE_DELAY_MS = 65;
+  const STUDIO_GLIDE_STREAM_INTERVAL_MS = 55;
+  const STUDIO_FAST_LIN_SPEED = 0.52; // relative camera units/sec (posDelta / targetDist / dt)
+  const STUDIO_FAST_ANG_SPEED = 0.72; // rad/sec camera rotation whip threshold
   const TILE_STATE_UNLOADED = 0, TILE_STATE_QUEUED = 1, TILE_STATE_LOADING = 2, TILE_STATE_PARSING = 3, TILE_STATE_LOADED = 4;
+  const _prioSphere = new THREE.Sphere();
+  const _prioVec = new THREE.Vector3();
 
   function getStudioTargetPixelRatio() {
     const isIOS = typeof isIOSOrIPadDevice === "function" && isIOSOrIPadDevice();
@@ -563,14 +567,40 @@
     const MB = 1024 * 1024;
     if (lodMode === "rough") return { maxHdBytes: 32 * MB, maxHdTiles: 8 };
     if (isIOS || isPhone) {
-      return lodMode === "max" ? { maxHdBytes: 176 * MB, maxHdTiles: 32 } : { maxHdBytes: 128 * MB, maxHdTiles: 22 };
+      return lodMode === "max" ? { maxHdBytes: 176 * MB, maxHdTiles: 34 } : { maxHdBytes: 128 * MB, maxHdTiles: 24 };
     }
     if (isMobOrTab) {
-      return lodMode === "max" ? { maxHdBytes: 256 * MB, maxHdTiles: 48 } : { maxHdBytes: 192 * MB, maxHdTiles: 34 };
+      return lodMode === "max" ? { maxHdBytes: 264 * MB, maxHdTiles: 52 } : { maxHdBytes: 196 * MB, maxHdTiles: 38 };
     }
-    return lodMode === "max" ? { maxHdBytes: 896 * MB, maxHdTiles: 280 } : { maxHdBytes: 480 * MB, maxHdTiles: 140 };
+    const hiMem = Number((typeof navigator !== "undefined" && navigator.deviceMemory) || 8) >= 8;
+    if (lodMode === "max") {
+      return hiMem ? { maxHdBytes: 1024 * MB, maxHdTiles: 320 } : { maxHdBytes: 768 * MB, maxHdTiles: 240 };
+    }
+    return hiMem ? { maxHdBytes: 640 * MB, maxHdTiles: 200 } : { maxHdBytes: 480 * MB, maxHdTiles: 150 };
   }
   window.getStudioHdTileBudget = getStudioHdTileBudget;
+
+  function computeStudioTilePriority(tr, tile) {
+    if (!tile) return 0;
+    if (tile.__gsPinnedCoarse || tile.__gsPinnedContainer || tile.internal?.hasUnrenderableContent) return 1e9;
+    const trav = tile.traversal;
+    const err = Math.min(1e6, Number(trav?.error) || 0);
+    const dist = Math.max(0, Number(trav?.distanceFromCamera) || 0);
+    const inFrust = Boolean(trav?.inFrustum && (!tr || trav?.lastFrameVisited === tr.frameCount));
+    let centerBoost = 1.0;
+    const bv = tile.engineData?.boundingVolume;
+    const cam = studioThree?.camera;
+    if (inFrust && bv && typeof bv.getSphere === "function" && cam && tr?.group) {
+      bv.getSphere(_prioSphere);
+      _prioVec.copy(_prioSphere.center).applyMatrix4(tr.group.matrixWorld).project(cam);
+      if (_prioVec.z >= -1.0 && _prioVec.z <= 1.05) {
+        const r2 = _prioVec.x * _prioVec.x + _prioVec.y * _prioVec.y;
+        centerBoost = 1.0 + 1.45 * Math.exp(-r2 * 2.2);
+      }
+    }
+    const base = (err + 0.25) / (1.0 + dist * 0.32);
+    return inFrust ? base * centerBoost : base * 0.08;
+  }
 
   function setTileSceneVisibleImmediate(tr, tile, visible) {
     if (!tr || !tile) return;
@@ -654,7 +684,7 @@
     }
   }
 
-  function abortInFlightHdTiles(tr) {
+  function abortInFlightHdTiles(tr, forceAll = true) {
     if (!tr || !tr.loadingTiles || tr.loadingTiles.size === 0) return 0;
     const removeFn = tr._gsOrigLruRemove || tr.lruCache?.remove;
     if (!removeFn || !tr.lruCache) return 0;
@@ -662,14 +692,19 @@
     let aborted = 0;
     for (let i = 0; i < snap.length; i++) {
       const t = snap[i];
-      if (!t || t.__gsPinnedCoarse || t.__gsPinnedContainer) continue;
+      if (!t || t.__gsPinnedCoarse || t.__gsPinnedContainer || t.internal?.hasUnrenderableContent) continue;
       const st = t.internal?.loadingState;
-      if (st === TILE_STATE_QUEUED || st === TILE_STATE_LOADING || st === TILE_STATE_PARSING) {
+      if (forceAll) {
+        if (st === TILE_STATE_QUEUED || st === TILE_STATE_LOADING || st === TILE_STATE_PARSING) {
+          if (removeFn.call(tr.lruCache, t)) aborted++;
+        }
+      } else if (st === TILE_STATE_QUEUED || (st === TILE_STATE_LOADING && t.traversal?.inFrustum === false)) {
+        // During fast camera motion, keep in-frustum downloads & already-downloaded PARSING decodes alive!
         if (removeFn.call(tr.lruCache, t)) aborted++;
       }
     }
     if (tr.queuedTiles && tr.queuedTiles.length > 0) {
-      tr.queuedTiles = tr.queuedTiles.filter((t) => Boolean(t && (t.__gsPinnedCoarse || t.__gsPinnedContainer)));
+      tr.queuedTiles = tr.queuedTiles.filter((t) => Boolean(t && (t.__gsPinnedCoarse || t.__gsPinnedContainer || (!forceAll && t.internal?.hasUnrenderableContent))));
     }
     return aborted;
   }
@@ -705,8 +740,8 @@
         if (inView) { setTileSceneVisibleImmediate(tr, coarse, true); anyVisible = true; }
         return;
       }
-      // Keep coarse base tile pinned & visible until all relevant child branches have resident HD coverage
-      const fullyCovered = isSubtreeCoveredByResidentHd(tr, coarse, isMoving || tr.errorTarget <= 12);
+      // Keep coarse base tile pinned & visible until all in-frustum child branches have resident HD coverage
+      const fullyCovered = isSubtreeCoveredByResidentHd(tr, coarse, isMoving);
       if (fullyCovered) {
         setTileSceneVisibleImmediate(tr, coarse, false);
         anyVisible = true;
@@ -783,29 +818,30 @@
       const frA = Boolean(tA.traversal?.lastFrameVisited === tr.frameCount && tA.traversal?.inFrustum);
       const frB = Boolean(tB.traversal?.lastFrameVisited === tr.frameCount && tB.traversal?.inFrustum);
       if (frA !== frB) return frA ? 1 : -1;
-      if (!visA && mA.lastUsedFrame !== mB.lastUsedFrame) return mA.lastUsedFrame - mB.lastUsedFrame;
-      const dA = tA.internal?.depth || 0, dB = tB.internal?.depth || 0;
-      if (dA !== dB) return dB - dA;
-      return (tB.traversal?.distanceFromCamera || 0) - (tA.traversal?.distanceFromCamera || 0);
+      if (!visA && !frA && mA.lastUsedFrame !== mB.lastUsedFrame) return mA.lastUsedFrame - mB.lastUsedFrame;
+      // Among visible/in-frustum tiles, evict lowest focal screen-space priority (distant/edge) first
+      return computeStudioTilePriority(tr, tA) - computeStudioTilePriority(tr, tB);
     });
 
-    let evicted = 0, evictedVisible = false;
+    let evicted = 0, maxEvictedVisPrio = 0;
     for (let i = 0; i < entries.length && (totalBytes > budget.maxHdBytes || totalCount > budget.maxHdTiles); i++) {
       const [victim, meta] = entries[i];
       const isVis = Boolean(victim.traversal?.visible || (victim.traversal?.lastFrameVisited === tr.frameCount && victim.traversal?.inFrustum));
-      if (isVis && totalCount <= 2) break;
+      if (isVis && totalCount <= 4) break;
+      const vPrio = isVis ? computeStudioTilePriority(tr, victim) : 0;
       if (evictHdTileCleanly(tr, victim)) {
         totalBytes = Math.max(0, totalBytes - meta.bytes);
         totalCount = Math.max(0, totalCount - 1);
         evicted++;
-        if (isVis) evictedVisible = true;
+        if (isVis && vPrio > maxEvictedVisPrio) maxEvictedVisPrio = vPrio;
       }
     }
     tr._gsHdResidentBytes = totalBytes;
     tr._gsHdResidentCount = totalCount;
-    if (evictedVisible && studioThree) {
+    if (maxEvictedVisPrio > 0 && studioThree) {
+      // Prevent low-priority horizon tiles from thrashing while still allowing higher-priority focal tiles in!
       tr._gsBudgetSaturatedCamSig = studioThree._lastCamSig || "saturated";
-      abortInFlightHdTiles(tr);
+      tr._gsEvictedVisFloorPrio = Math.max(tr._gsEvictedVisFloorPrio || 0, maxEvictedVisPrio);
     }
     if (evicted > 0) ensureZeroGapCoarseCoverage(tr, Boolean(studioThree?._camMoving));
     return evicted;
@@ -817,11 +853,11 @@
     tr._gsLodMode = lodMode || "auto";
     const budget = getStudioHdTileBudget(tr._gsLodMode);
     if (tr.lruCache) {
-      const headroom = 48 * 1024 * 1024;
-      tr.lruCache.minBytesSize = Math.round(budget.maxHdBytes * 0.82);
+      const headroom = 64 * 1024 * 1024;
+      tr.lruCache.minBytesSize = Math.round(budget.maxHdBytes * 0.85);
       tr.lruCache.maxBytesSize = budget.maxHdBytes + headroom;
-      tr.lruCache.minSize = Math.max(48, budget.maxHdTiles + 32);
-      tr.lruCache.maxSize = Math.max(96, budget.maxHdTiles + 72);
+      tr.lruCache.minSize = Math.max(64, budget.maxHdTiles + 48);
+      tr.lruCache.maxSize = Math.max(128, budget.maxHdTiles + 96);
     }
   }
 
@@ -837,7 +873,17 @@
     tr._gsNeedsUpdate = true;
     tr._gsHdResidentBytes = 0;
     tr._gsHdResidentCount = 0;
+    tr._gsEvictedVisFloorPrio = 0;
     syncStudioTilesLruLimits(tr, lodMode);
+
+    const foveatedQueuePriority = (a, b) => {
+      const pA = computeStudioTilePriority(tr, a);
+      const pB = computeStudioTilePriority(tr, b);
+      if (pA !== pB) return pA > pB ? 1 : -1;
+      return (b?.internal?.depth || 0) - (a?.internal?.depth || 0);
+    };
+    if (tr.downloadQueue) tr.downloadQueue.priorityCallback = foveatedQueuePriority;
+    if (tr.parseQueue) tr.parseQueue.priorityCallback = foveatedQueuePriority;
 
     if (tr.lruCache && typeof tr.lruCache.remove === "function") {
       const origRemove = tr.lruCache.remove.bind(tr.lruCache);
@@ -870,9 +916,11 @@
       const isPinned = Boolean(tile.__gsPinnedCoarse || tile.__gsPinnedContainer || tile.internal?.hasUnrenderableContent);
       if (!isPinned) {
         if (studioThree?._camMoving) return;
-        if (tr._gsBudgetSaturatedCamSig && studioThree && tr._gsBudgetSaturatedCamSig === studioThree._lastCamSig) return;
+        if (tr._gsBudgetSaturatedCamSig && studioThree && tr._gsBudgetSaturatedCamSig === studioThree._lastCamSig) {
+          if (computeStudioTilePriority(tr, tile) <= (tr._gsEvictedVisFloorPrio || 0) * 1.15) return;
+        }
         const budget = getStudioHdTileBudget(tr._gsLodMode || "auto");
-        if ((tr._gsHdResidentBytes || 0) >= budget.maxHdBytes && (tr._gsHdResidentCount || 0) >= 2) {
+        if ((tr._gsHdResidentBytes || 0) >= budget.maxHdBytes && (tr._gsHdResidentCount || 0) >= 4) {
           enforceStudioHdGpuBudget(tr);
           if ((tr._gsHdResidentBytes || 0) >= budget.maxHdBytes) return;
         }
@@ -923,14 +971,15 @@
     } catch (_) {}
   }
 
-  function markStudioCameraActivity(nowMs = performance.now()) {
+  function markStudioCameraActivity(nowMs = performance.now(), forceAbort = false) {
     if (!studioThree) return;
     studioThree._camMoving = true;
     studioThree._camIdleAtMs = nowMs + STUDIO_HD_IDLE_DELAY_MS;
     const tr = studioThree.tilesRenderer;
     if (tr) {
       tr._gsBudgetSaturatedCamSig = null;
-      if (tr.loadingTiles && tr.loadingTiles.size > 0) abortInFlightHdTiles(tr);
+      tr._gsEvictedVisFloorPrio = 0;
+      if (tr.loadingTiles && tr.loadingTiles.size > 0) abortInFlightHdTiles(tr, forceAbort);
     }
   }
   window.markStudioCameraActivity = markStudioCameraActivity;
@@ -947,29 +996,59 @@
     const sig = computeCameraPoseSig(cam);
     const poseChanged = studioThree._lastCamSig !== undefined && studioThree._lastCamSig !== sig;
     studioThree._lastCamSig = sig;
+    if (poseChanged && tr._gsBudgetSaturatedCamSig && tr._gsBudgetSaturatedCamSig !== sig) {
+      tr._gsBudgetSaturatedCamSig = null;
+      tr._gsEvictedVisFloorPrio = 0;
+    }
 
-    if (poseChanged) {
-      markStudioCameraActivity(nowMs);
-    } else if (studioThree._camMoving && nowMs >= (studioThree._camIdleAtMs || 0) && !studioThree._orbitInteracting) {
+    // Measure actual camera linear & angular velocity so gentle orbit/zoom & OrbitControls damping stream HD live
+    let isFastMotion = false;
+    const prevT = studioThree._prevVelMs || 0;
+    const dtSec = prevT > 0 ? Math.min(0.25, Math.max(0.004, (nowMs - prevT) * 0.001)) : 0;
+    if (poseChanged && dtSec > 0 && studioThree._prevCamPos && studioThree._prevCamQuat) {
+      const posDelta = cam.position.distanceTo(studioThree._prevCamPos);
+      const tgt = studioThree.controls?.target;
+      const refDist = Math.max(2.5, tgt ? cam.position.distanceTo(tgt) : 12.0);
+      const relLinSpeed = (posDelta / refDist) / dtSec;
+      const qDot = Math.min(1.0, Math.abs(cam.quaternion.dot(studioThree._prevCamQuat)));
+      const angSpeed = (2.0 * Math.acos(qDot)) / dtSec;
+      isFastMotion = relLinSpeed > STUDIO_FAST_LIN_SPEED || angSpeed > STUDIO_FAST_ANG_SPEED;
+    }
+    if (!studioThree._prevCamPos) {
+      studioThree._prevCamPos = cam.position.clone();
+      studioThree._prevCamQuat = cam.quaternion.clone();
+    } else {
+      studioThree._prevCamPos.copy(cam.position);
+      studioThree._prevCamQuat.copy(cam.quaternion);
+    }
+    studioThree._prevVelMs = nowMs;
+
+    if (isFastMotion) {
+      markStudioCameraActivity(nowMs, false);
+    } else if (studioThree._camMoving && nowMs >= (studioThree._camIdleAtMs || 0)) {
       studioThree._camMoving = false;
       tr._gsNeedsUpdate = true;
     }
 
     const isMoving = Boolean(studioThree._camMoving);
     if (isMoving) {
-      if (tr.loadingTiles && tr.loadingTiles.size > 0) abortInFlightHdTiles(tr);
       if (poseChanged || tr._gsNeedsUpdate) {
         tr._gsNeedsUpdate = false;
         tr.update();
+        if (tr.loadingTiles && tr.loadingTiles.size > 0) abortInFlightHdTiles(tr, false);
         ensureZeroGapCoarseCoverage(tr, true);
       }
-    } else if (tr._gsNeedsUpdate || studioThree._lastSettledCamSig !== sig) {
-      tr._gsNeedsUpdate = false;
-      studioThree._lastSettledCamSig = sig;
-      if (tr._gsPinnedCoarseSet && tr._gsPinnedCoarseSet.size === 0 && tr.root) identifyAndPinCoarseBaseTiles(tr);
-      tr.update();
-      enforceStudioHdGpuBudget(tr);
-      ensureZeroGapCoarseCoverage(tr, false);
+    } else {
+      const glideDue = !poseChanged || (nowMs - (studioThree._lastGlideUpdateMs || 0) >= STUDIO_GLIDE_STREAM_INTERVAL_MS);
+      if (tr._gsNeedsUpdate || (studioThree._lastSettledCamSig !== sig && glideDue)) {
+        tr._gsNeedsUpdate = false;
+        studioThree._lastSettledCamSig = sig;
+        studioThree._lastGlideUpdateMs = nowMs;
+        if (tr._gsPinnedCoarseSet && tr._gsPinnedCoarseSet.size === 0 && tr.root) identifyAndPinCoarseBaseTiles(tr);
+        tr.update();
+        enforceStudioHdGpuBudget(tr);
+        ensureZeroGapCoarseCoverage(tr, false);
+      }
     }
 
     const st = tr.stats || {};
@@ -1076,10 +1155,10 @@
     controls.mouseButtons = { LEFT: THREE.MOUSE.ROTATE, MIDDLE: THREE.MOUSE.ROTATE, RIGHT: THREE.MOUSE.PAN };
     controls.touches = { ONE: THREE.TOUCH.ROTATE, TWO: THREE.TOUCH.DOLLY_PAN };
     controls.addEventListener("start", () => {
-      if (studioThree) { studioThree._orbitInteracting = true; markStudioCameraActivity(); }
+      if (studioThree) studioThree._orbitInteracting = true;
     });
     controls.addEventListener("end", () => {
-      if (studioThree) { studioThree._orbitInteracting = false; markStudioCameraActivity(); }
+      if (studioThree) studioThree._orbitInteracting = false;
       SHARE_TELEMETRY.recordCameraInteraction("studio");
     });
     renderer.domElement.addEventListener("mousedown", (e) => { if (e.button === 1) e.preventDefault(); });
@@ -1314,7 +1393,6 @@
     }, { passive: true });
     renderer.domElement.addEventListener("touchmove", (te) => {
       if (te.touches && te.touches.length >= 2) abortSingleFingerToolForPinch();
-      else if (te.touches && te.touches.length === 1 && STATE.activeTool !== "crop" && STATE.activeTool !== "crop_delete") markStudioCameraActivity();
     }, { passive: true });
 
     renderer.domElement.addEventListener("pointerdown", (e) => {
@@ -4166,7 +4244,7 @@
         const tr = studioThree.tilesRenderer;
         if (typeof configureTilesRendererLodAndCaps === "function") configureTilesRendererLodAndCaps(tr, validMode, "studio");
         installStudioSmartLodEngine(tr, validMode);
-        tr._gsBudgetSaturatedCamSig = null;
+        tr._gsBudgetSaturatedCamSig = null; tr._gsEvictedVisFloorPrio = 0;
         tr._gsNeedsUpdate = true;
         studioThree._lastSettledCamSig = "";
         if (validMode === "rough") abortInFlightHdTiles(tr);

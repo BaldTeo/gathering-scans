@@ -5,7 +5,7 @@
  * Strictly zero scan cache is ever stored on the Linux VPS.
  */
 
-const CACHE_NAME = "gathering-scans-offline-v320";
+const CACHE_NAME = "gathering-scans-offline-v321";
 const SCAN_TILES_CACHE = "gathering-scans-tiles-v4";
 const APP_SHELL = [
   "/",
@@ -93,16 +93,19 @@ self.addEventListener("fetch", (event) => {
 
   const url = new URL(req.url);
 
-  // For /stream/ 3D tileset & GLB requests: try network first, refresh any existing offline cache entry without cloning uncached tiles in RAM, and fall back to offline browser cache when PC/network is offline
+  // For /stream/ 3D tileset & GLB requests: fire network fetch immediately (zero pre-fetch CacheStorage IPC delay),
+  // refresh any existing offline cache entry in background without cloning uncached tiles, and fall back to offline cache if offline.
   if (url.pathname.startsWith("/stream/")) {
     event.respondWith(
       (async () => {
-        let tileCache = null;
-        let existingCached = null;
-        try {
-          tileCache = await caches.open(SCAN_TILES_CACHE);
-          existingCached = (await tileCache.match(req)) || (await tileCache.match(req, { ignoreSearch: true }));
-        } catch (_) {}
+        const offlineHitPromise = (typeof caches.has === "function" ? caches.has(SCAN_TILES_CACHE) : Promise.resolve(true))
+          .then(async (exists) => {
+            if (!exists) return null;
+            const tc = await caches.open(SCAN_TILES_CACHE);
+            const hit = (await tc.match(req)) || (await tc.match(req, { ignoreSearch: true }));
+            return hit ? { tc, hit } : null;
+          })
+          .catch(() => null);
         try {
           let networkResp = null;
           const retryDelays = [0, 350, 900, 2000];
@@ -127,30 +130,33 @@ self.addEventListener("fetch", (event) => {
             }
           }
           if (networkResp && networkResp.status === 200) {
-            if (existingCached && tileCache) {
+            const cachedEntry = await offlineHitPromise;
+            if (cachedEntry && cachedEntry.tc) {
               const clone = networkResp.clone();
-              tileCache
+              cachedEntry.tc
                 .keys()
                 .then(async (allKeys) => {
                   for (const k of allKeys) {
                     try {
                       if (new URL(k.url).pathname === url.pathname && k.url !== req.url) {
-                        await tileCache.delete(k);
+                        await cachedEntry.tc.delete(k);
                       }
                     } catch (_) {}
                   }
-                  await tileCache.put(req, clone);
+                  await cachedEntry.tc.put(req, clone);
                 })
                 .catch(() => {});
             }
             return networkResp;
           }
           if (networkResp && (networkResp.status === 503 || networkResp.status === 502 || networkResp.status === 504)) {
-            return existingCached || (await matchStreamCache(req)) || networkResp;
+            const cachedEntry = await offlineHitPromise;
+            return (cachedEntry && cachedEntry.hit) || (await matchStreamCache(req)) || networkResp;
           }
           return networkResp;
         } catch (_) {
-          const cached = existingCached || (await matchStreamCache(req));
+          const cachedEntry = await offlineHitPromise;
+          const cached = (cachedEntry && cachedEntry.hit) || (await matchStreamCache(req));
           if (cached) return cached;
           return new Response(
             JSON.stringify({
