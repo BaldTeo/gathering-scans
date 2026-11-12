@@ -582,7 +582,9 @@ html[data-theme="dark"] .gs-lowres-preview-pill { color: #fbbf24; border-color: 
 }
 .gs-studio-main-pill::-webkit-scrollbar { display: none; }
 .gs-studio-main-pill .btn-xs { height: 26px; min-width: 26px; padding: 0 6px; font-size: 11px; gap: 3px; }
-.gs-studio-main-pill #studioProjectSelect { max-width: 118px; font-size: 11.5px; padding: 3px 22px 3px 7px !important; }
+.gs-studio-main-pill #studioProjectSelect { max-width: 84px; font-size: 10.5px; padding: 3px 18px 3px 6px !important; opacity: 0.6; background-color: transparent !important; border-color: transparent !important; transition: opacity .15s; }
+.gs-studio-main-pill #studioProjectSelect:hover, .gs-studio-main-pill #studioProjectSelect:focus { opacity: 1; border-color: var(--ui-border, rgba(148,163,184,.4)) !important; }
+.gs-studio-main-pill #btnRenameStudioSite { opacity: 0.45; }
 .gs-studio-main-pill #studioScanSelect { max-width: 155px; font-size: 11.5px; padding: 3px 22px 3px 7px !important; }
 .gs-studio-main-pill #studioScanMetrics { max-width: 112px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding-left: 6px !important; font-size: 10.5px !important; flex-shrink: 1; }
 .gs-studio-coord-pill { flex-shrink: 0; white-space: nowrap; }
