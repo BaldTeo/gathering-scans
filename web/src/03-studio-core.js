@@ -569,10 +569,18 @@
   function shrinkHdBudgetAfterCrash() {
     try { localStorage.setItem(HD_SCALE_KEY, String(Math.max(0.3, getLearnedHdScale() * 0.65))); } catch (_) {}
   }
+  // Crash heuristic (mobile only): flag "1" = Studio tiles were streaming while the page was VISIBLE. Any hide / pagehide /
+  // background / swipe-away / normal close clears it, so an abrupt user close never shrinks the budget; only a kill that
+  // happens while the page is still visible in the foreground (OOM) counts. Context loss shrinks it on every platform.
+  let _hdSessionMarked = false;
+  const setHdLiveFlag = (v) => { try { sessionStorage.setItem("gs_studio_open", v); } catch (_) {} };
   try {
     if (sessionStorage.getItem("gs_studio_open") === "1") shrinkHdBudgetAfterCrash();
-    sessionStorage.setItem("gs_studio_open", "1");
-    window.addEventListener("pagehide", () => { try { sessionStorage.setItem("gs_studio_open", "0"); } catch (_) {} });
+    setHdLiveFlag("0");
+    const onHide = () => setHdLiveFlag("0");
+    window.addEventListener("pagehide", onHide);
+    window.addEventListener("freeze", onHide);
+    document.addEventListener("visibilitychange", () => setHdLiveFlag(document.hidden ? "0" : (_hdSessionMarked ? "1" : "0")));
   } catch (_) {}
 
   function getStudioHdTileBudget(lodMode) {
@@ -581,11 +589,12 @@
     const isMobOrTab = isIOS || isPhone || (typeof isMobileOrTabletDevice === "function" && isMobileOrTabletDevice());
     const MB = 1024 * 1024;
     if (lodMode === "rough") return { maxHdBytes: 32 * MB, maxHdTiles: 8 };
-    const dm = Number((typeof navigator !== "undefined" && navigator.deviceMemory) || (isIOS ? 4 : 8));
+    const dm = Number((typeof navigator !== "undefined" && navigator.deviceMemory) || (isIOS ? 6 : 8));
     const max = lodMode === "max";
     let mb;
     if (isMobOrTab) {
-      // iOS exposes no deviceMemory: assume a 4 GB-class device. Learned scale protects weaker ones.
+      // iOS exposes no deviceMemory: assume at least a 6 GB-class device. Learned scale protects weaker ones.
+      if (!_hdSessionMarked) { _hdSessionMarked = true; if (!document.hidden) setHdLiveFlag("1"); }
       mb = dm >= 8 ? (max ? 896 : 640) : dm >= 6 ? (max ? 704 : 512) : dm >= 4 ? (max ? 512 : 384) : (max ? 320 : 256);
     } else {
       mb = dm >= 8 ? (max ? 1024 : 640) : (max ? 768 : 480);
