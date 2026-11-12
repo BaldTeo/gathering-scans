@@ -95,6 +95,7 @@ from pc_worker.pix4d_runner import (
     parse_pix4dmatic_log_progress,
     postprocess_obj_to_tileset,
     _detect_scalable_mesh_max_lod,
+    _attach_exported_gaussian_splats_if_present,
     run_export_obj_recovery,
 )
 
@@ -318,6 +319,8 @@ def pix4d_worker_loop():
                     recursive=True,
                 )
                 newest_scalable_mtime = max((os.path.getmtime(g) for g in scalable_glbs), default=0.0)
+                gsplat_plys = glob.glob(os.path.join(proj_dir, "exports", "gaussian_splats", "*.ply"))
+                newest_gsplat_mtime = max((os.path.getmtime(p) for p in gsplat_plys), default=0.0)
 
                 # If Scalable mesh octree tiles exist on disk (`**/processing/meshes/*/content/*.glb`)
                 # and no .obj exists yet, optionally recover mesh.obj ONLY when native octree GLBs are unavailable.
@@ -334,13 +337,15 @@ def pix4d_worker_loop():
                     except Exception as rec_err:
                         print(f"[InboxWatcher] ExportMeshToObj recovery warning for {fin_sid}: {rec_err}")
 
-                # If rerun_settings.json is still present and neither a new .obj nor new scalable_glbs were exported after the rerun started,
+                # If rerun_settings.json is still present and no new .obj, scalable_glbs, or gsplat_plys were exported after the rerun started,
                 # do NOT falsely mark a stale pre-rerun tileset.json as completed! Re-queue or mark failed.
-                if os.path.isfile(rerun_cfg_fp) and max(newest_obj_mtime, newest_scalable_mtime) < rerun_req_ts:
+                if os.path.isfile(rerun_cfg_fp) and max(newest_obj_mtime, newest_scalable_mtime, newest_gsplat_mtime) < rerun_req_ts:
                     DB.update_job_progress(fin_sid, "queued", 0.0, "Queued (Resuming interrupted Re-run)")
                     DB.set_force_next(fin_sid, True)
                 else:
+                    import shutil as _shutil
                     ts_path = scan_row.get("tileset_path") or os.path.join(proj_dir, "tileset", "tileset.json")
+                    built_fresh_octree = False
                     if scalable_glbs:
                         if not os.path.isfile(ts_path) or newest_scalable_mtime > os.path.getmtime(ts_path):
                             DB.update_job_progress(
@@ -359,8 +364,21 @@ def pix4d_worker_loop():
                                 )
                                 if nat_res and nat_res.get("tileset_path"):
                                     ts_path = str(nat_res["tileset_path"])
+                                    built_fresh_octree = True
                             except Exception as nat_err:
                                 print(f"[InboxWatcher] Error in build_native_octree_from_scalable_tileset for {fin_sid}: {nat_err}")
+                                if newest_obj and os.path.isfile(newest_obj) and os.path.getsize(newest_obj) > 1024:
+                                    try:
+                                        built_ts = postprocess_obj_to_tileset(
+                                            fin_sid,
+                                            proj_dir,
+                                            newest_obj,
+                                            progress_callback=lambda p, msg: DB.update_job_progress(fin_sid, "processing", p, msg),
+                                        )
+                                        if built_ts:
+                                            ts_path = built_ts
+                                    except Exception as fb_err:
+                                        print(f"[InboxWatcher] Fallback postprocess_obj_to_tileset error for {fin_sid}: {fb_err}")
                     elif newest_obj and os.path.isfile(newest_obj) and os.path.getsize(newest_obj) > 1024:
                         # If OBJ is newer than tileset.json, rebuild tileset + preview + DSM
                         if not os.path.isfile(ts_path) or os.path.getmtime(newest_obj) > os.path.getmtime(ts_path):
@@ -381,6 +399,41 @@ def pix4d_worker_loop():
                                     ts_path = built_ts
                             except Exception as post_err:
                                 print(f"[InboxWatcher] Error in postprocess_obj_to_tileset for {fin_sid}: {post_err}")
+
+                    if os.path.isfile(ts_path) and (built_fresh_octree or newest_gsplat_mtime > 0.0):
+                        gs_att = _attach_exported_gaussian_splats_if_present(
+                            scan_id=fin_sid,
+                            proj_dir=proj_dir,
+                            tileset_json_path=ts_path,
+                            progress_callback=lambda p, msg: DB.update_job_progress(fin_sid, "processing", p, msg),
+                        )
+                        if built_fresh_octree or gs_att:
+                            try:
+                                backup_dir = os.path.join(proj_dir, "tileset_backup")
+                                if os.path.isdir(backup_dir):
+                                    _shutil.rmtree(backup_dir, ignore_errors=True)
+                                _shutil.copytree(os.path.dirname(ts_path), backup_dir)
+                            except Exception as bk_e:
+                                print(f"[InboxWatcher] Warning creating tileset_backup for {fin_sid}: {bk_e}")
+                            for dsm_cache in glob.glob(os.path.join(proj_dir, "_dsm_cache_*.npz")):
+                                try:
+                                    os.remove(dsm_cache)
+                                except OSError:
+                                    pass
+                            DB.update_job_progress(
+                                fin_sid,
+                                "processing",
+                                99.0,
+                                "Website Processing (95%): Packaging .3tz Cloud Archive & Syncing...",
+                            )
+                            try:
+                                from pc_worker.gdrive_cloud_sync import build_scan_3tz_package
+                                build_scan_3tz_package(
+                                    {"scan_id": fin_sid, "tileset_path": ts_path, "project_dir": proj_dir},
+                                    force=True,
+                                )
+                            except Exception as e_3tz:
+                                print(f"[InboxWatcher] Warning building .3tz for adopted job {fin_sid}: {e_3tz}")
                     if os.path.isfile(rerun_cfg_fp):
                         try:
                             os.remove(rerun_cfg_fp)
@@ -437,6 +490,14 @@ def pix4d_worker_loop():
                                 GCHAT.notify_scan_ready(fin_sid)
                         except Exception as ge:
                             print(f"[InboxWatcher] Google Chat notify note for {fin_sid}: {ge}")
+                        try:
+                            threading.Thread(
+                                target=sync_all_scans_to_gdrive_and_vps,
+                                args=(DB, AUTH_SHARE, False),
+                                daemon=True,
+                            ).start()
+                        except Exception:
+                            pass
                         print(f"[InboxWatcher] Adopted PIX4Dmatic job {fin_sid} completed -> {ts_path}")
                     else:
                         DB.update_job_progress(fin_sid, "failed", 0.0, "PIX4Dmatic exited without producing 3D mesh")
@@ -595,7 +656,25 @@ def pix4d_worker_loop():
                             GCHAT.notify_scan_ready(sid)
                         except Exception as ge:
                             print(f"[InboxWatcher] Google Chat notify note: {ge}")
+                        try:
+                            threading.Thread(
+                                target=sync_all_scans_to_gdrive_and_vps,
+                                args=(DB, AUTH_SHARE, False),
+                                daemon=True,
+                            ).start()
+                        except Exception:
+                            pass
                         print(f"[InboxWatcher] Completed Pass 2/2 Full HQ {sid} -> {res.get('tileset_path')}")
+                elif res.get("license_busy"):
+                    print(f"[InboxWatcher] PIX4Dmatic license seat busy for {sid}; re-queuing ({job_pass}) for automatic retry...")
+                    DB.update_job_progress(
+                        sid,
+                        "queued",
+                        0.0,
+                        "Queued (Waiting for PIX4Dmatic license seat)",
+                        pending_pass=job_pass,
+                    )
+                    _PIX4D_WAKE_EVENT.wait(timeout=12.0)
                 else:
                     err_detail = res.get("error") or f"exit {res.get('return_code')}"
                     DB.update_job_progress(

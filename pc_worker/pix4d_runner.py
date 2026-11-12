@@ -107,6 +107,7 @@ def _new_log_parse_state() -> Dict[str, Any]:
         "gsplat_done": False,
         "export_gsplat_running": False,
         "export_gsplat_done": False,
+        "license_busy": False,
         "last_bracket_stage": "",
         "last_log_cpu_ram": "",
     }
@@ -115,6 +116,10 @@ def _new_log_parse_state() -> Dict[str, Any]:
 def _feed_log_line(st: Dict[str, Any], ln: str) -> None:
     if not ln:
         return
+    if "Could not acquire license" in ln or "No seat left" in ln:
+        st["license_busy"] = True
+    elif "Successfully acquired license" in ln or "Created project" in ln or "[Feature extraction]" in ln:
+        st["license_busy"] = False
     if "Could not create runnable pipeline due to QML errors" in ln:
         st["has_fatal_error"] = True
         if not st["error_message"]:
@@ -836,6 +841,7 @@ def parse_pix4dmatic_log_progress(log_path: str) -> Dict[str, Any]:
         out["has_fatal_error"] = bool(cached["has_fatal_error"])
         out["error_message"] = str(cached["error_message"] or "")
         out["is_finished"] = bool(cached["is_finished"])
+        out["license_busy"] = bool(cached.get("license_busy", False))
 
         _, _, live_cpu_ram = get_live_system_cpu_ram()
         cpu_ram = live_cpu_ram or cached["last_log_cpu_ram"]
@@ -1044,6 +1050,7 @@ def generate_pix4dmatic_gst_script(
     existing_project_only: bool = False,
     pipeline_pass: str = "full_hq",
     has_depth_inputs: bool = True,
+    gsplat_only: bool = False,
 ) -> str:
     """
     Generates a verified PIX4Dmatic 2.11.0 .gst / .p4mpl QML automation script:
@@ -1253,30 +1260,45 @@ def generate_pix4dmatic_gst_script(
         mesh_cloud_input = "FusedPointCloud{ }"
         report_cloud_inputs = "DensePointCloud{ },DepthPointCloud{ },FusedPointCloud{ }"
 
-    gsplat_generate_step = ""
-    gsplat_export_step = ""
+    gsplat_command_graph = ""
     if compute_gsplats:
         try:
             os.makedirs(os.path.join(export_dir, "gaussian_splats"), exist_ok=True)
         except Exception:
             pass
         gsplat_ply_path = f"{exp_clean}/gaussian_splats/splats.ply"
-        gsplat_generate_step = f"""
-            GenerateGaussianSplats {{
+        gsplat_sky_step = sky_masks_step if gsplat_only else ""
+        gsplat_command_graph = f"""        CommandGraph {{
+{gsplat_sky_step}            GenerateGaussianSplats {{
                 settings.gaussianSplatsTemplate : GaussianSplatsTemplate.{gsplat_template}
                 settings.maskAware : false
                 settings.skyless : {skyless_str}
                 resources.useGpu : GpuUsage.Automatic
                 inputs : [CalibratedCameras{{ }},SparsePointCloud{{ }}{sky_token}{mesh_roi_token}]
                 outputs : [GaussianSplats{{ }},DensePointCloud{{ }},ComputedDepthMaps{{ }}]
-            }}"""
-        gsplat_export_step = f"""
+            }}
             ExportGaussianSplatsToPly {{
                 path : "{gsplat_ply_path}"
                 inputs : [GaussianSplats{{ }}]
-            }}"""
+            }}
+        }}
+        SaveProject {{ }}
+"""
 
-    has_gsplat_for_report = bool(primary_opf_path or compute_gsplats)
+    has_gsplat_for_report = bool(primary_opf_path)
+
+    if gsplat_only and compute_gsplats:
+        gst_content = f"""Session {{
+    Project {{
+        folder : "{proj_folder_clean}"
+        name : "{proj_name}"
+
+        // Fast 3D Gaussian Splat Layer Pass (reusing calibrated 1:1 project & existing 16K Scalable Mesh)
+{gsplat_command_graph}    }}
+    CloseSession {{ }}
+}}
+"""
+        return gst_content
 
     gst_content = f"""Session {{
     Project {{
@@ -1286,7 +1308,7 @@ def generate_pix4dmatic_gst_script(
 {imports_joined}        // Photogrammetry & Mesh Pipeline (PIX4Dmatic 2.11.0 CommandGraph, pass={pipeline_pass}, calibScale={calib_image_scale})
         // Defaults: MeshPipeline.{mesh_pipeline}, skyless={skyless_str}, use_roi={str(use_roi).lower()}, textureSize={tex_size}, exportLod={export_lod}, 3DGS={str(compute_gsplats).lower()}({gsplat_template})
         CommandGraph {{
-{calib_step}{sky_masks_step}{point_cloud_steps}{gsplat_generate_step}
+{calib_step}{sky_masks_step}{point_cloud_steps}
             GenerateScalableMesh {{
                 settings.deghosting : Deghosting.{deghosting}
                 settings.generatePlanes : false
@@ -1314,10 +1336,10 @@ def generate_pix4dmatic_gst_script(
                 settings.exportLod : {export_lod}
                 settings.exportSrs : ExportSrs.Scene
                 inputs : [Mesh{{ }}]
-            }}{gsplat_export_step}
+            }}
         }}
         SaveProject {{ }}
-    }}
+{gsplat_command_graph}    }}
     CloseSession {{ }}
 }}
 """
@@ -1645,20 +1667,21 @@ def postprocess_obj_to_tileset(
                     shutil.copytree(os.path.dirname(native_ts), backup_dir)
                 except Exception as bk_err:
                     print(f"[PIX4DRunner] Warning creating tileset_backup for {scan_id}: {bk_err}")
-                if gs_attached:
-                    try:
-                        from pc_worker.gdrive_cloud_sync import build_scan_3tz_package
-                        build_scan_3tz_package(
-                            {"scan_id": scan_id, "tileset_path": native_ts, "project_dir": proj_dir},
-                            force=True,
-                        )
-                    except Exception as e_3tz:
-                        print(f"[PIX4DRunner] Warning rebuilding .3tz with 3DGS layer for {scan_id}: {e_3tz}")
                 for dsm_cache in glob.glob(os.path.join(proj_dir, "_dsm_cache_*.npz")):
                     try:
                         os.remove(dsm_cache)
                     except OSError:
                         pass
+                if progress_callback:
+                    progress_callback(99.0, "Website Processing (95%): Packaging .3tz Cloud Archive & Syncing...")
+                try:
+                    from pc_worker.gdrive_cloud_sync import build_scan_3tz_package
+                    build_scan_3tz_package(
+                        {"scan_id": scan_id, "tileset_path": native_ts, "project_dir": proj_dir},
+                        force=True,
+                    )
+                except Exception as e_3tz:
+                    print(f"[PIX4DRunner] Warning building .3tz cloud package for {scan_id}: {e_3tz}")
                 return native_ts
         except Exception as nat_err:
             print(f"[PIX4DRunner] Warning in build_native_octree_from_scalable_tileset for {scan_id}, falling back to QuadtreeTiler: {nat_err}")
@@ -2392,8 +2415,8 @@ def run_pix4dmatic_pipeline(
                 loaded_r = json.load(rf)
             if isinstance(loaded_r, dict):
                 r_data = loaded_r
-                if r_data.get("force_from_photos", True):
-                    force_from_photos = True
+                if "force_from_photos" in r_data:
+                    force_from_photos = bool(r_data.get("force_from_photos"))
                 if isinstance(r_data.get("settings"), dict):
                     custom_settings = r_data["settings"]
         except Exception as e:
@@ -2407,18 +2430,26 @@ def run_pix4dmatic_pipeline(
         active_cfg = load_pix4d_settings()
     active_tex_size = int(active_cfg.get("texture_size", PIX4DMATIC_TEXTURE_SIZE))
 
-    # Persist used pix4d_settings into scan_meta.json for audit/inspection
+    # Read prior pipeline metadata BEFORE persisting active_cfg into scan_meta.json
     meta_fp = os.path.join(proj_dir, "scan_meta.json")
-    if os.path.isfile(meta_fp) and not dry_run:
+    prev_pipeline_pass = ""
+    prev_pix4d_cfg: Dict[str, Any] = {}
+    prev_tex_res = 0
+    if os.path.isfile(meta_fp):
         try:
             with open(meta_fp, "r", encoding="utf-8") as mf:
                 m_obj = json.load(mf)
             if isinstance(m_obj, dict):
-                m_obj["pix4d_settings"] = active_cfg
-                m_obj["texture_resolution"] = active_tex_size
-                m_obj["pipeline_pass"] = clean_pass
-                with open(meta_fp, "w", encoding="utf-8") as mf:
-                    json.dump(m_obj, mf, ensure_ascii=False, indent=2)
+                prev_pipeline_pass = str(m_obj.get("pipeline_pass") or "")
+                if isinstance(m_obj.get("pix4d_settings"), dict):
+                    prev_pix4d_cfg = dict(m_obj["pix4d_settings"])
+                prev_tex_res = int(m_obj.get("texture_resolution") or 0)
+                if not dry_run:
+                    m_obj["pix4d_settings"] = active_cfg
+                    m_obj["texture_resolution"] = active_tex_size
+                    m_obj["pipeline_pass"] = clean_pass
+                    with open(meta_fp, "w", encoding="utf-8") as mf:
+                        json.dump(m_obj, mf, ensure_ascii=False, indent=2)
         except Exception:
             pass
 
@@ -2445,18 +2476,34 @@ def run_pix4dmatic_pipeline(
             for fn in files
         )
     )
+    has_existing_calib = os.path.isdir(recon_dir) and bool(os.listdir(recon_dir))
+    prev_calib_scale = str(preview_meta.get("calib_scale_used") or "")
+    has_full_calib_project = has_existing_calib and (
+        prev_calib_scale == "Full"
+        or not os.path.isfile(preview_meta_path)
+        or prev_pipeline_pass == "full_hq"
+    )
     reuse_pass1_full_calibration = (
         clean_pass == "full_hq"
         and not force_from_photos
-        and str(preview_meta.get("calib_scale_used") or "") == "Full"
-        and os.path.isdir(recon_dir)
-        and bool(os.listdir(recon_dir))
+        and has_full_calib_project
     )
     existing_project_only = reuse_pass1_full_calibration or (
         not force_from_photos
         and not has_inputs_on_disk
-        and os.path.isdir(recon_dir)
-        and bool(os.listdir(recon_dir))
+        and has_existing_calib
+    )
+    existing_ts_json = os.path.join(proj_dir, "tileset", "tileset.json")
+    gsplat_only = bool(
+        existing_project_only
+        and not force_from_photos
+        and clean_pass == "full_hq"
+        and bool(active_cfg.get("compute_gaussian_splats", False))
+        and prev_pipeline_pass == "full_hq"
+        and _detect_scalable_mesh_max_lod(proj_dir) is not None
+        and os.path.isfile(existing_ts_json)
+        and int(prev_pix4d_cfg.get("texture_size") or prev_tex_res or 0) == active_tex_size
+        and str(prev_pix4d_cfg.get("mesh_pipeline") or "Scalable") == str(active_cfg.get("mesh_pipeline") or "Scalable")
     )
 
     resolved_calib_scale = str(active_cfg.get("calib_image_scale", "Full"))
@@ -2464,7 +2511,7 @@ def run_pix4dmatic_pipeline(
     if custom_gst_path and os.path.isfile(custom_gst_path):
         gst_path = custom_gst_path
     else:
-        gst_suffix = "_preview_pipeline.gst" if clean_pass == "preview" else "_pipeline.gst"
+        gst_suffix = "_preview_pipeline.gst" if clean_pass == "preview" else ("_gsplat_pipeline.gst" if gsplat_only else "_pipeline.gst")
         gst_path = os.path.join(proj_dir, f"{scan_id}{gst_suffix}")
         extracted_files: List[str] = []
         primary_opf_path = None
@@ -2473,7 +2520,7 @@ def run_pix4dmatic_pipeline(
         if not dry_run:
             old_obj_dir = os.path.join(export_dir, "obj_mesh")
             prev_obj_dir = os.path.join(export_dir, "obj_mesh_prev")
-            if os.path.isdir(old_obj_dir):
+            if not gsplat_only and os.path.isdir(old_obj_dir):
                 if os.path.isdir(prev_obj_dir):
                     shutil.rmtree(prev_obj_dir, ignore_errors=True)
                 try:
@@ -2481,17 +2528,11 @@ def run_pix4dmatic_pipeline(
                 except Exception:
                     shutil.rmtree(old_obj_dir, ignore_errors=True)
 
-            # Archive any previously cropped/edited tileset so a PIX4Dmatic rerun starts uncropped
-            old_ts_dir = os.path.join(proj_dir, "tileset")
-            prev_rerun_ts_dir = os.path.join(proj_dir, "tileset_prev_rerun")
-            if os.path.isdir(old_ts_dir):
-                if os.path.isdir(prev_rerun_ts_dir):
-                    shutil.rmtree(prev_rerun_ts_dir, ignore_errors=True)
-                try:
-                    os.replace(old_ts_dir, prev_rerun_ts_dir)
-                except Exception:
-                    pass
-            if os.path.isfile(meta_fp):
+            # Note: Do NOT move proj_dir/tileset away at pipeline start! Keeping tileset/ in place ensures
+            # Pass 1 Fast Previews and existing scans remain live & streamable throughout Pass 2 / reruns;
+            # both NativeOctreeBuilder (tileset_octree_staging) and QuadtreeTiler (tileset_staging) build
+            # uncropped replacements in staging folders and atomically swap into tileset/ upon completion.
+            if not gsplat_only and os.path.isfile(meta_fp):
                 try:
                     with open(meta_fp, "r", encoding="utf-8") as mf:
                         mdata = json.load(mf)
@@ -2706,6 +2747,7 @@ def run_pix4dmatic_pipeline(
             existing_project_only=existing_project_only,
             pipeline_pass=clean_pass,
             has_depth_inputs=has_depth_inputs or dry_run,
+            gsplat_only=gsplat_only,
         )
         with open(gst_path, "w", encoding="utf-8") as f:
             f.write(gst_code)
@@ -2722,6 +2764,7 @@ def run_pix4dmatic_pipeline(
             "pipeline_pass": clean_pass,
             "calib_scale_used": resolved_calib_scale,
             "existing_project_only": existing_project_only,
+            "gsplat_only": gsplat_only,
         }
 
     if "commentphoto" in scan_id.lower() or (not existing_project_only and not primary_opf_path and len(extracted_files) < 10):
@@ -2850,6 +2893,88 @@ def run_pix4dmatic_pipeline(
             "log_tail": tail_lines,
         }
 
+    # Detect PIX4Dmatic cloud license-seat contention ("Could not acquire license" / "No seat left")
+    # where PIX4Dmatic exits with code 0 before acquiring a seat or running any processing steps.
+    license_busy_detected = False
+    for ldir in proj_log_dirs:
+        if not os.path.isdir(ldir):
+            continue
+        for lp in glob.glob(os.path.join(ldir, "*.txt")):
+            try:
+                if os.path.getmtime(lp) < (t0 - 3.0):
+                    continue
+                with open(lp, "r", encoding="utf-8", errors="replace") as lf_chk:
+                    ltxt = lf_chk.read()
+                if ("Could not acquire license" in ltxt or "No seat left" in ltxt) and (
+                    "Successfully acquired license" not in ltxt
+                    and "Created project" not in ltxt
+                    and "[Processing] Finished" not in ltxt
+                ):
+                    license_busy_detected = True
+                    break
+            except OSError:
+                pass
+        if license_busy_detected:
+            break
+
+    if license_busy_detected:
+        if os.path.isdir(prev_obj_dir) and not os.path.isdir(old_obj_dir):
+            try:
+                os.replace(prev_obj_dir, old_obj_dir)
+            except Exception:
+                pass
+        return {
+            "success": False,
+            "license_busy": True,
+            "return_code": ret,
+            "error": "PIX4Dmatic license seat busy — queued for automatic retry",
+            "duration_s": duration_p4m,
+            "gst_path": gst_path,
+            "log_tail": tail_lines,
+        }
+
+    # Fast-path completion when gsplat_only added 3DGS onto an existing 16K Scalable Mesh tileset
+    if gsplat_only and os.path.isfile(existing_ts_json):
+        gs_attached = _attach_exported_gaussian_splats_if_present(
+            scan_id=scan_id,
+            proj_dir=proj_dir,
+            tileset_json_path=existing_ts_json,
+            progress_callback=progress_callback,
+        )
+        if gs_attached:
+            try:
+                backup_dir = os.path.join(proj_dir, "tileset_backup")
+                if os.path.isdir(backup_dir):
+                    shutil.rmtree(backup_dir, ignore_errors=True)
+                shutil.copytree(os.path.dirname(existing_ts_json), backup_dir)
+            except Exception as bk_e:
+                print(f"[PIX4DRunner] Warning updating tileset_backup after gsplat_only for {scan_id}: {bk_e}")
+            try:
+                from pc_worker.gdrive_cloud_sync import build_scan_3tz_package
+                build_scan_3tz_package(
+                    {"scan_id": scan_id, "tileset_path": existing_ts_json, "project_dir": proj_dir},
+                    force=True,
+                )
+            except Exception as e_3tz:
+                print(f"[PIX4DRunner] Warning rebuilding .3tz after gsplat_only for {scan_id}: {e_3tz}")
+            if os.path.isfile(rerun_cfg_path):
+                try:
+                    os.remove(rerun_cfg_path)
+                except OSError:
+                    pass
+            if progress_callback:
+                progress_callback(100.0, f"Completed (3DGS Hybrid Layer + {active_tex_size}px Web Tileset)")
+            return {
+                "success": True,
+                "return_code": ret,
+                "obj_path": os.path.join(export_dir, "obj_mesh", "mesh.obj") if os.path.isfile(os.path.join(export_dir, "obj_mesh", "mesh.obj")) else "",
+                "tileset_path": existing_ts_json,
+                "duration_s": duration_p4m,
+                "gst_path": gst_path,
+                "pipeline_pass": clean_pass,
+                "calib_scale_used": "Full",
+            }
+
     # Locate newest non-empty (> 1024 bytes) exported .obj in export_dir (excluding obj_mesh_prev backup)
     objs = []
     if os.path.isdir(export_dir):
@@ -2900,21 +3025,32 @@ def run_pix4dmatic_pipeline(
             )
             tileset_path = str((native_res or {}).get("tileset_path") or "")
             if tileset_path and os.path.isfile(tileset_path):
-                gs_attached = _attach_exported_gaussian_splats_if_present(
+                _attach_exported_gaussian_splats_if_present(
                     scan_id=scan_id,
                     proj_dir=proj_dir,
                     tileset_json_path=tileset_path,
                     progress_callback=progress_callback,
                 )
-                if gs_attached:
+                try:
+                    backup_dir = os.path.join(proj_dir, "tileset_backup")
+                    if os.path.isdir(backup_dir):
+                        shutil.rmtree(backup_dir, ignore_errors=True)
+                    shutil.copytree(os.path.dirname(tileset_path), backup_dir)
+                except Exception as bk_err:
+                    print(f"[PIX4DRunner] Warning creating tileset_backup for {scan_id}: {bk_err}")
+                for dsm_cache in glob.glob(os.path.join(proj_dir, "_dsm_cache_*.npz")):
                     try:
-                        from pc_worker.gdrive_cloud_sync import build_scan_3tz_package
-                        build_scan_3tz_package(
-                            {"scan_id": scan_id, "tileset_path": tileset_path, "project_dir": proj_dir},
-                            force=True,
-                        )
-                    except Exception:
+                        os.remove(dsm_cache)
+                    except OSError:
                         pass
+                try:
+                    from pc_worker.gdrive_cloud_sync import build_scan_3tz_package
+                    build_scan_3tz_package(
+                        {"scan_id": scan_id, "tileset_path": tileset_path, "project_dir": proj_dir},
+                        force=True,
+                    )
+                except Exception:
+                    pass
         except Exception as nat_e:
             print(f"[PIX4DRunner] Native octree fallback error for {scan_id}: {nat_e}")
     elif os.path.isdir(prev_obj_dir) and not os.path.isdir(old_obj_dir):
@@ -2934,15 +3070,18 @@ def run_pix4dmatic_pipeline(
         except Exception:
             pass
 
-    if tileset_path and clean_pass == "preview":
+    if tileset_path:
         try:
+            img_cnt_meta = len(extracted_files) or int(preview_meta.get("image_count") or 0)
+            calib_meta = "Full" if (clean_pass == "full_hq" and existing_project_only) else resolved_calib_scale
             with open(preview_meta_path, "w", encoding="utf-8") as pmf:
                 json.dump(
                     {
                         "scan_id": scan_id,
-                        "calib_scale_used": resolved_calib_scale,
-                        "image_count": len(extracted_files),
+                        "calib_scale_used": calib_meta,
+                        "image_count": img_cnt_meta,
                         "texture_size": active_tex_size,
+                        "pipeline_pass": clean_pass,
                         "completed_at": time.time(),
                     },
                     pmf,

@@ -24,6 +24,7 @@ import os
 import shutil
 import struct
 import subprocess
+import sys
 import tempfile
 import time
 from typing import Any, Callable, Dict, List, Optional, Set, Tuple
@@ -43,6 +44,83 @@ from pc_worker.preview_generator import (
 _WIN_NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000) if os.name == "nt" else 0
 BASIS_JS_PATH = os.path.join(BASE_DIR, "web", "lib", "basis", "basis_transcoder.js")
 BASIS_WASM_PATH = os.path.join(BASE_DIR, "web", "lib", "basis", "basis_transcoder.wasm")
+
+
+def _resolve_node_runtime() -> Tuple[str, Dict[str, str]]:
+    """
+    Resolves a working Node.js runtime (`node.exe` / `node`) even when the Windows
+    background daemon runs without system Node on PATH (using bundled `nodejs-bin`
+    inside Python `site-packages/nodejs/node.exe`, standard Node paths, or Electron).
+    """
+    env = dict(os.environ)
+    sys_node = shutil.which("node")
+    if sys_node and os.path.isfile(sys_node):
+        return sys_node, env
+
+    candidates: List[str] = [
+        os.path.join(sys.prefix, "Lib", "site-packages", "nodejs", "node.exe"),
+        os.path.join(os.path.dirname(sys.executable), "Lib", "site-packages", "nodejs", "node.exe"),
+        os.path.join(os.path.dirname(sys.executable), "Scripts", "node.exe"),
+        r"C:\Program Files\nodejs\node.exe",
+        r"C:\Program Files (x86)\nodejs\node.exe",
+    ]
+    try:
+        import nodejs  # type: ignore
+        nb_path = getattr(getattr(nodejs, "node", None), "path", "")
+        if nb_path:
+            candidates.insert(0, str(nb_path))
+    except Exception:
+        pass
+
+    if os.name == "nt":
+        candidates.extend(
+            sorted(
+                glob.glob(r"C:\Users\*\AppData\Local\Programs\Python\*\Lib\site-packages\nodejs\node.exe"),
+                reverse=True,
+            )
+        )
+        candidates.extend(sorted(glob.glob(r"C:\Users\*\AppData\Local\Programs\nodejs\node.exe"), reverse=True))
+
+    for cand in candidates:
+        if cand and os.path.isfile(cand):
+            return cand, env
+
+    if os.name == "nt":
+        for elec in (
+            os.path.expandvars(r"%LOCALAPPDATA%\Programs\Microsoft VS Code\Code.exe"),
+            r"C:\Program Files\Microsoft VS Code\Code.exe",
+        ):
+            if elec and os.path.isfile(elec):
+                env["ELECTRON_RUN_AS_NODE"] = "1"
+                return elec, env
+
+    return "node", env
+
+
+def _select_latest_octree_content_glbs(proj_dir: str) -> List[str]:
+    """
+    Finds PIX4Dmatic native octree cells (`**/processing/meshes/<uuid>/content/*_*_*_*.glb`)
+    and returns cells ONLY from the newest `<uuid>/content` directory so multi-pass projects
+    never mix cells from an older pass with the latest Scalable Mesh octree.
+    """
+    all_glbs = glob.glob(
+        os.path.join(proj_dir, "**", "processing", "meshes", "*", "content", "*_*_*_*.glb"),
+        recursive=True,
+    )
+    if not all_glbs:
+        return []
+    by_dir: Dict[str, List[str]] = {}
+    for fp in all_glbs:
+        by_dir.setdefault(os.path.normcase(os.path.abspath(os.path.dirname(fp))), []).append(fp)
+    if len(by_dir) == 1:
+        return sorted(next(iter(by_dir.values())))
+
+    def _dir_score(fps: List[str]) -> Tuple[float, int]:
+        newest_mt = max((os.path.getmtime(x) for x in fps), default=0.0)
+        return (round(newest_mt, 1), len(fps))
+
+    best_fps = max(by_dir.values(), key=_dir_score)
+    return sorted(best_fps)
 
 
 def _compute_3dtiles_box(bmin: np.ndarray, bmax: np.ndarray, ox: float, oy: float, oz: float) -> List[float]:
@@ -287,11 +365,13 @@ BASIS({{ wasmBinary: wasmBin }}).then(Module => {{
     with open(js_script_path, "w", encoding="utf-8") as sf:
         sf.write(js_code)
 
+    node_bin, node_env = _resolve_node_runtime()
     subprocess.run(
-        ["node", js_script_path],
+        [node_bin, js_script_path],
         check=True,
         capture_output=True,
         timeout=300,
+        env=node_env,
         creationflags=_WIN_NO_WINDOW,
     )
     with open(out_meta_path, "r", encoding="utf-8") as mf:
@@ -653,10 +733,7 @@ def build_tileset_from_pix4d_native_octree(
       `focal_bbox_local` and caps outer park foliage at `outer_max_level` (e.g. Level 5).
     """
     t0 = time.time()
-    content_glbs = glob.glob(
-        os.path.join(src_proj_dir, "**", "processing", "meshes", "*", "content", "*.glb"),
-        recursive=True,
-    )
+    content_glbs = _select_latest_octree_content_glbs(src_proj_dir)
     if not content_glbs:
         raise FileNotFoundError(f"No native Pix4Dmatic octree .glb cells found under {src_proj_dir}")
 
@@ -1225,10 +1302,7 @@ def build_native_octree_from_scalable_tileset(
       builds the full uncropped scan from the raw octree so all previously deleted/cropped tiles are restored.
     - When `preserve_existing_crop=True`, preserves any existing 3D crop mask (`occ_mask`) from `tileset/`.
     """
-    content_glbs = glob.glob(
-        os.path.join(proj_dir, "**", "processing", "meshes", "*", "content", "*_*_*_*.glb"),
-        recursive=True,
-    )
+    content_glbs = _select_latest_octree_content_glbs(proj_dir)
     if not content_glbs:
         raise FileNotFoundError(f"No native Pix4Dmatic octree .glb cells found under {proj_dir}")
 

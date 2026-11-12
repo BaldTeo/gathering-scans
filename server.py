@@ -1180,17 +1180,20 @@ class GatheringScansHandler(CloudAndTunnelHandlerMixin, ServerWriteRoutesMixin, 
             s["group_type"] = "site" if has_geo else "library"
 
         # Enrich polygon count, texture size, and 3D scan size (MB) with fast mtime-keyed cache
-        cache_key = (sid, ts_ver)
+        q_stage_str = str(s.get("quality_stage") or "").strip().lower()
+        is_preview_stage = q_stage_str == "preview_ready"
+        cache_key = (sid, ts_ver, q_stage_str)
         cached_metrics = self._SCAN_MESH_METRICS_CACHE.get(cache_key)
         if cached_metrics is None:
             poly_count = int(s.get("poly_count") or 0)
-            tex_res_default = int(s.get("texture_resolution") or PIX4DMATIC_TEXTURE_SIZE)
+            tex_res_default = 2048 if is_preview_stage else int(s.get("texture_resolution") or PIX4DMATIC_TEXTURE_SIZE)
             tex_w = int(s.get("texture_width") or tex_res_default)
             tex_h = int(s.get("texture_height") or tex_w)
             tex_cnt = int(s.get("texture_count") or 1)
             tex_label = str(s.get("texture_size_label") or "")
             stream_mb = float(s.get("stream_size_mb") or 0.0)
             obj_mb = float(s.get("obj_size_mb") or 0.0)
+            is_native_octree = False
 
             if ts_path and os.path.isfile(ts_path):
                 try:
@@ -1222,6 +1225,7 @@ class GatheringScansHandler(CloudAndTunnelHandlerMixin, ServerWriteRoutesMixin, 
                     else:
                         with open(ts_path, "r", encoding="utf-8") as _mf:
                             _tso = json.load(_mf)
+                        is_native_octree = "Native 9-Level Octree" in str((_tso.get("asset") or {}).get("generator") or "")
                         _root = _tso.get("root") or {}
                         _rc = ((_root.get("content") or {}).get("uri") or "").split("?")[0]
                         _rf = os.path.join(bdir_m, _rc) if _rc else ""
@@ -1324,14 +1328,19 @@ class GatheringScansHandler(CloudAndTunnelHandlerMixin, ServerWriteRoutesMixin, 
             import math as _math2
             tile_max_dim = max(tex_w, tex_h)
             obj_max_dim = max((max(w, h) for w, h in obj_tex_dims), default=0)
+            single_obj_sliced = (not is_native_octree) and len(obj_tex_dims) == 1 and obj_max_dim > 0
             grid_side = int(_math2.ceil(_math2.sqrt(max(1, tex_cnt)))) if tex_cnt > 1 else 1
-            tiled_eff_dim = min(16384, tile_max_dim * grid_side) if tex_cnt > 1 else tile_max_dim
-            raw_eff_res = max(
-                tex_res_default if tex_cnt > 1 else 0,
-                obj_max_dim,
-                tiled_eff_dim,
-                tile_max_dim,
-            )
+            if is_preview_stage or single_obj_sliced:
+                tiled_eff_dim = max(tile_max_dim, obj_max_dim)
+                raw_eff_res = max(obj_max_dim, tiled_eff_dim, tile_max_dim)
+            else:
+                tiled_eff_dim = min(16384, tile_max_dim * grid_side) if tex_cnt > 1 else tile_max_dim
+                raw_eff_res = max(
+                    tex_res_default if tex_cnt > 1 else 0,
+                    obj_max_dim,
+                    tiled_eff_dim,
+                    tile_max_dim,
+                )
             if raw_eff_res >= 12288:
                 eff_res = 16384
             elif raw_eff_res >= 6144:
@@ -1355,7 +1364,9 @@ class GatheringScansHandler(CloudAndTunnelHandlerMixin, ServerWriteRoutesMixin, 
                 return f"{d}px"
 
             if not tex_label:
-                if tex_cnt > 1 and eff_res > tile_max_dim:
+                if is_preview_stage:
+                    tex_label = f"{_dim_k_tag(eff_res)} Preview (Pass 1/2)"
+                elif tex_cnt > 1 and eff_res > tile_max_dim:
                     tex_label = f"{_dim_k_tag(eff_res)} ({tex_cnt}\u00d7{_dim_k_tag(tile_max_dim)} tiles)"
                 elif tex_cnt > 1 and tex_cnt <= 8:
                     tex_label = f"{tex_w}\u00d7{tex_h} px (\u00d7{tex_cnt})"
