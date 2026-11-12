@@ -801,13 +801,12 @@
     if (!tr || !(tr._gsBaseErrorTarget > 0)) return;
     const prev = tr._gsErrBump || 1;
     const nowB = performance.now();
-    // Coarsen at most once per 450 ms (was per tile request => runaway to max coarseness) and never beyond 6x.
+    // Coarsen at most once per 450 ms (was per tile request => runaway to max coarseness) and never beyond 40x.
     if (factor > 1 && nowB - (tr._gsLastBumpMs || 0) < 450) return;
-    const next = Math.max(1, Math.min(6, prev * factor));
+    const next = Math.max(1, Math.min(40, prev * factor));
     if (next === prev) return;
     if (factor > 1) tr._gsLastBumpMs = nowB;
     tr._gsErrBump = next;
-    tr.errorTarget = Math.min(16, tr._gsBaseErrorTarget * next);
     tr._gsNeedsUpdate = true;
   }
 
@@ -895,6 +894,19 @@
     tr._gsHdResidentBytes = 0;
     tr._gsHdResidentCount = 0;
     syncStudioTilesLruLimits(tr, lodMode);
+
+    // Budget pressure => coarsen FAR tiles first (error falloff by distance) so near-field detail never degrades,
+    // whatever the camera orientation (looking along the horizon puts huge far terrain in view).
+    const origViewError = tr.calculateTileViewError.bind(tr);
+    tr.calculateTileViewError = function (tile, target) {
+      origViewError(tile, target);
+      const press = ((tr._gsErrBump || 1) - 1) * 0.5;
+      if (press > 0 && target.inView) {
+        const r = (target.distanceFromCamera || 0) / 20.0;
+        target.error /= 1 + r * r * press;
+      }
+    };
+    window.__gsHdDiag = () => ({ bump: tr._gsErrBump, errorTarget: tr.errorTarget, resident: tr._gsHdResidentCount, mb: Math.round((tr._gsHdResidentBytes || 0) / 1048576), budget: getStudioHdTileBudget(tr._gsLodMode || "auto"), stats: { ...tr.stats }, deferred: tr._gsDeferred });
 
     const foveatedQueuePriority = (a, b) => {
       const pA = computeStudioTilePriority(tr, a);
