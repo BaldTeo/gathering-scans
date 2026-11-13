@@ -140,6 +140,35 @@ class PortableBundleTests(unittest.TestCase):
         finally:
             pb.STALE_CLAIM_SEC = old
 
+    def test_pix4d_preset_settings_shared_across_pcs(self):
+        from pc_worker import config as cfgm
+
+        saved = (cfgm.GDRIVE_INBOX_DIR, cfgm.PIX4D_SETTINGS_PATH)
+        try:
+            cfgm.GDRIVE_INBOX_DIR = self.drive
+            cfgm.PIX4D_SETTINGS_PATH = os.path.join(self.data_a, "pix4d_settings.json")
+            cfgm.save_pix4d_settings({"texture_size": 8192, "compute_gaussian_splats": False})
+            self.assertTrue(os.path.isfile(os.path.join(self.drive, "_state", "pix4d_settings.json")))
+            # PC B has its own stale local file but must see PC A's shared preset
+            cfgm.PIX4D_SETTINGS_PATH = os.path.join(self.data_b, "pix4d_settings.json")
+            with open(cfgm.PIX4D_SETTINGS_PATH, "w") as f:
+                json.dump({"texture_size": 2048, "compute_gaussian_splats": True}, f)
+            got = cfgm.load_pix4d_settings()
+            self.assertEqual(got["texture_size"], 8192)
+            self.assertFalse(got["compute_gaussian_splats"])
+            self.assertTrue(cfgm.DEFAULT_PIX4D_SETTINGS["compute_gaussian_splats"])  # default preset = Hybrid 3DGS
+            self.assertFalse(any(k.startswith("_") for k in got))
+        finally:
+            cfgm.GDRIVE_INBOX_DIR, cfgm.PIX4D_SETTINGS_PATH = saved
+
+    def test_iso_updated_at_does_not_crash_manifest_merge(self):
+        from pc_worker.server_api_routes import _ts_to_float
+
+        self.assertGreater(_ts_to_float("2026-11-12T23:30:34.780849"), 1.7e9)
+        self.assertEqual(_ts_to_float("123.5"), 123.5)
+        self.assertEqual(_ts_to_float(None), 0.0)
+        self.assertEqual(_ts_to_float("garbage"), 0.0)
+
     def test_drive_offline_is_noop(self):
         pb.GDRIVE_INBOX_DIR = os.path.join(self.tmp, "does_not_exist")
         self.assertFalse(pb.drive_available())

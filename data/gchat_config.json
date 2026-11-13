@@ -1,3 +1,10 @@
 {
-  "webhook_url": "https://chat.googleapis.com/v1/spaces/AAQA_oh-3w8/messages?key=AIzaSyDdI0hCZtE6vySjMm-WEfRq3CPzqKqqsHI&token=zCavjGk6CkJ6Dkn8HFqOCR9xP9we8c_Ml2Icq6aWbdM"
+  "webhook_url": "https://chat.googleapis.com/v1/spaces/AAQA_oh-3w8/messages?key=AIzaSyDdI0hCZtE6vySjMm-WEfRq3CPzqKqqsHI&token=zCavjGk6CkJ6Dkn8HFqOCR9xP9we8c_Ml2Icq6aWbdM",
+  "user_webhooks": {
+    "glibivanov@gatheren.com.tw": "https://chat.googleapis.com/v1/spaces/AAQA_oh-3w8/messages?key=AIzaSyDdI0hCZtE6vySjMm-WEfRq3CPzqKqqsHI&token=zCavjGk6CkJ6Dkn8HFqOCR9xP9we8c_Ml2Icq6aWbdM"
+  },
+  "user_gchat_ids": {
+    "glibivanov@gatheren.com.tw": "107639887113416939995",
+    "gleb.ivanov1999@gmail.com": "110772246686332466252"
+  }
 }

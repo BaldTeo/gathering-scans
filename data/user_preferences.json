@@ -3,18 +3,42 @@
     "email": "guest@anonymous",
     "language": "zh-TW",
     "theme_preference": "auto",
-    "updated_at": "2026-10-25T17:15:50.664680+00:00"
+    "updated_at": "2026-11-01T12:11:08.118974+00:00"
   },
   "glibivanov@gatheren.com.tw": {
     "email": "glibivanov@gatheren.com.tw",
     "language": "en",
     "theme_preference": "light",
-    "updated_at": "2026-10-26T03:23:18.027570+00:00"
+    "updated_at": "2026-11-06T02:59:59.099777+00:00"
   },
   "gleb.ivanov1999@gmail.com": {
     "email": "gleb.ivanov1999@gmail.com",
     "language": "en",
     "theme_preference": "light",
-    "updated_at": "2026-10-26T03:23:18.027570+00:00"
+    "updated_at": "2026-11-06T02:59:59.099777+00:00"
+  },
+  "guest@gatheren.cloud": {
+    "email": "guest@gatheren.cloud",
+    "language": "en",
+    "theme_preference": "auto",
+    "updated_at": "2026-11-01T15:38:16.911669+00:00"
+  },
+  "admin@gatheren.cloud": {
+    "email": "admin@gatheren.cloud",
+    "language": "en",
+    "theme_preference": "auto",
+    "updated_at": "2026-11-01T14:42:39.226960+00:00"
+  },
+  "frankchao@gatheren.com.tw": {
+    "email": "frankchao@gatheren.com.tw",
+    "language": "zh-TW",
+    "theme_preference": "auto",
+    "updated_at": "2026-11-02T12:21:54.743707+00:00"
+  },
+  "public@gatheren.com.tw": {
+    "email": "public@gatheren.com.tw",
+    "language": "en",
+    "theme_preference": "auto",
+    "updated_at": "2026-11-04T03:25:02.070764+00:00"
   }
 }

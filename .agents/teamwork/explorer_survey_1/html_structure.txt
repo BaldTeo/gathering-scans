@@ -1,0 +1,89 @@
+Total lines in web/index.html: 2402
+
+--- Key DOM structures found in web/index.html ---
+L 156: <section class="gs-view active" id="viewMap">
+L 510: <section class="gs-view" id="viewStudio">
+L 511: <div id="studioCanvasContainer"></div>
+L 813: <aside class="gs-side-panel" id="studioSidePanel">
+L 814: <div class="gs-panel-header">
+L 815: <div class="gs-panel-title" id="sidePanelTitle" data-i18n-zh="測量檢視面板" data-i18n-en="Surveying Inspector">測量檢視面板</div>
+L 816: <div class="gs-panel-header-actions" style="display:flex;align-items:center;gap:4px;flex-shrink:0;">
+L1151: <section class="gs-view" id="viewCompare">
+L1152: <div class="gs-compare-stage" id="compareStage" data-compare-count="2">
+L1153: <div class="gs-compare-layer" id="compareLeftLayer"></div>
+L1154: <div class="gs-compare-layer" id="compareRightLayer"></div>
+L1155: <div class="gs-compare-layer" id="compareThirdLayer" style="display:none;"></div>
+L1156: <div class="gs-compare-layer" id="compareFourthLayer" style="display:none;"></div>
+L1159: <div class="gs-scan-loader-overlay" id="compareScanLoader" role="status" aria-live="polite">
+L1164: <circle class="gs-scan-loader-fill" id="compareScanLoaderArc" cx="50" cy="50" r="38" />
+L1166: <div class="gs-scan-loader-pct" id="compareScanLoaderPct">0%</div>
+L1168: <div class="gs-scan-loader-label" id="compareScanLoaderLabel" data-i18n-zh="正在載入 3D 掃描模型..." data-i18n-en="Loading 3D Scan...">正在載入 3D 掃描模型...</div>
+L1185: <select class="gs-scan-select" id="compareProjectSelect" title="選擇專案工區" data-i18n-title-zh="選擇專案工區" data-i18n-title-en="Select Project Site"></select>
+L1186: <span class="gs-crs-pill" id="compareProjectGroupBadge" style="display:none;"></span>
+L1188: <select class="gs-scan-select" id="compareLeftSelect"></select>
+L1193: <div class="segmented-pill" id="compareModeSwitcher" style="padding:2px;gap:2px;" title="切換捲簾滑桿模式或多視窗同步視角模式" data-i18n-title-zh="切換捲簾滑桿模式或多視窗同步視角模式" data-i18n-title-en="Switch between Curtain Slider Mode and Multi-Viewport Side-by-Side Synced Camera Mode">
+L1210: <div class="segmented-pill" id="compareScanCountSwitcher" style="padding:2px;gap:2px;" title="選擇同時比對 2、3 或 4 筆掃描" data-i18n-title-zh="選擇同時比對 2、3 或 4 筆掃描" data-i18n-title-en="Select 2, 3, or 4 scans to compare">
+L1242: <select class="gs-scan-select" id="compareRightSelect"></select>
+L1243: <span id="compareThirdWrap" style="display:none;align-items:center;gap:6px;">
+L1245: <select class="gs-scan-select" id="compareThirdSelect"></select>
+L1247: <span id="compareFourthWrap" style="display:none;align-items:center;gap:6px;">
+L1249: <select class="gs-scan-select" id="compareFourthSelect"></select>
+L1255: <div class="gs-compare-dz-readout" id="compareDeltaZReadoutPill" style="display:none;"></div>
+L1258: <div class="gs-compare-profile-drawer" id="compareProfileDrawer" style="display:none;">
+L1274: <canvas id="compareMultiProfileCanvas" width="760" height="195" style="width:100%;height:185px;display:block;border-radius:8px;background:var(--ui-bg-subtle);border:1px solid var(--ui-border);"></canvas>
+L1278: <div class="gs-compare-legend" id="compareElevationLegend">
+L1291: <div class="gs-modal-backdrop" id="modalQueue" role="dialog" aria-modal="true" aria-labelledby="modalQueueTitle">
+L1292: <div class="gs-modal" style="max-width:880px;">
+L1293: <div class="gs-panel-header">
+L1294: <div class="gs-panel-title" id="modalQueueTitle">
+L1307: <div class="gs-modal-metrics-grid gs-responsive-grid-3" style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:10px;">
+L1406: <div class="gs-modal-backdrop" id="modalSharing" role="dialog" aria-modal="true" aria-labelledby="modalSharingTitle">
+L1407: <div class="gs-modal gs-sharing-modal">
+L1408: <div class="gs-panel-header">
+L1409: <div class="gs-panel-title" id="modalSharingTitle">
+L1544: <div class="gs-modal-backdrop" id="modalOfflineCache" role="dialog" aria-modal="true" aria-labelledby="modalOfflineCacheTitle">
+L1545: <div class="gs-modal">
+L1546: <div class="gs-panel-header">
+L1547: <div class="gs-panel-title" id="modalOfflineCacheTitle">
+L1862: <div id="userProfileGateModal" class="gs-modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="userProfileGateTitle" style="z-index:5000;">
+L1863: <div class="gs-modal" style="max-width:520px;padding:0;overflow:hidden;">
+L1991: <div class="gs-modal-backdrop" id="renameScanModal" role="dialog" aria-modal="true" aria-labelledby="renameScanModalTitle">
+L1992: <div class="gs-modal-window" style="width:440px;max-width:95vw;">
+L1993: <div class="gs-modal-header">
+L1995: <div class="gs-modal-title" id="renameScanModalTitle" data-i18n-zh="編輯掃描名稱" data-i18n-en="Edit Scan Name">編輯掃描名稱</div>
+L1996: <div class="gs-modal-subtitle" id="renameScanModalFolderInfo" data-i18n-zh="檔案 / 資料夾名稱" data-i18n-en="File / Folder Name">檔案 / 資料夾名稱</div>
+L2004: <div class="gs-modal-body" style="padding:18px 20px;display:flex;flex-direction:column;gap:12px;">
+L2031: <div class="gs-modal-backdrop" id="deleteScanModal" role="dialog" aria-modal="true" aria-labelledby="deleteScanModalTitle">
+L2032: <div class="gs-modal-window" style="width:470px;max-width:95vw;">
+L2033: <div class="gs-modal-header">
+L2035: <div class="gs-modal-title" id="deleteScanModalTitle" style="color:#ef4444;" data-i18n-zh="移至回收桶" data-i18n-en="Move Scan to Bin">移至回收桶</div>
+L2036: <div class="gs-modal-subtitle" id="deleteScanModalSubtitle" data-i18n-zh="將掃描移至回收桶 · 隨時可從回收桶還原" data-i18n-en="Moves scan to the Trash Bin · Can be restored anytime from the Trash Bin">將掃描移至回收桶 · 隨時可從回收桶還原</div>
+L2044: <div class="gs-modal-body" style="padding:18px 20px;display:flex;flex-direction:column;gap:12px;">
+L2064: <div class="gs-modal-backdrop" id="recycleBinModal" role="dialog" aria-modal="true" aria-labelledby="recycleBinModalTitle">
+L2065: <div class="gs-modal-window" style="width:680px;max-width:96vw;">
+L2066: <div class="gs-modal-header">
+L2068: <div class="gs-modal-title" id="recycleBinModalTitle" style="display:flex;align-items:center;gap:8px;">
+L2075: <div class="gs-modal-subtitle" data-i18n-zh="回收桶與原始掃描備份 · 可隨時還原原始掃描模型（永久刪除需管理員或擁有者權限）" data-i18n-en="Trash Bin &amp; Original Backups · Restore original scans anytime (Permanent delete requires Admin / Owner)">回收桶與原始掃描備份 · 可隨時還原原始掃描模型（永久刪除需管理員或擁有者權限）</div>
+L2083: <div class="gs-modal-body" style="padding:16px 20px;display:flex;flex-direction:column;gap:12px;">
+L2119: <div class="gs-modal-backdrop" id="renameSiteModal" role="dialog" aria-modal="true" aria-labelledby="renameSiteModalTitle">
+L2120: <div class="gs-modal-window" style="width:460px;max-width:95vw;">
+L2121: <div class="gs-modal-header">
+L2123: <div class="gs-modal-title" id="renameSiteModalTitle" data-i18n-zh="重新命名專案工區" data-i18n-en="Rename Project Site">重新命名專案工區</div>
+L2124: <div class="gs-modal-subtitle" id="renameSiteModalSub" data-i18n-zh="更新此工區群組內所有掃描的歸屬名稱" data-i18n-en="Updates all scans in this site cluster">更新此工區群組內所有掃描的歸屬名稱</div>
+L2132: <div class="gs-modal-body" style="padding:18px 20px;display:flex;flex-direction:column;gap:12px;">
+L2168: <div class="gs-modal-backdrop" id="rerunScanModal" role="dialog" aria-modal="true" aria-labelledby="rerunScanModalTitle">
+L2169: <div class="gs-modal-window" style="width:660px;max-width:96vw;">
+L2170: <div class="gs-modal-header">
+L2172: <div class="gs-modal-title" id="rerunScanModalTitle" data-i18n-zh="從原始照片重新執行 PIX4Dmatic 2.11.0 建模" data-i18n-en="Re-run Scan from Original Photos · PIX4Dmatic 2.11.0">從原始照片重新執行 PIX4Dmatic 2.11.0 建模</div>
+L2173: <div class="gs-modal-subtitle" id="rerunScanModalSub" data-i18n-zh="使用自訂參數與 ExportSrs.Scene + offset.xyz 從原始 RTK 照片重建 3D 網格" data-i18n-en="Rebuilds 3D mesh from raw RTK images with custom settings &amp; ExportSrs.Scene + offset.xyz">使用自訂參數與 ExportSrs.Scene + offset.xyz 從原始 RTK 照片重建 3D 網格</div>
+L2181: <div class="gs-modal-body" style="padding:16px 20px;display:flex;flex-direction:column;gap:12px;">
+L2280: <div class="gs-modal-backdrop" id="moveScanModal">
+L2281: <div class="gs-modal" style="max-width:460px;">
+L2282: <div class="gs-modal-header">
+L2283: <div class="gs-modal-title" style="display:flex;align-items:center;gap:8px;">
+L2295: <div class="gs-modal-body" style="display:flex;flex-direction:column;gap:12px;">
+L2338: <div class="gs-modal-backdrop" id="libraryFolderModal">
+L2339: <div class="gs-modal" style="max-width:400px;">
+L2340: <div class="gs-modal-header">
+L2341: <div class="gs-modal-title" id="libraryFolderModalTitle" data-i18n-zh="新增 3D 模型庫資料夾" data-i18n-en="New 3D Library Folder">新增 3D 模型庫資料夾</div>
+L2348: <div class="gs-modal-body" style="display:flex;flex-direction:column;gap:12px;">

@@ -1,0 +1,133 @@
+--- a/pc_worker/surveying/dsm_and_volume.py
++++ b/pc_worker/surveying/dsm_and_volume.py
+@@ -1027,5 +1027,5 @@
+-        raw_poly = payload.get("polygon", [])
++        raw_poly = payload.get("polygon") or payload.get("points") or []
+         if not raw_poly or len(raw_poly) < 3:
+             # Adaptive default boundary scaled to 28% of the scan's actual DSM span
+             span_e_def = min(8.0, max(1.5, (dsm_curr["e_max"] - dsm_curr["e_min"]) * 0.28))
+             span_n_def = min(7.0, max(1.5, (dsm_curr["n_max"] - dsm_curr["n_min"]) * 0.28))
+@@ -1091,3 +1091,42 @@
+         perim_mean_h = sum(p[2] for p in perim_samples) / max(len(perim_samples), 1)
+-        datum_z = float(payload.get("datum_elevation_m", perim_mean_h))
++        datum_z = float(payload.get("datum_elevation_m", payload.get("custom_elevation", perim_mean_h)))
++
++        # Least-Squares Best-Fit Reference Plane via 2D Normal Equations
++        plane_pts = perim_samples if len(perim_samples) >= 3 else poly_twd
++        n_plane = len(plane_pts)
++        if n_plane >= 3:
++            p_mean_e = sum(p[0] for p in plane_pts) / n_plane
++            p_mean_n = sum(p[1] for p in plane_pts) / n_plane
++            p_mean_h = sum(p[2] for p in plane_pts) / n_plane
++
++            suu = sum((p[0] - p_mean_e) ** 2 for p in plane_pts)
++            svv = sum((p[1] - p_mean_n) ** 2 for p in plane_pts)
++            suv = sum((p[0] - p_mean_e) * (p[1] - p_mean_n) for p in plane_pts)
++            suw = sum((p[0] - p_mean_e) * (p[2] - p_mean_h) for p in plane_pts)
++            svw = sum((p[1] - p_mean_n) * (p[2] - p_mean_h) for p in plane_pts)
++
++            det_plane = suu * svv - suv * suv
++            trace_plane = suu + svv
++
++            # Safeguard: singularity / collinear points fallback to horizontal mean plane
++            if abs(det_plane) < 1e-9 or trace_plane < 1e-6:
++                plane_a = 0.0
++                plane_b = 0.0
++                plane_c0 = p_mean_h
++            else:
++                plane_a = (suw * svv - svw * suv) / det_plane
++                plane_b = (svw * suu - suw * suv) / det_plane
++                plane_c0 = p_mean_h
++        else:
++            p_mean_e = center_e
++            p_mean_n = center_n
++            p_mean_h = perim_mean_h
++            plane_a = 0.0
++            plane_b = 0.0
++            plane_c0 = perim_mean_h
++
++        plane_c = plane_c0 - plane_a * p_mean_e - plane_b * p_mean_n
++        plane_slope_mag = math.hypot(plane_a, plane_b)
++        plane_slope_pct = round(plane_slope_mag * 100.0, 3)
++        plane_slope_deg = round(math.degrees(math.atan(plane_slope_mag)), 2)
++        plane_azimuth_deg = round(math.degrees(math.atan2(plane_a, plane_b)) % 360.0, 2) if plane_slope_mag > 1e-7 else 0.0
+ 
+@@ -1128,3 +1167,5 @@
+                 elif base_mode == "lowest_point":
+                     z_base = min((p[2] for p in perim_samples), default=datum_z)
++                elif base_mode == "best_fit_plane":
++                    z_base = plane_a * (gx - p_mean_e) + plane_b * (gy - p_mean_n) + plane_c0
+                 elif base_mode == "epoch_diff" and dsm_cmp is not None:
+@@ -1182,7 +1223,38 @@
+         mat_info = MATERIAL_CATALOG.get(material_key, MATERIAL_CATALOG["crushed_stone"])
+         density = float(custom_density) if custom_density is not None else float(mat_info["density_t_m3"])
+-        swell = float(mat_info["swell_factor"])
++
++        # Swell factor handling (expansion ratio >= 1.0)
++        raw_swell = payload.get("swell_factor")
++        if raw_swell is not None:
++            sw = float(raw_swell)
++            swell_mult = 1.0 + sw if 0.0 < sw < 0.5 else (1.0 / sw if 0.5 <= sw < 1.0 else max(1.0, sw))
++        else:
++            base_sw = float(mat_info.get("swell_factor", 0.88))
++            swell_mult = 1.0 / base_sw if 0.0 < base_sw < 1.0 else (base_sw if base_sw >= 1.0 else 1.15)
++
++        # Compaction / Shrinkage factor handling
++        raw_shrink = payload.get("shrinkage_factor")
++        if raw_shrink is not None:
++            sh = float(raw_shrink)
++            compaction_mult = sh if sh > 0.5 else max(0.01, 1.0 - sh)
++        else:
++            compaction_mult = 0.90
++
++        cut_vol_bcm = round(cut_vol, 2)
++        fill_vol_bcm = round(fill_vol, 2)
++        net_vol_bcm = round(net_vol, 2)
++        cut_vol_lcm = round(cut_vol * swell_mult, 2)
++        fill_vol_ccm = round(fill_vol * compaction_mult, 2)
++        conserved_cut_mass = round(cut_vol * density, 2)
+ 
+         effective_m3 = fill_vol if fill_vol >= cut_vol else cut_vol
+         tonnage_loose = effective_m3 * density
+-        tonnage_bank = effective_m3 * density * swell
++        tonnage_bank = effective_m3 * density * (1.0 / swell_mult)
++
++        # Dump Truck Load Estimator
++        truck_vol = float(payload.get("truck_volume_m3", 15.0) or 15.0)
++        truck_max_wt = float(payload.get("truck_max_tonnes", 20.0) or 20.0)
++        trips_vol = cut_vol_lcm / max(truck_vol, 0.1)
++        trips_wt = conserved_cut_mass / max(truck_max_wt, 0.1)
++        truck_loads_cut = int(math.ceil(max(trips_vol, trips_wt))) if cut_vol > 0 else 0
++        truck_limiting_factor = "weight" if trips_wt > trips_vol else "volume"
++
++        net_cut_bcm = max(0.0, cut_vol - fill_vol)
++        net_trips_vol = (net_cut_bcm * swell_mult) / max(truck_vol, 0.1)
++        net_trips_wt = (net_cut_bcm * density) / max(truck_max_wt, 0.1)
++        net_truck_loads = int(math.ceil(max(net_trips_vol, net_trips_wt))) if net_cut_bcm > 0 else 0
+@@ -1211,3 +1283,23 @@
+             "fill_volume_m3": round(fill_vol, 2),
+             "cut_volume_m3": round(cut_vol, 2),
+             "net_volume_m3": round(net_vol, 2),
++            # Standardized Earthwork Mass Conservation Schedule (M1 Contract)
++            "cut_volume_bcm": cut_vol_bcm,
++            "fill_volume_bcm": fill_vol_bcm,
++            "net_volume_bcm": net_vol_bcm,
++            "cut_volume_lcm": cut_vol_lcm,
++            "fill_volume_ccm": fill_vol_ccm,
++            "conserved_cut_mass_t": conserved_cut_mass,
++            "truck_loads_cut": truck_loads_cut,
++            "truck_limiting_factor": truck_limiting_factor,
++            "net_truck_loads": net_truck_loads,
++            "truck_volume_m3": round(truck_vol, 1),
++            "truck_max_tonnes": round(truck_max_wt, 1),
++            "best_fit_plane": {
++                "a": round(plane_a, 6),
++                "b": round(plane_b, 6),
++                "c": round(plane_c, 4),
++                "c0": round(plane_c0, 4),
++                "e0": round(p_mean_e, 3),
++                "n0": round(p_mean_n, 3),
++                "slope_pct": plane_slope_pct,
++                "slope_deg": plane_slope_deg,
++                "azimuth_deg": plane_azimuth_deg,
++            },

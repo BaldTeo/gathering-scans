@@ -1,0 +1,21 @@
+# Progress Heartbeat — worker_track_b_m4_m5
+
+- Status: Completed & Deployed
+- Last visited: 2026-10-31T07:45:00Z
+- Milestone: M4 & M5 Construction QA and RTK Stakeout
+- Current Step: Task Complete
+- Completed:
+  - Initialized DISPATCH.md and BRIEFING.md
+  - Implemented pc_worker/surveying/construction_qa.py (ConstructionQAMixin)
+  - Wired in pc_worker/surveying_engine.py and pc_worker/server_api_routes.py
+  - Implemented web/src/10-construction-qa-and-stakeout.js with 4 interactive inspectors
+  - Styled web/survey-bim.css with dual light/dark CSS variables and zero emojis
+  - Registered script in web/index.html and web/sw.js (bumped to v225)
+  - Added full test suite in tests/test_civil_surveying_e2e.py and tests/test_gathering_scans_suite.py
+  - Confirmed 100% test pass (57 E2E tests, 39 suite tests)
+  - Pushed to GitHub origin/main (commit 1639c92)
+  - Restarted local server on 8095 (verified 200 OK)
+  - Updated and restarted live VPS container on scans.gatheren.cloud (verified 200 OK, asset v225 live)
+  - Prepared handoff.md
+- Next:
+  - None. Handoff complete.

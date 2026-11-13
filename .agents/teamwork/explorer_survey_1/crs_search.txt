@@ -1,0 +1,213 @@
+web\app.js:375: <span class="gs-crs-pill" style="font-size:9.5px;opacity:0.85;">LINK PREVIEW UNFURL</span>
+web\app.js:400: ? `<span class="gs-crs-pill" style="background:rgba(16,185,129,0.16);color:#10b981;border-color:rgba
+web\app.js:401: : `<span class="gs-crs-pill" style="font-size:9.5px;">#${escapeHtml(shortVid)}</span>`;
+web\app.js:627: <span class="gs-crs-pill gs-share-scope-pill" title="${escapeHtml(fullScopeTooltip)}">
+web\app.js:669: : `<span class="gs-crs-pill">${tr("有效", "ACTIVE")}</span>`
+web\app.js:1089: <td><span class="gs-crs-pill">${escapeHtml(getScanCrsDisplayLabel(s))}</span></td>
+web\app.js:1092: ? `<span class="gs-crs-pill">${tr("已快取", "Cached")}</span>`
+web\app.js:1341: : `<span class="gs-crs-pill" style="${
+web\app.js:2935: else if (STATE.activeTool === "crs") openCoordinateSystemInspector();
+web\i18n.js:87: ["2. 指定設計高程基準面 Z₀ (TWVD2001)", "2. Custom Datum Elevation Plane Z₀ (TWVD2001)"],
+web\i18n.js:91: ["基準高程 Z₀ (TWVD2001 m)", "Datum Elev Z₀ (TWVD2001 m)"],
+web\i18n.js:258: // 10. Mesh Compression, CRS, and Save Scan Edits Inspectors
+web\i18n.js:272: ["🌐 座標參考系統 (CRS)", "🌐 Coordinate Reference System (CRS)"],
+web\i18n.js:273: ["目前掃描座標系：", "Current Scan CRS:"],
+web\i18n.js:397: var KEEP_PAREN_TOKENS = /^(TWD97|TWVD2001|WGS84|EPSG[:\d+.\sA-Za-z-]*|121|120|119|\.3TZ|\.GLB|\.OBJ|
+web\i18n.js:642: var span = el.querySelector("span:not(.status-dot):not(.gs-crs-pill)");
+web\index.html:32: <span class="gs-crs-pill" id="topCrsBadge" title="由 雲在天 博士與 Gemini 4 Argon 共同開發" data-i18n-zh="由 雲在天
+web\index.html:171: <span class="gs-crs-pill" id="lblMapClusterCount">0 個工區</span>
+web\index.html:244: <span class="gs-crs-pill" id="libraryTotalCountBadge">0</span>
+web\index.html:335: <span class="gs-crs-pill" id="timelineSiteCountPill">0 筆掃描</span>
+web\index.html:336: <span class="gs-crs-pill gs-timeline-crs-extra" id="timelineCrsExtraPill" style="display:none;"></sp
+web\index.html:430: <div style="font-size:11px;color:var(--ui-text-secondary);font-family:monospace;overflow:hidden;text
+web\index.html:609: <span class="gs-crs-pill" id="studioProjectGroupBadge" style="display:none;"></span>
+web\index.html:638: TWD97 · TWVD2001 · 4K
+web\index.html:873: <button type="button" class="bim-dock-btn autodesk-measure-btn" id="btnMeasureCoordinates" data-tool
+web\index.html:1122: <button type="button" class="bim-dock-btn gs-edit-dock-btn" id="btnDockCrs" data-tool="crs" data-doc
+web\index.html:1130: <span class="bim-dock-label" data-i18n-zh="座標" data-i18n-en="CRS">座標</span>
+web\index.html:1134: <button type="button" class="bim-dock-btn gs-edit-dock-btn gs-generate-scan-dock-btn" id="btnDockGen
+web\index.html:1186: <span class="gs-crs-pill" id="compareProjectGroupBadge" style="display:none;"></span>
+web\index.html:1262: <span class="gs-crs-pill" id="lblCompareProfileSummary">L = 0.0 m · Max ΔZ = 0.00 m</span>
+web\index.html:1279: <span style="color:var(--ui-text-secondary);" id="lblCompareLegendTitle" data-i18n-zh="TWVD2001 高程與 
+web\index.html:1313: <div class="lbl" data-i18n-zh="強制輸出座標系統 (CRS)" data-i18n-en="Mandatory PIX4Dmatic Output CRS">強制輸出座標
+web\index.html:1314: <div class="val" style="font-size:12.5px;color:var(--ui-accent);">TWD97 (121) + TWVD2001</div>
+web\index.html:1364: <span class="gs-crs-pill" id="livePix4dStageBadge" data-i18n-zh="執行中" data-i18n-en="Running">執行中</sp
+web\index.html:1377: <div style="font-size:11px;font-weight:700;color:var(--ui-text-secondary);margin-bottom:4px;" id="gs
+web\index.html:1378: PIX4Dmatic 2.11.0 自動化 .GST 腳本 (TWD97 (121) [EPSG:3826] + TWVD2001 [EPSG:8904] · FixedSize · 4096px ·
+web\index.html:1391: <th data-i18n-zh="座標系與貼圖" data-i18n-en="CRS &amp; Texture">座標系與貼圖</th>
+web\index.html:1713: <span class="gs-crs-pill" id="badgeCurrentUserRoleLevel" style="font-weight:700;" data-i18n-zh="權限：擁
+web\index.html:1721: <span class="gs-crs-pill" id="badgeAdminPcDaemonStatus" style="font-weight:700;" data-i18n-zh="檢查中..
+web\index.html:1813: <span class="gs-crs-pill" id="badgeCloudStreamStatus" style="font-size:10px;" data-i18n-zh=".3tz 就緒"
+web\index.html:1814: <span class="gs-crs-pill" id="badgeSettingsSaStatus" data-i18n-zh="檢查中..." data-i18n-en="Checking...
+web\index.html:1847: <th data-i18n-zh="座標系統" data-i18n-en="CRS">座標系統</th>
+web\index.html:1958: <span id="gateRosterCountBadge" class="gs-crs-pill" style="font-size:10px;padding:1px 7px;" data-i18
+web\index.html:2073: <span class="gs-crs-pill" id="recycleBinModalCountPill" data-i18n-zh="0 筆掃描" data-i18n-en="0 Scans">
+web\index.html:2187: <span class="gs-crs-pill" id="rerunScanCrsBadge" data-i18n-zh="ExportSrs.Scene + TWD97 位移 · 1mm 精度" 
+web\lib\3d-tiles-renderer.bundle.js:232: var it=new se,ve=Symbol("TILE_X"),Te=Symbol("TILE_Y"),fe=Symbol("TILE_LEVEL"),Vi=class{get tiling(){
+web\lib\3d-tiles-renderer.bundle.js:468: `)},t}var Ki=class{constructor(){this.canvas=null,this.context=null,this.range=[0,0,1,1]}setTarget(e
+web\src\01-core-state.js:184: crsConfig: null,
+web\src\01-core-state.js:420: !String(sc.crs || "").toUpperCase().includes("LOCAL");
+web\src\01-core-state.js:1394: const wfTools = new Set(["optimizer", "crs", "generate_scan", "crop", "crop_delete", "align_merge"])
+web\src\01-core-state.js:1917: const crs = String(scan.crs || "").toUpperCase();
+web\src\01-core-state.js:1918: return scan.lat == null || scan.lon == null || crs.includes("LOCAL");
+web\src\02-map-and-timeline.js:215: const utm = wgs84ToTransverseMercatorJS(lat, lon, lon0, 500000.0, 0.9996, 298.257223563);
+web\src\02-map-and-timeline.js:216: const uN = lat < 0 ? utm.n + 10000000.0 : utm.n;
+web\src\02-map-and-timeline.js:218: coordEl.innerHTML = `<div style="white-space:nowrap;">UTM ${zone}${hemi} E: ${utm.e.toFixed(1)}m | N
+web\src\02-map-and-timeline.js:818: const crsText = getScanCrsDisplayLabel(scan);
+web\src\02-map-and-timeline.js:828: metricsEl.textContent = `${crsText} · ${areaText} · ${polyText} · ${texText} · ${sizeText}${stageTag
+web\src\02-map-and-timeline.js:832: `${tr("座標系統", "CRS")}: ${crsText}`,
+web\src\02-map-and-timeline.js:872: const crsLabel = getScanCrsDisplayLabel(scan);
+web\src\02-map-and-timeline.js:913: badge: crsLabel,
+web\src\02-map-and-timeline.js:1773: String(STATE.activeScan?.crs || "").toUpperCase().includes("LOCAL")
+web\src\02-map-and-timeline.js:2369: const crsPill = document.getElementById("timelineCrsExtraPill");
+web\src\02-map-and-timeline.js:2370: if (crsPill) {
+web\src\02-map-and-timeline.js:2371: crsPill.style.display = "none";
+web\src\02-map-and-timeline.js:2485: const crsExtraPill = document.getElementById("timelineCrsExtraPill");
+web\src\02-map-and-timeline.js:2486: if (crsExtraPill) {
+web\src\02-map-and-timeline.js:2487: crsExtraPill.style.display = "none";
+web\src\02-map-and-timeline.js:3497: const crsCode = typeof inferActiveScanCrsCode === "function" ? inferActiveScanCrsCode(s) : "TWD97_12
+web\src\02-map-and-timeline.js:3498: const crsList = typeof CRS_UI_CATALOG !== "undefined" ? CRS_UI_CATALOG : [];
+web\src\02-map-and-timeline.js:3499: const crsDef = crsList.find((c) => c.code === crsCode) || {
+web\src\02-map-and-timeline.js:3505: const lon0 = Number(crsDef.lon0) || 121.0;
+web\src\02-map-and-timeline.js:3506: const fe = Number(crsDef.fe) || 250000.0;
+web\src\02-map-and-timeline.js:3507: const k0 = Number(crsDef.k0) || 0.9999;
+web\src\02-map-and-timeline.js:3508: const fInv = Number(crsDef.fInv) || 298.257222101;
+web\src\03-studio-core.js:2: * GatheringScans Frontend Module 03 — 3D Scan Studio Core, CRS Math, First-Person Engine & Live Meas
+web\src\03-studio-core.js:7: // 2. 3D SCAN STUDIO (Three.js + 3D Tileset + TWD97/TWVD2001 + Civil Tools)
+web\src\03-studio-core.js:2011: String(STATE.activeScan?.crs || "").toUpperCase().includes("LOCAL")
+web\src\03-studio-core.js:2251: if (code === "WGS84_UTM50N") return "WGS84 UTM 50N";
+web\src\03-studio-core.js:2252: if (code === "WGS84_UTM51N") return "WGS84 UTM 51N";
+web\src\03-studio-core.js:2253: if (code === "TWD97_119_TWVD2001") return "TWD97 (119) + TWVD2001";
+web\src\03-studio-core.js:2254: const raw = String(s.crs || "").trim();
+web\src\03-studio-core.js:2258: return "TWD97 (121) + TWVD2001";
+web\src\03-studio-core.js:2264: const code = isMulti ? "TWD97_121_TWVD2001" : inferActiveScanCrsCode(s);
+web\src\03-studio-core.js:2272: if (code.startsWith("WGS84_UTM")) {
+web\src\03-studio-core.js:2273: return `UTM E: ${eVal.toFixed(2)}m, N: ${nVal.toFixed(2)}m, H: ${hSign}${hVal.toFixed(2)}m`;
+web\src\03-studio-core.js:2308: // Convert local Three.js (x, y, z) to active scan CRS (E/X, N/Y, H/Z) using true tilesCenter
+web\src\03-studio-core.js:2337: // Unwrapped UTM51N tileset paired with TWD97 scan metadata -> apply analytical conformal Jacobian
+web\src\04-studio-lasso-and-edits.js:1414: STATE.activeTool === "crs" ||
+web\src\04-studio-lasso-and-edits.js:2149: STATE.stagedEdits = { scanId: sid, rev: 0, deletions: [], cropKeep: null, compressionPreset: null, c
+web\src\04-studio-lasso-and-edits.js:2168: if (st.crsConfig) cnt++;
+web\src\04-studio-lasso-and-edits.js:3609: "Vertex #,TWD97 Easting E (m),TWD97 Northing N (m),TWVD2001 Elevation H (m)",
+web\src\04-studio-lasso-and-edits.js:3690: )} (+${datumVal.toFixed(3)} m)</td></tr></table>${figuresHtml}<table><thead><tr><th>Vertex</th><th>T
+web\src\04-studio-lasso-and-edits.js:3884: crs_short: "TWD97 (121) + TWVD2001",
+web\src\04-studio-lasso-and-edits.js:4165: crs_short: "TWD97 (121) + TWVD2001",
+web\src\05-studio-civil-inspectors.js:98: ["section", "profile", "crs", "generate_scan", "rtk", "photos", "comments", "drainage", "gcp_qa", "b
+web\src\05-studio-civil-inspectors.js:733: <option value="custom_plane">${tr("4. 指定設計高程基準面 Z₀ (TWVD2001)", "4. Custom Datum Elevation Plane Z₀ 
+web\src\05-studio-civil-inspectors.js:747: <label>${tr("基準高程 Z₀ (TWVD2001 m)", "Datum Elev Z₀ (TWVD2001 m)")}</label>
+web\src\05-studio-civil-inspectors.js:1540: <div class="lbl">${tr("TWVD2001 高程", "TWVD2001 Elev")}</div>
+web\src\05-studio-civil-inspectors.js:2123: `<span style="color:#22d3ee;font-weight:800;">💧 ${escapeHtml(w.id)}</span> ${isVoid ? tr("水域空洞", "Wa
+web\src\05-studio-civil-inspectors.js:2416: metric2: `TWVD +${Number(w.water_level_twvd2001_m || 0).toFixed(2)}m`,
+web\src\05-studio-civil-inspectors.js:3155: crs: "TWD97 (121) + TWVD2001",
+web\src\05-studio-civil-inspectors.js:3196: "於 3D 掃描模型上點擊 <b>2 個端點（剖面 A &rarr; B）</b>，即可沿自訂剖面線取樣 TWVD2001 高程與坡度。滑鼠移至圖表上可同步檢視 2D 與 3D 樁號高程。",
+web\src\05-studio-civil-inspectors.js:3197: "Click <b>2 points · Section A &rarr; B</b> on the 3D scan to sample TWVD2001 elevation &amp; slope 
+web\src\05-studio-civil-inspectors.js:3216: <span style="color:var(--ui-accent);">TWVD2001 (m)</span>
+web\src\05-studio-civil-inspectors.js:3322: "Chainage (m),TWD97 Easting E (m),TWD97 Northing N (m),TWVD2001 Elevation H (m),Datum/Baseline H (m)
+web\src\05-studio-civil-inspectors.js:3387: readoutEl.innerHTML = `<span style="color:var(--ui-accent);font-weight:700;">⏳ ${tr("等待點選 2 個端點（剖面 A
+web\src\05-studio-civil-inspectors.js:3440: // 1. Horizontal Elevation Grid & Y-Axis Labels (TWVD2001 m)
+web\src\05-studio-civil-inspectors.js:3534: ctx.fillText(tr("● 地表高程 TWVD2001", "● Surface TWVD2001"), padL, 10);
+web\src\06-studio-align-and-optimizer.js:10: //   4. Coordinate System (`openCoordinateSystemInspector`) — stage CRS & custom datum offset
+web\src\06-studio-align-and-optimizer.js:13: const CRS_UI_CATALOG = [
+web\src\06-studio-align-and-optimizer.js:15: code: "TWD97_121_TWVD2001",
+web\src\06-studio-align-and-optimizer.js:16: shortLabel: "TWD97 121 + TWVD2001",
+web\src\06-studio-align-and-optimizer.js:17: fullLabel: "TWD97 / TM2 Zone 121 + TWVD2001 · EPSG:3826+8904",
+web\src\06-studio-align-and-optimizer.js:26: code: "TWD97_119_TWVD2001",
+web\src\06-studio-align-and-optimizer.js:27: shortLabel: "TWD97 119 + TWVD2001",
+web\src\06-studio-align-and-optimizer.js:28: fullLabel: "TWD97 / TM2 Zone 119 + TWVD2001 · EPSG:3825+8904",
+web\src\06-studio-align-and-optimizer.js:37: code: "WGS84_UTM51N",
+web\src\06-studio-align-and-optimizer.js:38: shortLabel: "WGS84 / UTM 51N",
+web\src\06-studio-align-and-optimizer.js:39: fullLabel: "WGS84 / UTM Zone 51N · EPSG:32651",
+web\src\06-studio-align-and-optimizer.js:48: code: "WGS84_UTM50N",
+web\src\06-studio-align-and-optimizer.js:49: shortLabel: "WGS84 / UTM 50N",
+web\src\06-studio-align-and-optimizer.js:50: fullLabel: "WGS84 / UTM Zone 50N · EPSG:32650",
+web\src\06-studio-align-and-optimizer.js:75: if (c.code === "TWD97_121_TWVD2001") return tr("TWD97 / TM2 121 分帶 + TWVD2001 · EPSG:3826+8904", "TW
+web\src\06-studio-align-and-optimizer.js:76: if (c.code === "TWD97_119_TWVD2001") return tr("TWD97 / TM2 119 離島分帶 + TWVD2001 · EPSG:3825+8904", "
+web\src\06-studio-align-and-optimizer.js:77: if (c.code === "WGS84_UTM51N") return tr("WGS84 / UTM 51N 國際分帶 · EPSG:32651", "WGS84 / UTM Zone 51N 
+web\src\06-studio-align-and-optimizer.js:78: if (c.code === "WGS84_UTM50N") return tr("WGS84 / UTM 50N 分帶 · EPSG:32650", "WGS84 / UTM Zone 50N · 
+web\src\06-studio-align-and-optimizer.js:100: const raw = String(s.crs || "").toUpperCase();
+web\src\06-studio-align-and-optimizer.js:104: if (raw.includes("UTM") && raw.includes("50")) return "WGS84_UTM50N";
+web\src\06-studio-align-and-optimizer.js:105: if (raw.includes("UTM") || raw.includes("32651")) return "WGS84_UTM51N";
+web\src\06-studio-align-and-optimizer.js:106: if (raw.includes("119") || raw.includes("3825")) return "TWD97_119_TWVD2001";
+web\src\06-studio-align-and-optimizer.js:107: return "TWD97_121_TWVD2001";
+web\src\06-studio-align-and-optimizer.js:164: const srcDef = CRS_UI_CATALOG.find((c) => c.code === srcCode) || CRS_UI_CATALOG[0];
+web\src\06-studio-align-and-optimizer.js:165: const tgtDef = CRS_UI_CATALOG.find((c) => c.code === targetCode) || CRS_UI_CATALOG[0];
+web\src\06-studio-align-and-optimizer.js:172: return { x: ce + offX, y: cn + offY, z: ch + offZ, crsLabel: getCrsItemShortLabel(tgtDef) };
+web\src\06-studio-align-and-optimizer.js:175: return { x: 0 + offX, y: 0 + offY, z: 0 + offZ, crsLabel: getCrsItemShortLabel(tgtDef) };
+web\src\06-studio-align-and-optimizer.js:181: "Scan uses Local Origin 0,0,0 with no WGS84/RTK georeference — cannot project to geodetic CRS withou
+web\src\06-studio-align-and-optimizer.js:183: crsLabel: getCrsItemShortLabel(tgtDef),
+web\src\06-studio-align-and-optimizer.js:193: crsLabel: getCrsItemShortLabel(tgtDef),
+web\src\06-studio-align-and-optimizer.js:383: const crsItem = st.crsConfig
+web\src\06-studio-align-and-optimizer.js:384: ? CRS_UI_CATALOG.find((c) => c.code === st.crsConfig.target_crs) || CRS_UI_CATALOG[0]
+web\src\06-studio-align-and-optimizer.js:386: const crsOffText =
+web\src\06-studio-align-and-optimizer.js:387: st.crsConfig &&
+web\src\06-studio-align-and-optimizer.js:388: (Math.abs(st.crsConfig.offset_x || 0) > 1e-4 ||
+web\src\06-studio-align-and-optimizer.js:389: Math.abs(st.crsConfig.offset_y || 0) > 1e-4 ||
+web\src\06-studio-align-and-optimizer.js:390: Math.abs(st.crsConfig.offset_z || 0) > 1e-4)
+web\src\06-studio-align-and-optimizer.js:391: ? ` + Δ ${Number(st.crsConfig.offset_x).toFixed(2)}, ${Number(st.crsConfig.offset_y).toFixed(2)}, ${
+web\src\06-studio-align-and-optimizer.js:392: st.crsConfig.offset_z
+web\src\06-studio-align-and-optimizer.js:442: if (st.crsConfig) {
+web\src\06-studio-align-and-optimizer.js:445: <span>🌐 <b>${tr("座標系：", "CRS:")}</b> ${escapeHtml((crsItem ? getCrsItemShortLabel(crsItem) : st.crsC
+web\src\06-studio-align-and-optimizer.js:446: <button type="button" class="gs-top-btn" data-unstage="crs" style="padding:1px 6px;font-size:10px;" 
+web\src\06-studio-align-and-optimizer.js:480: <button type="button" class="gs-top-btn" data-jump-edit="crs" style="font-size:10.5px;padding:3px 7p
+web\src\06-studio-align-and-optimizer.js:532: } else if (kind === "crs") {
+web\src\06-studio-align-and-optimizer.js:533: st.crsConfig = null;
+web\src\06-studio-align-and-optimizer.js:553: } else if (target === "crs") {
+web\src\06-studio-align-and-optimizer.js:554: setActiveStudioTool("crs");
+web\src\06-studio-align-and-optimizer.js:583: showToast("Stage at least one adjustment (Delete, Compression, or CRS) before saving edits.");
+web\src\06-studio-align-and-optimizer.js:622: crs_config: st.crsConfig || null,
+web\src\06-studio-align-and-optimizer.js:638: crs_config: st.crsConfig || null,
+web\src\06-studio-align-and-optimizer.js:696: <div style="margin-bottom:4px;">Coordinate System: <b>${escapeHtml(res.crs || res.scan?.crs || "TWD9
+web\src\06-studio-align-and-optimizer.js:1104: `Deleted ${res.committed} marked region${res.committed === 1 ? "" : "s"} in 3D preview — mark more, 
+web\src\06-studio-align-and-optimizer.js:1331: showToast("Staged Keep Crop in 3D preview — adjust Compression / CRS or press Save Edits!");
+web\src\06-studio-align-and-optimizer.js:1430: crs: "TWD97 121 + TWVD2001",
+web\src\06-studio-align-and-optimizer.js:1434: const selectedCode = st.crsConfig?.target_crs || curCode;
+web\src\06-studio-align-and-optimizer.js:1435: const initOffX = Number(st.crsConfig?.offset_x || 0);
+web\src\06-studio-align-and-optimizer.js:1436: const initOffY = Number(st.crsConfig?.offset_y || 0);
+web\src\06-studio-align-and-optimizer.js:1437: const initOffZ = Number(st.crsConfig?.offset_z || 0);
+web\src\06-studio-align-and-optimizer.js:1448: 🌐 ${tr("空間座標參考系統 · CRS", "Coordinate Reference System · CRS")}
+web\src\06-studio-align-and-optimizer.js:1451: <div><b>${tr("目前掃描座標系：", "Current Scan CRS:")}</b> ${escapeHtml(getScanCrsDisplayLabel(scan))}</div>
+web\src\06-studio-align-and-optimizer.js:1458: ${CRS_UI_CATALOG.map(
+web\src\06-studio-align-and-optimizer.js:1501: previewEl.innerHTML = `<b>${tr("轉換後中心座標", "New Scan Center")} · ${escapeHtml(prev.crsLabel)}:</b><br
+web\src\06-studio-align-and-optimizer.js:1523: st.crsConfig = {
+web\src\06-studio-align-and-optimizer.js:1524: target_crs: code,
+web\src\06-studio-align-and-optimizer.js:1530: const item = CRS_UI_CATALOG.find((c) => c.code === code);
+web\src\06-studio-align-and-optimizer.js:2380: crsConfig: STATE.stagedEdits.crsConfig ? { ...STATE.stagedEdits.crsConfig } : null,
+web\src\06-studio-align-and-optimizer.js:2395: if (prevSingleStaged.crsConfig) {
+web\src\06-studio-align-and-optimizer.js:2396: STATE.stagedEdits.crsConfig = prevSingleStaged.crsConfig;
+web\src\06-studio-align-and-optimizer.js:2750: const crsItem = stMulti.crsConfig
+web\src\06-studio-align-and-optimizer.js:2751: ? CRS_UI_CATALOG.find((c) => c.code === stMulti.crsConfig.target_crs)
+web\src\06-studio-align-and-optimizer.js:2770: if (crsItem) {
+web\src\06-studio-align-and-optimizer.js:2771: chips.push(`🌐 CRS: ${escapeHtml(getCrsItemShortLabel(crsItem))}`);
+web\src\06-studio-align-and-optimizer.js:2782: `Tip: Use <b>Lasso Delete</b> or <b>CRS</b> before merging!`
+web\src\06-studio-align-and-optimizer.js:2794: <button type="button" class="gs-top-btn" id="btnAlignOpenCrs" style="padding:2px 7px;font-size:10px;
+web\src\06-studio-align-and-optimizer.js:3073: setActiveStudioTool("crs");
+web\src\06-studio-align-and-optimizer.js:3123: Merging ${STATE.multiAlign.layers.length} locked scans, applying deletions / CRS / compression${
+web\src\06-studio-align-and-optimizer.js:3141: crs_config: stMulti.crsConfig || null,
+web\src\06-studio-align-and-optimizer.js:3172: <div>Coordinate System: <b>${escapeHtml(res.crs || res.scan?.crs || "TWD97 (121) + TWVD2001")}</b></
+web\src\06-studio-align-and-optimizer.js:3349: "crs",
+web\src\06-studio-align-and-optimizer.js:3495: if (tool === "crs") {
+web\src\06-studio-align-and-optimizer.js:3497: setActiveStudioTool("crs");
+web\src\07-compare-and-queue.js:11: // Dynamic CRS & world-space classifier for Multi-Date Compare (100% derived from scan bounds & meta
+web\src\07-compare-and-queue.js:26: crs: "TWD97",
+web\src\07-compare-and-queue.js:35: // Case 2: UTM Zone 51N coordinates (345,000 < E <= 415,000; 2,400,000 <= N <= 2,850,000)
+web\src\07-compare-and-queue.js:46: crs: "UTM51N",
+web\src\07-compare-and-queue.js:57: crs: "LOCAL",
+web\src\07-compare-and-queue.js:158: (lInfo.crs === "TWD97" || lInfo.crs === "UTM51N") &&
+web\src\07-compare-and-queue.js:159: (rInfo.crs === "TWD97" || rInfo.crs === "UTM51N");
+web\src\07-compare-and-queue.js:171: } else if (lInfo && (lInfo.crs === "TWD97" || lInfo.crs === "UTM51N")) {
+web\src\07-compare-and-queue.js:193: // 2. Apply exact Multi-Scan co-registration (when comparing source vs merged) or CRS alignment offs
+web\src\07-compare-and-queue.js:200: } else if (sharedAnchor && (info.crs === "TWD97" || info.crs === "UTM51N")) {
+web\src\07-compare-and-queue.js:1543: hdrEl.textContent = `PIX4Dmatic 2.11.0 Headless .GST Script (TWD97 (121) [EPSG:3826] + TWVD2001 [EPS
+web\src\07-compare-and-queue.js:1894: ? `<span class="gs-crs-pill" style="background:rgba(2,132,199,0.16);color:#0284c7;border:1px solid r
+web\src\07-compare-and-queue.js:1896: ? `<span class="gs-crs-pill" style="background:rgba(139,92,246,0.16);color:#8b5cf6;border:1px solid 
+web\src\07-compare-and-queue.js:1928: let statusHtml = `<span class="gs-crs-pill">${safeStatus}</span>`;
+web\src\07-compare-and-queue.js:1933: <span class="gs-crs-pill" style="background:rgba(2,132,199,0.18);color:var(--ui-accent);font-weight:
+web\src\07-compare-and-queue.js:1934: <span class="gs-crs-pill" style="background:${hexToRgbaTint(actCol, 0.18)};color:${actCol};border:1p
+web\src\07-compare-and-queue.js:1943: <span class="gs-crs-pill" style="background:rgba(16,185,129,0.16);color:#10b981;font-weight:700;">${
+web\src\07-compare-and-queue.js:1953: <span class="gs-crs-pill" style="${pillStyle}">${safeStatus}</span>
+web\src\07-compare-and-queue.js:1959: <span class="gs-crs-pill" style="background:rgba(6,182,212,0.16);color:#06b6d4;border:1px solid rgba
+web\src\07-compare-and-queue.js:1980: <td><span class="gs-crs-pill">${escapeHtml(getScanCrsDisplayLabel(s))} · ${Number(s.texture_resoluti
+web\src\07-compare-and-queue.js:2071: hdrEl.textContent = `PIX4Dmatic 2.11.0 Headless .GST Script (TWD97 (121) [EPSG:3826] + TWVD2001 [EPS
+web\src\08-advanced-surveying-and-qa.js:498: !String(s.crs || "").toUpperCase().includes("LOCAL")
+web\src\08-advanced-surveying-and-qa.js:983: const headers = ["Station_m", ...prof.series.map((s) => `Scan${s.idx}_${s.scanId}_TWVD2001_H_m`)];
+web\src\08-advanced-surveying-and-qa.js:3489: <a class="btn-xs" href="${escapeHtml(csvUrl)}" download="${escapeHtml((STATE.activeScanId || "scan")

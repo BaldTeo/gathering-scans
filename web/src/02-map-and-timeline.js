@@ -2291,8 +2291,8 @@
     );
     // In Studio, pinned L0/L1 coarse base tiles already guarantee zero-gap fallback, so skipping
     // intermediate octree ancestor downloads jumps straight to visible HD leaf tiles (~3-4x faster & ~65% less VRAM).
-    // Desktop Studio loads every intermediate octree level (no L1 -> leaf jump); phones/tablets keep leaf-direct for memory.
-    tr.loadAncestors = !isPreviewTileset && (viewerType !== "studio" || (!isMobOrTab && lodMode !== "rough"));
+    // Studio loads every intermediate octree level on ALL devices (no L1 -> leaf jump); mobile memory is bounded by the HD budget/LRU.
+    tr.loadAncestors = !isPreviewTileset && (viewerType !== "studio" || lodMode !== "rough");
     const isWs = typeof isWorkstationClassDevice === "function" && isWorkstationClassDevice() && viewerType === "studio";
     const depthInfo = computeTilesetDepthLimits(tr.root, 30);
     if (isPreviewTileset) {

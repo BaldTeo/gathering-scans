@@ -1,0 +1,46 @@
+{
+  "surface_qa": {
+    "panelWidth": 358,
+    "panelScrollWidth": 358,
+    "hasHorizontalScroll": false,
+    "diff": 0,
+    "containerScrollWidth": 330,
+    "containerClientWidth": 330,
+    "tables": []
+  },
+  "utility_trace": {
+    "panelWidth": 358,
+    "panelScrollWidth": 358,
+    "hasHorizontalScroll": false,
+    "diff": 0,
+    "containerScrollWidth": 330,
+    "containerClientWidth": 330,
+    "tables": []
+  },
+  "compare_volume": {
+    "panelWidth": 358,
+    "panelScrollWidth": 358,
+    "hasHorizontalScroll": false,
+    "diff": 0,
+    "containerScrollWidth": 330,
+    "containerClientWidth": 330,
+    "tables": []
+  },
+  "rtk_stakeout": {
+    "panelWidth": 358,
+    "panelScrollWidth": 358,
+    "hasHorizontalScroll": false,
+    "diff": 0,
+    "containerScrollWidth": 330,
+    "containerClientWidth": 330,
+    "tables": [
+      {
+        "index": 0,
+        "tableScrollWidth": 328,
+        "tableClientWidth": 328,
+        "parentScrollWidth": 328,
+        "parentClientWidth": 328
+      }
+    ]
+  }
+}

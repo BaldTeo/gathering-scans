@@ -82,6 +82,23 @@ PRIMARY_SCAN_API_PATHS = (
 )
 
 
+
+def _ts_to_float(v) -> float:
+    """updated_at may be epoch seconds (number/str) or an ISO-8601 string; never raise."""
+    if v in (None, ""):
+        return 0.0
+    try:
+        return float(v)
+    except (TypeError, ValueError):
+        pass
+    try:
+        from datetime import datetime
+
+        return datetime.fromisoformat(str(v).replace("Z", "+00:00")).timestamp()
+    except Exception:
+        return 0.0
+
+
 def _norm_primary_group_key(group_name: str) -> str:
     return str(group_name or "").strip().lower()
 
@@ -428,7 +445,7 @@ class ServerWriteRoutesMixin:
                             sid_l = str(s_in["scan_id"]).lower()
                             prev_hv = prev_hv_by_id.get(sid_l)
                             in_hv = s_in.get("home_view") if isinstance(s_in.get("home_view"), dict) else None
-                            if prev_hv and (not in_hv or float(prev_hv.get("updated_at") or 0) > float(in_hv.get("updated_at") or 0)):
+                            if prev_hv and (not in_hv or _ts_to_float(prev_hv.get("updated_at")) > _ts_to_float(in_hv.get("updated_at"))):
                                 s_in["home_view"] = prev_hv
                     by_t = {str(x.get("token")): x for x in (m_in.get("share_links") or []) if isinstance(x, dict) and x.get("token")}
                     for lx in AUTH_SHARE.list_share_links():

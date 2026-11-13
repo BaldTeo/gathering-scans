@@ -226,18 +226,55 @@ def _normalize_pix4d_settings_dict(cfg: dict) -> dict:
     return cfg
 
 
-def load_pix4d_settings() -> dict:
+def _shared_pix4d_settings_path():
+    """Preset settings are shared by every PC through Google Drive: <inbox>/_state/pix4d_settings.json."""
+    try:
+        if GDRIVE_INBOX_DIR and os.path.isdir(GDRIVE_INBOX_DIR):
+            return os.path.join(GDRIVE_INBOX_DIR, "_state", "pix4d_settings.json")
+    except Exception:
+        pass
+    return None
+
+
+def _read_settings_file(path):
     import json
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            saved = json.load(f)
+        return saved if isinstance(saved, dict) else None
+    except Exception:
+        return None
+
+
+def load_pix4d_settings() -> dict:
     cfg = dict(DEFAULT_PIX4D_SETTINGS)
-    if os.path.isfile(PIX4D_SETTINGS_PATH):
-        try:
-            with open(PIX4D_SETTINGS_PATH, "r", encoding="utf-8") as f:
-                saved = json.load(f)
-            if isinstance(saved, dict):
-                cfg.update(saved)
-        except Exception:
-            pass
-    return _normalize_pix4d_settings_dict(cfg)
+    shared_path = _shared_pix4d_settings_path()
+    shared = _read_settings_file(shared_path) if shared_path and os.path.isfile(shared_path) else None
+    if shared is not None:
+        cfg.update({k: v for k, v in shared.items() if not k.startswith("_")})
+    elif os.path.isfile(PIX4D_SETTINGS_PATH):
+        local = _read_settings_file(PIX4D_SETTINGS_PATH)
+        if local:
+            cfg.update(local)
+    cfg = _normalize_pix4d_settings_dict(cfg)
+    if shared is None and shared_path:
+        _write_shared_pix4d_settings(shared_path, cfg)  # first PC seeds the shared file
+    return cfg
+
+
+def _write_shared_pix4d_settings(shared_path, cfg) -> None:
+    import json, socket, time
+    try:
+        os.makedirs(os.path.dirname(shared_path), exist_ok=True)
+        payload = dict(cfg)
+        payload["_updated_at"] = time.time()
+        payload["_updated_by"] = socket.gethostname()
+        tmp = shared_path + ".part"
+        with open(tmp, "w", encoding="utf-8") as f:
+            json.dump(payload, f, indent=2, ensure_ascii=False)
+        os.replace(tmp, shared_path)
+    except Exception:
+        pass
 
 
 def save_pix4d_settings(updates: dict) -> dict:
@@ -248,9 +285,12 @@ def save_pix4d_settings(updates: dict) -> dict:
     cfg = load_pix4d_settings_from_dict(cfg)
     try:
         with open(PIX4D_SETTINGS_PATH, "w", encoding="utf-8") as f:
-            json.dump(cfg, f, indent=2, ensure_ascii=False)
+            json.dump(cfg, f, indent=2, ensure_ascii=False)  # local cache / offline fallback
     except Exception:
         pass
+    shared_path = _shared_pix4d_settings_path()
+    if shared_path:
+        _write_shared_pix4d_settings(shared_path, cfg)
     return cfg
 
 

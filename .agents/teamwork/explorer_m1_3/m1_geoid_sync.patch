@@ -1,0 +1,194 @@
+--- a/web/src/06-studio-align-and-optimizer.js
++++ b/web/src/06-studio-align-and-optimizer.js
+@@ -42,3 +42,3 @@
+       fe: 500000.0,
+       k0: 0.9996,
+       fInv: 298.257223563,
+-      hOff: 20.6,
++      hOff: 17.20,
+     },
+     {
+@@ -53,3 +53,3 @@
+       fe: 500000.0,
+       k0: 0.9996,
+       fInv: 298.257223563,
+-      hOff: 19.8,
++      hOff: 16.80,
+     },
+     {
+@@ -161,5 +161,5 @@
+-  function previewTargetCrsCenterJS(scanObj, targetCode, offX = 0, offY = 0, offZ = 0) {
++  function previewTargetCrsCenterJS(scanObj, targetCode, offX = 0, offY = 0, offZ = 0, geoidOverride = null) {
+     const s = scanObj || STATE.activeScan || {};
+     const srcCode = inferActiveScanCrsCode(s);
+     const srcDef = CRS_UI_CATALOG.find((c) => c.code === srcCode) || CRS_UI_CATALOG[0];
+     const tgtDef = CRS_UI_CATALOG.find((c) => c.code === targetCode) || CRS_UI_CATALOG[0];
+     const ce = s.twd97_e !== undefined && s.twd97_e !== null ? Number(s.twd97_e) : 0;
+@@ -168,4 +168,9 @@
+     const cn = s.twd97_n !== undefined && s.twd97_n !== null ? Number(s.twd97_n) : 0;
+     const ch = s.twd97_h !== undefined && s.twd97_h !== null ? Number(s.twd97_h) : 0;
+-    const twvdH = ch - (srcDef.hOff || 0);
++    const effectiveTgtHoff = (geoidOverride !== null && Number.isFinite(Number(geoidOverride)))
++      ? Number(geoidOverride)
++      : (tgtDef.hOff || 0);
++    const effectiveSrcHoff = srcDef.hOff || 0;
++    const twvdH = ch - effectiveSrcHoff;
+ 
+     if (tgtDef.code === srcCode) {
+-      return { x: ce + offX, y: cn + offY, z: ch + offZ, crsLabel: getCrsItemShortLabel(tgtDef) };
++      const zVal = (geoidOverride !== null && Number.isFinite(Number(geoidOverride)))
++        ? twvdH + effectiveTgtHoff + offZ
++        : ch + offZ;
++      return { x: ce + offX, y: cn + offY, z: zVal, crsLabel: getCrsItemShortLabel(tgtDef) };
+     }
+     if (tgtDef.kind === "local") {
+@@ -192,3 +197,3 @@
+       x: en.e + offX,
+       y: en.n + offY,
+-      z: twvdH + (tgtDef.hOff || 0) + offZ,
++      z: twvdH + effectiveTgtHoff + offZ,
+       crsLabel: getCrsItemShortLabel(tgtDef),
+@@ -387,8 +392,12 @@
+       st.crsConfig &&
+       (Math.abs(st.crsConfig.offset_x || 0) > 1e-4 ||
+         Math.abs(st.crsConfig.offset_y || 0) > 1e-4 ||
+-        Math.abs(st.crsConfig.offset_z || 0) > 1e-4)
++        Math.abs(st.crsConfig.offset_z || 0) > 1e-4 ||
++        st.crsConfig.geoid_offset_override !== undefined && st.crsConfig.geoid_offset_override !== null)
+         ? ` + Δ ${Number(st.crsConfig.offset_x).toFixed(2)}, ${Number(st.crsConfig.offset_y).toFixed(2)}, ${Number(
+             st.crsConfig.offset_z
+-          ).toFixed(2)}m`
++          ).toFixed(2)}m${st.crsConfig.geoid_offset_override !== undefined && st.crsConfig.geoid_offset_override !== null ? ` · N=${Number(st.crsConfig.geoid_offset_override).toFixed(2)}m` : ""}`
+         : "";
+@@ -1437,2 +1446,5 @@
+     const initOffZ = Number(st.crsConfig?.offset_z || 0);
++    const defTgt = CRS_UI_CATALOG.find((c) => c.code === selectedCode) || CRS_UI_CATALOG[0];
++    const initGeoidOff = (st.crsConfig?.geoid_offset_override !== undefined && st.crsConfig?.geoid_offset_override !== null)
++      ? Number(st.crsConfig.geoid_offset_override)
++      : (defTgt.hOff || 0.0);
+ 
+@@ -1470,2 +1482,14 @@
+           </div>
+         </div>
++
++        <div class="gs-form-group" style="margin-bottom:8px;">
++          <label style="display:flex;justify-content:space-between;align-items:center;">
++            <span>${tr("大地起伏 / 水準面分離量 N · 公尺", "Geoid Undulation N / Vertical Offset · m")}</span>
++            <button type="button" class="gs-btn-ghost" id="btnResetGeoidOffset" style="font-size:10.5px;padding:1px 6px;cursor:pointer;" title="${tr("還原為標準目錄值", "Reset to catalog standard")}">
++              ↺ ${tr("還原目錄值", "Reset Catalog")}
++            </button>
++          </label>
++          <input type="number" step="0.01" class="gs-input" id="numGeoidOffset" value="${initGeoidOff.toFixed(2)}" placeholder="17.20" title="${tr("WGS84 橢球高 h 與 TWVD2001 正高 H: h = H + N", "WGS84 Ellipsoidal h vs TWVD2001 Orthometric H: h = H + N")}" />
++          <div style="font-size:10px;color:var(--ui-text-muted);margin-top:2px;">
++            ${tr("標準目錄：UTM51N=17.20m, UTM50N=16.80m, TWD97=0.00m · 可依現場 RTK 水準基準自訂", "Standard: UTM51N=17.20m, UTM50N=16.80m, TWD97=0.00m · Editable per site RTK")}
++          </div>
++        </div>
+ 
+@@ -1488,3 +1512,5 @@
+       const oz = Number(document.getElementById("numCrsOffsetZ")?.value || 0);
+-      const prev = previewTargetCrsCenterJS(scan, code, ox, oy, oz);
++      const geoidRaw = document.getElementById("numGeoidOffset")?.value;
++      const geoidVal = (geoidRaw !== undefined && geoidRaw !== null && geoidRaw.trim() !== "") ? Number(geoidRaw) : null;
++      const prev = previewTargetCrsCenterJS(scan, code, ox, oy, oz, geoidVal);
+       const previewEl = document.getElementById("lblCrsTargetPreview");
+@@ -1510,2 +1536,20 @@
+     });
++    document.getElementById("selTargetCrs")?.addEventListener("change", (e) => {
++      const code = e.target.value;
++      const item = CRS_UI_CATALOG.find((c) => c.code === code);
++      const geoidInput = document.getElementById("numGeoidOffset");
++      if (geoidInput && item) {
++        geoidInput.value = Number(item.hOff || 0.0).toFixed(2);
++      }
++      updatePreviewBox();
++    });
++    document.getElementById("btnResetGeoidOffset")?.addEventListener("click", () => {
++      const code = document.getElementById("selTargetCrs")?.value || curCode;
++      const item = CRS_UI_CATALOG.find((c) => c.code === code);
++      const geoidInput = document.getElementById("numGeoidOffset");
++      if (geoidInput && item) {
++        geoidInput.value = Number(item.hOff || 0.0).toFixed(2);
++      }
++      updatePreviewBox();
++    });
++    document.getElementById("numGeoidOffset")?.addEventListener("input", updatePreviewBox);
+ 
+@@ -1517,3 +1561,5 @@
+       const oz = Number(document.getElementById("numCrsOffsetZ")?.value || 0);
+-      const prev = previewTargetCrsCenterJS(scan, code, ox, oy, oz);
++      const geoidRaw = document.getElementById("numGeoidOffset")?.value;
++      const geoidVal = (geoidRaw !== undefined && geoidRaw !== null && geoidRaw.trim() !== "") ? Number(geoidRaw) : null;
++      const prev = previewTargetCrsCenterJS(scan, code, ox, oy, oz, geoidVal);
+       if (prev.error) {
+@@ -1527,2 +1573,4 @@
+         offset_z: oz,
++        geoid_offset_override: (geoidVal !== null && Number.isFinite(geoidVal)) ? geoidVal : null,
++        h_offset_from_twvd: (geoidVal !== null && Number.isFinite(geoidVal)) ? geoidVal : null,
+       };
+--- a/pc_worker/optimizer_bridge.py
++++ b/pc_worker/optimizer_bridge.py
+@@ -292,2 +292,3 @@
+     custom_offset_xyz: Tuple[float, float, float] = (0.0, 0.0, 0.0),
++    geoid_offset_override: Optional[float] = None,
+ ) -> Dict[str, Any]:
+@@ -342,3 +343,7 @@
+         )
+-        twvd_h0 = float(c_src[2]) - float(sdef["h_offset_from_twvd"])
++        src_h_off = (
++            float(geoid_offset_override)
++            if geoid_offset_override is not None and sdef["code"].startswith("WGS84_UTM")
++            else float(sdef["h_offset_from_twvd"])
++        )
++        twvd_h0 = float(c_src[2]) - src_h_off
+         has_src_georef = True
+@@ -412,3 +417,7 @@
+             )
+-            h_dst = twvd_h0 + float(tdef["h_offset_from_twvd"])
++            tgt_h_off = (
++                float(geoid_offset_override)
++                if geoid_offset_override is not None and tdef["code"].startswith("WGS84_UTM")
++                else float(tdef["h_offset_from_twvd"])
++            )
++            h_dst = twvd_h0 + tgt_h_off
+             c_dst = np.array([e_dst, n_dst, h_dst], dtype=np.float64) + offset_vec
+@@ -1720,2 +1729,4 @@
+         crs_off_z = float(crs_cfg.get("offset_z") or 0.0)
++        geoid_override_raw = crs_cfg.get("geoid_offset_override") if crs_cfg.get("geoid_offset_override") is not None else crs_cfg.get("h_offset_from_twvd")
++        geoid_override_val = float(geoid_override_raw) if geoid_override_raw is not None else None
+         has_crs = bool(
+@@ -3154,2 +3165,4 @@
+         off_z = float(crs_cfg.get("offset_z") or 0.0)
++        geoid_override_raw = crs_cfg.get("geoid_offset_override") if crs_cfg.get("geoid_offset_override") is not None else crs_cfg.get("h_offset_from_twvd")
++        geoid_override_val = float(geoid_override_raw) if geoid_override_raw is not None else None
+         has_crs = bool(
+@@ -3300,2 +3313,3 @@
+                         custom_offset_xyz=(off_x, off_y, off_z),
++                        geoid_offset_override=geoid_override_val,
+                     )
+--- a/pc_worker/surveying/dsm_and_volume.py
++++ b/pc_worker/surveying/dsm_and_volume.py
+@@ -989,2 +989,4 @@
+         stockpile_name = payload.get("stockpile_name") or "Stockpile / Earthwork Zone A"
++        geoid_override_raw = payload.get("geoid_offset_override") if payload.get("geoid_offset_override") is not None else payload.get("h_offset_from_twvd")
++        geoid_offset_override = float(geoid_override_raw) if geoid_override_raw is not None else None
+ 
+@@ -1245,2 +1247,4 @@
+             "status": "ok",
++            "geoid_offset_override": geoid_offset_override,
++            "geoid_offset_m": geoid_offset_override if geoid_offset_override is not None else 17.20,
+             "scan_id": scan_id,
+@@ -1582,2 +1586,4 @@
+             or []
++        geoid_override_raw = payload.get("geoid_offset_override") if payload.get("geoid_offset_override") is not None else payload.get("h_offset_from_twvd")
++        geoid_offset_override = float(geoid_override_raw) if geoid_override_raw is not None else None
+         evaluated: List[Dict[str, Any]] = []
+@@ -1654,2 +1660,4 @@
+                 h_scan = float(h_gcp + 0.012 * math.sin(idx + 1))
++            if geoid_offset_override is not None:
++                h_scan = h_scan - float(geoid_offset_override)
+ 
+@@ -1711,2 +1719,4 @@
+             "status": "ok",
++            "geoid_offset_override": geoid_offset_override,
++            "geoid_offset_applied": bool(geoid_offset_override is not None),
+             "scan_id": scan_id,

@@ -1,0 +1,12 @@
+{
+  "mesh_pipeline": "Scalable",
+  "skyless": false,
+  "use_roi": false,
+  "texture_size": 16384,
+  "dense_image_scale": "Full",
+  "depth_min_confidence": "Medium",
+  "depth_agreement_m": 0.01,
+  "model_simplification": "Conservative",
+  "deghosting": "Weak",
+  "export_lod": 13
+}
