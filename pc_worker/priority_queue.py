@@ -347,7 +347,9 @@ class ScanQueueDB:
                         extra_payload.update(parsed_old)
         except Exception:
             pass
-        if isinstance(scan_data.get("extra_json"), str) and scan_data["extra_json"].strip() not in ("", "{}"):
+        if isinstance(scan_data.get("extra_json"), dict):
+            extra_payload.update(scan_data["extra_json"])
+        elif isinstance(scan_data.get("extra_json"), str) and scan_data["extra_json"].strip() not in ("", "{}"):
             try:
                 parsed_ex = json.loads(scan_data["extra_json"])
                 if isinstance(parsed_ex, dict):
@@ -1776,6 +1778,37 @@ class ScanQueueDB:
         )
         return purged_ids
 
+    def cancel_scan(self, scan_id: str, actor_email: str = "admin") -> Dict[str, Any]:
+        """
+        Cancels a scan job in the queue (or running). Sets status to 'cancelled' and terminates PIX4Dmatic if active.
+        """
+        import subprocess
+        sid = str(scan_id or "").strip()
+        with DB_LOCK, self._connect() as conn:
+            cur = conn.execute("SELECT status, project_dir FROM scans WHERE scan_id = ?", (sid,)).fetchone()
+            if not cur:
+                return {"status": "error", "error": f"Scan {sid} not found"}
+            old_st = cur["status"]
+            conn.execute(
+                "UPDATE scans SET status = 'cancelled', progress_pct = 0.0, stage_label = ? WHERE scan_id = ?",
+                (f"Cancelled by {actor_email or 'admin'}", sid),
+            )
+            conn.commit()
+
+        # If it was processing, terminate running PIX4Dmatic process
+        if old_st == "processing" and os.name == "nt":
+            try:
+                import psutil
+                for p in psutil.process_iter(["pid", "name"]):
+                    if "pix4dmatic" in (p.info.get("name") or "").lower():
+                        p.terminate()
+            except Exception:
+                try:
+                    subprocess.run(["taskkill", "/F", "/IM", "PIX4Dmatic.exe"], capture_output=True, timeout=5)
+                except Exception:
+                    pass
+        return {"status": "cancelled", "scan_id": sid, "previous_status": old_st}
+
     def delete_scan(self, scan_id: str) -> Optional[Dict[str, Any]]:
         """
         Permanently deletes a scan immediately (bypassing Bin if called directly, or purges if in Bin).
@@ -1840,7 +1873,23 @@ class ScanQueueDB:
             if not queued:
                 return None
 
-            chosen = queued[0]
+            # Skip any scans that are awaiting user preset selection via Google Chat bot
+            eligible = []
+            for sc in queued:
+                ex_d = sc.get("extra_json") or {}
+                if isinstance(ex_d, str):
+                    try:
+                        ex_d = json.loads(ex_d)
+                    except Exception:
+                        ex_d = {}
+                if bool(ex_d.get("awaiting_preset")):
+                    continue
+                eligible.append(sc)
+
+            if not eligible:
+                return None
+
+            chosen = eligible[0]
             chosen_id = chosen["scan_id"]
             chosen_uploaded = float(chosen["uploaded_at"])
             chosen_pass = str(chosen.get("pending_pass") or ("full_hq" if chosen.get("tileset_path") else "preview"))

@@ -942,6 +942,110 @@ class GoogleChatNotifier:
             thread_suffix="island_confirm",
         )
 
+    def notify_new_scan_preset_question(
+        self,
+        scan_id: str,
+        scan: Dict[str, Any],
+        preview_img_url: str = "",
+        decision_token: str = "",
+    ) -> Dict[str, Any]:
+        """
+        Interactive Google Chat notification when a new scan is discovered in the INPUT folder.
+        Tags 雲在天 (<users/107639887113416939995>) with 1 preview photo and 4 interactive buttons:
+        1. Cancel
+        2. Optimal without SkyMask
+        3. Optimal with SkyMask
+        4. Manual Selection
+        """
+        self._sync_user_ids_from_db()
+        glib_email = "glibivanov@gatheren.com.tw"
+        gchat_uid = self.user_gchat_ids.get(glib_email, "107639887113416939995")
+        mention_tag = f"<users/{gchat_uid}>" if gchat_uid else "*雲在天*"
+
+        scan_name = scan.get("name") or scan_id
+        project_group = scan.get("project_group_zh") or scan.get("project_group") or "未分類工區"
+        img_count = int(scan.get("image_count") or 0)
+        img_tag = f"{img_count:,} 張照片" if img_count > 0 else "現場照片組"
+
+        base_api = f"{PUBLIC_BASE_URL}/api/gchat/preset-decision"
+        q_cancel = urllib.parse.urlencode({"scan_id": scan_id, "decision": "cancel", "token": decision_token})
+        q_nosky = urllib.parse.urlencode({"scan_id": scan_id, "decision": "optimal_nosky", "token": decision_token})
+        q_sky = urllib.parse.urlencode({"scan_id": scan_id, "decision": "optimal_sky", "token": decision_token})
+        url_cancel = f"{base_api}?{q_cancel}"
+        url_nosky = f"{base_api}?{q_nosky}"
+        url_sky = f"{base_api}?{q_sky}"
+        url_manual = f"{PUBLIC_BASE_URL}/?modal=queue&scan={urllib.parse.quote(scan_id)}&manual_preset=1"
+
+        img_url = preview_img_url or f"{PUBLIC_BASE_URL}/api/queue/{urllib.parse.quote(scan_id)}/preview-photo.jpg"
+
+        card_payload: Dict[str, Any] = {
+            "text": f"📸 {mention_tag} 偵測到新上傳的 3D 掃描：*{scan_name}*（{project_group} · {img_tag}）。\n請選擇處理參數流程：",
+            "cardsV2": [
+                {
+                    "cardId": f"preset_prompt_{scan_id}",
+                    "card": {
+                        "header": {
+                            "title": f"新掃描待確認：{scan_name}",
+                            "subtitle": f"{project_group} • {img_tag} • 請選擇建模模式",
+                        },
+                        "sections": [
+                            {
+                                "widgets": [
+                                    {
+                                        "image": {
+                                            "imageUrl": img_url,
+                                            "altText": f"現場預覽照片：{scan_name}",
+                                            "onClick": {"openLink": {"url": url_manual}},
+                                        }
+                                    },
+                                    {
+                                        "textParagraph": {
+                                            "text": (
+                                                "<b>請選擇此掃描的 PIX4Dmatic 處理預設值：</b><br>"
+                                                "• <b>最佳化 (無天空遮罩)</b>：Scalable 網格 + 完整保留樹冠與邊界<br>"
+                                                "• <b>最佳化 (含天空遮罩)</b>：Scalable 網格 + 自動去除天空浮空噪點<br>"
+                                                "• <b>手動設定</b>：開啟網頁詳細調整貼圖、簡化與座標參數<br>"
+                                                "• <b>取消</b>：從排程中移除此掃描"
+                                            )
+                                        }
+                                    },
+                                    {
+                                        "buttonList": {
+                                            "buttons": [
+                                                {
+                                                    "text": "⚡ 最佳化 (無天空遮罩)",
+                                                    "onClick": {"openLink": {"url": url_nosky}},
+                                                },
+                                                {
+                                                    "text": "🌤️ 最佳化 (含天空遮罩)",
+                                                    "onClick": {"openLink": {"url": url_sky}},
+                                                },
+                                                {
+                                                    "text": "⚙️ 手動設定",
+                                                    "onClick": {"openLink": {"url": url_manual}},
+                                                },
+                                                {
+                                                    "text": "❌ 取消",
+                                                    "onClick": {"openLink": {"url": url_cancel}},
+                                                },
+                                            ]
+                                        }
+                                    },
+                                ]
+                            }
+                        ],
+                    },
+                }
+            ],
+        }
+        return self._dispatch_card_to_uploader(
+            scan_id=scan_id,
+            uploader_email=glib_email,
+            uploader_name="雲在天",
+            card_payload=card_payload,
+            thread_suffix="preset_prompt",
+        )
+
     def list_notifications(self, limit: int = 20) -> List[Dict[str, Any]]:
         with DB_LOCK, self.db._connect() as conn:
             rows = conn.execute(

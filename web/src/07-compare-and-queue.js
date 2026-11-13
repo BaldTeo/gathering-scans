@@ -1825,11 +1825,120 @@
       .join("")}</div>`;
   }
 
+  // ---------------------------------------------------------------------------
+  // Admin Workstation Panel helpers
+  // ---------------------------------------------------------------------------
+  let _workstationPanelDirty = false;
+  function _populateWorkstationPanel(wsData) {
+    if (!wsData || _workstationPanelDirty) return;
+    const wsSec = document.getElementById("adminWorkstationsSection");
+    if (wsSec && wsSec.contains(document.activeElement)) return;
+    const selQuery = document.getElementById("selQueryServingWorkstation");
+    const selProc = document.getElementById("selProcessingWorkstation");
+    const togglesDiv = document.getElementById("workstationDaemonToggles");
+    const workstations = wsData.workstations || {};
+    const qChosen = String(wsData.query_serving_workstation || "auto");
+    const pChosen = String(wsData.processing_workstation || "auto");
+
+    function rebuildSelect(el, chosen, includeExtraModes) {
+      if (!el) return;
+      el.innerHTML = `<option value="auto">${tr("自動（任何上線工作站）", "Auto (any online workstation)")}</option>`;
+      if (includeExtraModes) {
+        el.innerHTML += `<option value="both">${tr("全部工作站", "Both / All Workstations")}</option>`;
+        el.innerHTML += `<option value="none">${tr("暫停全部建模", "None (Pause Processing)")}</option>`;
+      }
+      Object.keys(workstations).forEach((wid) => {
+        const w = workstations[wid] || {};
+        const lastSeenStr = w.last_seen ? ` · ${new Date(w.last_seen * 1000).toLocaleTimeString()}` : "";
+        const opt = document.createElement("option");
+        opt.value = wid;
+        opt.textContent = `${wid}${lastSeenStr}`;
+        el.appendChild(opt);
+      });
+      el.value = chosen;
+    }
+    rebuildSelect(selQuery, qChosen, false);
+    rebuildSelect(selProc, pChosen, true);
+
+    if (togglesDiv) {
+      const wids = Object.keys(workstations);
+      if (!wids.length) {
+        togglesDiv.innerHTML = `<span style="color:var(--ui-text-muted);font-size:11px;">${tr("尚未偵測到工作站", "No workstations detected yet")}</span>`;
+      } else {
+        togglesDiv.innerHTML = wids.map((wid) => {
+          const wInfo = workstations[wid] || {};
+          const dOn = wInfo.daemon_enabled !== false;
+          const isLocal = wid === wsData.local_workstation_id;
+          const onlineAgoSec = wInfo.last_seen ? Math.max(0, Math.round(Date.now() / 1000 - wInfo.last_seen)) : null;
+          const statusTxt = onlineAgoSec === null ? "" : onlineAgoSec < 90 ? tr("在線", "Online") : tr(`${Math.round(onlineAgoSec / 60)} 分鐘前`, `${Math.round(onlineAgoSec / 60)}m ago`);
+          return `<div style="display:flex;align-items:center;gap:10px;padding:5px 0;border-bottom:1px solid var(--ui-border);flex-wrap:wrap;">
+            <code style="font-size:11px;color:var(--ui-text-primary);min-width:130px;">${escapeHtml(wid)}${isLocal ? " (this PC)" : ""}</code>
+            ${statusTxt ? `<span style="font-size:10.5px;color:var(--ui-text-muted);">${escapeHtml(statusTxt)}</span>` : ""}
+            <label style="display:flex;align-items:center;gap:4px;font-size:11px;margin-left:auto;cursor:pointer;">
+              <input type="checkbox" data-ws-id="${escapeHtml(wid)}" data-ws-perm="daemon_enabled" ${dOn ? "checked" : ""}>
+              ${tr("啟用守護程式 (Daemon)", "Daemon Enabled")}
+            </label>
+          </div>`;
+        }).join("");
+      }
+    }
+  }
+
+  // One-time attach dirty + save listeners for workstation panel
+  (function _attachWorkstationSaveListener() {
+    document.addEventListener("change", (e) => {
+      const t = e.target;
+      if (!t) return;
+      if (t.id === "selQueryServingWorkstation" || t.id === "selProcessingWorkstation" || t.hasAttribute?.("data-ws-id")) {
+        _workstationPanelDirty = true;
+      }
+    });
+    document.addEventListener("click", async (e) => {
+      if (!e.target || e.target.id !== "btnSaveWorkstationSettings") return;
+      const statusEl = document.getElementById("workstationSaveStatus");
+      try {
+        const selQuery = document.getElementById("selQueryServingWorkstation");
+        const selProc = document.getElementById("selProcessingWorkstation");
+        const togglesDiv = document.getElementById("workstationDaemonToggles");
+        const workstationsPayload = {};
+        if (togglesDiv) {
+          togglesDiv.querySelectorAll("input[data-ws-id]").forEach((inp) => {
+            const wid = inp.getAttribute("data-ws-id");
+            if (!wid) return;
+            workstationsPayload[wid] = { daemon_enabled: Boolean(inp.checked) };
+          });
+        }
+        await apiPost("/api/admin/workstations", {
+          query_serving_workstation: selQuery?.value || "auto",
+          processing_workstation: selProc?.value || "auto",
+          workstations: workstationsPayload,
+        });
+        _workstationPanelDirty = false;
+        if (statusEl) { statusEl.textContent = tr("已儲存", "Saved"); setTimeout(() => { if (statusEl) statusEl.textContent = ""; }, 2500); }
+        showToast(tr("工作站設定已儲存", "Workstation settings saved"));
+      } catch (err) {
+        if (statusEl) statusEl.textContent = `Error: ${err.message}`;
+        showToast(`Save failed: ${err.message}`);
+      }
+    });
+  })();
+
   async function refreshQueueModalData() {
     const tbody = document.getElementById("queueTableBody");
     if (!tbody) return;
     try {
       const qData = await apiGet("/api/queue/status");
+      const isAdmin = Boolean(getCurrentUserRoleInfo?.()?.canManageUsers);
+
+      // Show/hide admin workstation panel and load settings
+      const wsSection = document.getElementById("adminWorkstationsSection");
+      if (wsSection) wsSection.style.display = isAdmin ? "block" : "none";
+      if (isAdmin) {
+        try {
+          const wsData = await apiGet("/api/admin/workstations");
+          _populateWorkstationPanel(wsData);
+        } catch (_e) { /* workstation API not critical */ }
+      }
       const inboxEl = document.getElementById("lblQueueInboxDir");
       if (inboxEl && qData.inbox_dir) inboxEl.textContent = qData.inbox_dir;
       const gchatInput = document.getElementById("inputGChatWebhookUrl");
@@ -1924,6 +2033,7 @@
       tbody.innerHTML = "";
       rows.forEach((s) => {
         const rowEl = document.createElement("tr");
+        const isAdmin = Boolean(getCurrentUserRoleInfo?.()?.canManageUsers);
         const isProc = s.status === "processing";
         const isQueued = s.status === "queued";
         const isWaitingParts = s.status === "waiting_parts";
@@ -2023,7 +2133,7 @@
           <td>${statusHtml}</td>
           <td style="display:flex;gap:4px;flex-wrap:wrap;align-items:center;">
             ${
-              canPrioritize
+              isAdmin && canPrioritize
                 ? `<button type="button" class="btn-xs primary" data-prioritize="${safeScanId}" title="${tr("排至佇列第 1 順位優先執行", "Prioritize as #1 Next in PIX4Dmatic Queue")}" style="padding:0 6px;font-size:10.5px;font-weight:700;">${tr("優先", "Run Next")}</button>`
                 : ""
             }
@@ -2032,16 +2142,29 @@
                 ? `<button type="button" class="btn-xs" data-inspect3d="${safeScanId}" title="${tr("於等待或升級 16K 期間檢視現有 3D 預覽模型", "Inspect live 3D preview while 16K HQ upgrade is queued/running")}" style="padding:0 6px;font-size:10.5px;">${tr("預覽", "View 3D")}</button>`
                 : ""
             }
-            <button type="button" class="btn-xs" data-gst="${safeScanId}" title="${tr("預覽 .GST 腳本", "Preview .GST Script")}">
-              <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.8">
-                <polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/>
-              </svg>
-            </button>
-            <button type="button" class="btn-xs" data-reprocess="${safeScanId}" title="${tr("以自訂 PIX4Dmatic 參數從原始照片重新計算", "Re-run from Original Photos with Custom PIX4Dmatic Settings")}">
-              <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.8">
-                <polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>
-              </svg>
-            </button>
+            ${
+              isAdmin
+                ? `<button type="button" class="btn-xs" data-gst="${safeScanId}" title="${tr("預覽 .GST 腳本", "Preview .GST Script")}">
+                <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.8">
+                  <polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/>
+                </svg>
+              </button>`
+                : ""
+            }
+            ${
+              isAdmin
+                ? `<button type="button" class="btn-xs" data-reprocess="${safeScanId}" title="${tr("以自訂 PIX4Dmatic 參數從原始照片重新計算", "Re-run from Original Photos with Custom PIX4Dmatic Settings")}">
+                <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.8">
+                  <polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>
+                </svg>
+              </button>`
+                : ""
+            }
+            ${
+              isAdmin && (isQueued || isWaitingParts || isProc)
+                ? `<button type="button" class="btn-xs" data-cancel-job="${safeScanId}" title="${tr("取消此工作並從佇列中移除", "Cancel this job and remove from queue")}" style="color:#ef4444;border-color:rgba(239,68,68,0.5);padding:0 6px;font-size:10.5px;font-weight:700;">${tr("取消", "Cancel")}</button>`
+                : ""
+            }
           </td>
         `;
         rowEl.querySelector("[data-prioritize]")?.addEventListener("click", async () => {
@@ -2062,6 +2185,17 @@
         rowEl.querySelector("[data-gst]")?.addEventListener("click", () => previewGstForScan(s.scan_id));
         rowEl.querySelector("[data-reprocess]")?.addEventListener("click", () => {
           openRerunScanModal(s.scan_id);
+        });
+        rowEl.querySelector("[data-cancel-job]")?.addEventListener("click", async () => {
+          const scanLabel = escapeHtml(s.name || s.scan_id);
+          if (!confirm(tr(`確定要取消「${scanLabel}」的建模工作？此操作無法復原，PIX4Dmatic 將立即被終止。`, `Cancel processing job for "${scanLabel}"? This cannot be undone — PIX4Dmatic will be killed immediately.`))) return;
+          try {
+            await apiPost("/api/queue/cancel", { scan_id: s.scan_id });
+            showToast(tr(`已取消「${scanLabel}」的工作`, `Cancelled job for "${scanLabel}"`));
+            await refreshQueueModalData();
+          } catch (err) {
+            showToast(`Cancel failed: ${err.message}`);
+          }
         });
         tbody.appendChild(rowEl);
       });

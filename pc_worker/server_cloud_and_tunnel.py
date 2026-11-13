@@ -43,6 +43,7 @@ from pc_worker.config import (
     PUBLIC_BASE_URL,
     TUNNEL_SHARED_KEY,
     LOCAL_SCANS_ROOT,
+    WORKSTATION_ID,
     REPORTS_DIR,
     CONTOURS_DIR,
     GDRIVE_INBOX_DIR,
@@ -887,6 +888,21 @@ def _acquire_vps_tunnel_socket(timeout: float = 6.0) -> Tuple[Optional[socket.so
         except Exception:
             done_evt.set()
             continue
+
+        # If a specific workstation is designated for query serving, prioritize its sockets
+        pref_ws = ""
+        try:
+            from .config import load_workstation_settings
+            pref_ws = str(load_workstation_settings().get("query_serving_workstation") or "auto").strip().lower()
+        except Exception:
+            pass
+        sock_ws = str(getattr(done_evt, "workstation_id", "")).strip().lower()
+        if pref_ws and pref_ws not in ("auto", "both", "*") and sock_ws and sock_ws != pref_ws:
+            if rem > 0.6:
+                VPS_TUNNEL_POOL.put(pool_item)
+                time.sleep(0.02)
+                continue
+
         done_evt.in_use = True
         done_evt.last_ts = time.time()
         return sock, done_evt, proto_ver
@@ -913,6 +929,7 @@ def start_pc_reverse_tunnel_pool(local_port: int = SERVER_PORT, pool_size: int =
                     f"Host: {VPS_HOST}:8095\r\n"
                     f"X-Tunnel-Key: {TUNNEL_SHARED_KEY}\r\n"
                     f"X-Tunnel-Proto: 2\r\n"
+                    f"X-Workstation-Id: {WORKSTATION_ID}\r\n"
                     f"Connection: keep-alive\r\n\r\n"
                 ).encode("ascii")
                 s.sendall(handshake)
@@ -1055,9 +1072,17 @@ class CloudAndTunnelHandlerMixin:
             self.close_connection = True
             return
 
+        ws_id = self.headers.get("X-Workstation-Id", "").strip() or "workstation_1"
         done_evt = threading.Event()
         done_evt.last_ts = time.time()
         done_evt.in_use = False
+        done_evt.workstation_id = ws_id
+        try:
+            from .config import register_workstation_heartbeat
+            client_ip = self.client_address[0] if getattr(self, "client_address", None) else ""
+            register_workstation_heartbeat(ws_id, {"last_seen": time.time(), "ip": client_ip})
+        except Exception:
+            pass
         VPS_TUNNEL_POOL.put((self.connection, done_evt, done_evt.last_ts, proto_ver))
         # Hold handler thread open while persistent socket serves requests in the pool
         max_idle = 600.0 if proto_ver >= 2 else 45.0

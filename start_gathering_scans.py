@@ -75,6 +75,10 @@ from pc_worker.config import (
     VPS_REMOTE_TUNNEL_PORT,
     GDRIVE_INBOX_DIR,
     LOCAL_SCANS_ROOT,
+    WORKSTATION_ID,
+    is_workstation_processing_active,
+    is_workstation_daemon_active,
+    register_workstation_heartbeat,
 )
 from server import (
     run_server,
@@ -201,8 +205,9 @@ def inbox_discovery_loop():
     last_completed_sig = None
     while True:
         _DAEMON_WAKE_EVENT.clear()
-        if is_pc_daemon_running():
+        if is_pc_daemon_running() and is_workstation_daemon_active(WORKSTATION_ID):
             try:
+                register_workstation_heartbeat(WORKSTATION_ID, {"daemon_running": True})
                 seed_and_discover_scans(DB)
                 mark_daemon_poll_completed()
                 cur_sig = tuple(
@@ -247,7 +252,7 @@ def pix4d_worker_loop():
 
     while True:
         _PIX4D_WAKE_EVENT.clear()
-        if not is_pc_daemon_running():
+        if not (is_pc_daemon_running() and is_workstation_daemon_active(WORKSTATION_ID) and is_workstation_processing_active(WORKSTATION_ID)):
             _PIX4D_WAKE_EVENT.wait(timeout=3.0)
             continue
         try:
@@ -456,6 +461,20 @@ def pix4d_worker_loop():
                     existing_ts = str(next_job.get("tileset_path") or "")
                     job_pass = "full_hq" if (existing_ts and os.path.isfile(existing_ts)) else "preview"
 
+                # Extract GChat preset pipeline_settings from extra_json (applies to full_hq pass)
+                job_pipeline_settings = None
+                if job_pass == "full_hq" and not has_rerun_cfg:
+                    try:
+                        import json as _json
+                        ex_raw = next_job.get("extra_json") or "{}"
+                        ex_d = _json.loads(ex_raw) if isinstance(ex_raw, str) else (ex_raw or {})
+                        ps = ex_d.get("pipeline_settings")
+                        if isinstance(ps, dict) and ps:
+                            job_pipeline_settings = ps
+                            print(f"[InboxWatcher] Applying GChat preset pipeline_settings for {sid}: {ps}")
+                    except Exception as _pe:
+                        print(f"[InboxWatcher] Warning reading extra_json pipeline_settings for {sid}: {_pe}")
+
                 print(f"[InboxWatcher] Auto-starting PIX4Dmatic pipeline ({job_pass}) for {sid}: {src_zip or out_dir}")
 
                 def _on_progress(pct: float, stage: str):
@@ -468,6 +487,7 @@ def pix4d_worker_loop():
                         output_project_dir=out_dir,
                         progress_callback=_on_progress,
                         pipeline_pass=job_pass,
+                        custom_settings=job_pipeline_settings,
                     )
                 except Exception as job_exc:
                     import traceback

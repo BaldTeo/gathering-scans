@@ -1965,6 +1965,24 @@ class GatheringScansHandler(CloudAndTunnelHandlerMixin, ServerWriteRoutesMixin, 
             self.wfile.write(png_bytes)
             return
 
+        # 3b-2. Input Preview Photo for GChat preset prompt: GET /api/queue/<scan_id>/preview-photo.jpg
+        # No auth required (public CDN-style link sent via Google Chat)
+        if path.startswith("/api/queue/") and path.endswith("/preview-photo.jpg"):
+            scan_id = path[len("/api/queue/") : -len("/preview-photo.jpg")].strip("/")
+            from pc_worker.config import DATA_DIR as _DATA_DIR
+            photo_path = os.path.join(_DATA_DIR, "thumbnails", f"{scan_id}_input_preview.jpg")
+            if os.path.isfile(photo_path):
+                self._serve_file_with_range(photo_path, content_type="image/jpeg")
+                return
+            # Fallback: serve scan thumbnail (PNG) if no input preview exists
+            scan = DB.get_scan(scan_id) or {}
+            thumb_path = self._resolve_scan_thumbnail_path(scan_id, scan)
+            if thumb_path and os.path.isfile(thumb_path):
+                self._serve_file_with_range(thumb_path, content_type="image/jpeg")
+                return
+            self.send_json({"error": "preview photo not found"}, status=404)
+            return
+
         # 3c. True-Nadir Transparent RGBA Orthomosaic & Geographic Bounds Endpoints:
         # GET /api/scans/<scan_id>/ortho-meta and GET /api/scans/<scan_id>/ortho(.png)
         if path.startswith("/api/scans/") and path.endswith("/ortho-meta"):
@@ -2338,6 +2356,52 @@ class GatheringScansHandler(CloudAndTunnelHandlerMixin, ServerWriteRoutesMixin, 
             return
 
         # 8. Google Chat Notification History, Interactive Mesh Island Decision & App Connection Status
+        if path == "/api/gchat/preset-decision":
+            from pc_worker.server_api_routes import apply_gchat_preset_decision
+            import html as _html
+
+            sid = str((query.get("scan_id") or [""])[0] or "").strip()
+            dec = str((query.get("decision") or [""])[0] or "").strip().lower()
+            tok = str((query.get("token") or [""])[0] or "").strip()
+            fmt = str((query.get("format") or [""])[0] or "").strip().lower()
+            if not sid or not dec:
+                self.send_json({"error": "scan_id and decision ('cancel', 'optimal_nosky', 'optimal_sky', 'manual') required"}, status=400)
+                return
+            try:
+                res_dec = apply_gchat_preset_decision(sid, dec, tok)
+            except PermissionError as pe:
+                self.send_json({"error": str(pe)}, status=403)
+                return
+            except KeyError as ke:
+                self.send_json({"error": str(ke)}, status=404)
+                return
+
+            if res_dec.get("status") == "redirect":
+                self.send_response(302)
+                self.send_header("Location", res_dec.get("redirect_url") or "/?modal=queue")
+                self.end_headers()
+                return
+            if fmt == "json" or "application/json" in str(self.headers.get("Accept") or ""):
+                self.send_json(res_dec)
+                return
+            lbl = _html.escape(str(res_dec.get("label") or ""))
+            html_resp = (
+                "<!DOCTYPE html><html><head><meta charset='utf-8'><title>GatheringScans Confirmation</title>"
+                "<meta name='viewport' content='width=device-width, initial-scale=1'>"
+                "<style>body{font-family:-apple-system,BlinkMacSystemFont,sans-serif;background:#0f172a;color:#f8fafc;display:flex;align-items:center;justify-content:center;height:100vh;margin:0;}"
+                ".card{background:#1e293b;border:1px solid #334155;border-radius:12px;padding:24px 32px;text-align:center;max-width:400px;box-shadow:0 8px 24px rgba(0,0,0,0.5);}"
+                "h2{margin:0 0 12px;color:#38bdf8;font-size:20px;}p{color:#94a3b8;font-size:14px;line-height:1.5;}"
+                "a{display:inline-block;margin-top:16px;background:#0284c7;color:#fff;text-decoration:none;padding:8px 16px;border-radius:6px;font-weight:600;font-size:13px;}"
+                f"</style></head><body><div class='card'><h2>✅ 選擇已確認</h2><p>掃描 <b>{_html.escape(sid)}</b>：<br>{lbl}</p>"
+                "<a href='/?modal=queue'>開啟 3D 佇列面板</a></div></body></html>"
+            ).encode("utf-8")
+            self.send_response(200)
+            self.send_header("Content-Type", "text/html; charset=utf-8")
+            self.send_header("Content-Length", str(len(html_resp)))
+            self.end_headers()
+            self.wfile.write(html_resp)
+            return
+
         if path == "/api/gchat/island-decision":
             from pc_worker.pix4d_runner import apply_mesh_island_decision
 
@@ -2487,6 +2551,17 @@ class GatheringScansHandler(CloudAndTunnelHandlerMixin, ServerWriteRoutesMixin, 
                 self.send_json({"error": "Owner or Admin session required to inspect PC daemon status."}, status=403)
                 return
             self.send_json(get_pc_daemon_status())
+            return
+
+        if path == "/api/admin/workstations":
+            _, _, ws_perms = self._resolve_request_role(None, query, share_token)
+            if share_token or not ws_perms.get("can_manage_users"):
+                self.send_json({"error": "Owner or Admin session required to inspect workstation settings."}, status=403)
+                return
+            from pc_worker.config import load_workstation_settings, WORKSTATION_ID
+            cfg = load_workstation_settings()
+            cfg["local_workstation_id"] = WORKSTATION_ID
+            self.send_json(cfg)
             return
 
         if path in ("/api/user-profiles", "/api/admin/users"):

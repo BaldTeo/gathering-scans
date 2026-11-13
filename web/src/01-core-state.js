@@ -1445,6 +1445,10 @@
     setDisp("settingsPix4dPipelineSection", info.canManageUsers, "block");
     setDisp("gateExistingUsersSection", info.canManageUsers, "block");
     setDisp("btnJumpQueueToSettings", info.canManageUsers, "inline-flex");
+    setDisp("btnRescanGDriveInbox", info.canManageUsers, "inline-flex");
+    setDisp("btnPreviewGstScript", info.canManageUsers, "inline-flex");
+    setDisp("btnResumeDaemonFromQueue", info.canManageUsers, "inline-flex");
+    setDisp("adminWorkstationsSection", info.canManageUsers, "block");
 
     // Role badge in Settings Admin Control Panel
     const badgeRole = document.getElementById("badgeCurrentUserRoleLevel") || document.getElementById("adminCurrentUserRolePill");

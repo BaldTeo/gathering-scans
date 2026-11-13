@@ -18,8 +18,8 @@
   <meta name="twitter:image" content="https://scans.gatheren.cloud/assets/gathering_cloud_logo.png" />
   <!-- GS_SHARE_OG_END -->
   <link rel="icon" type="image/png" href="/assets/gathering_cloud_logo.png" />
-  <link rel="stylesheet" href="/app.css?v=20261111_v320" />
-  <link rel="stylesheet" href="/survey-bim.css?v=20261111_v320" />
+  <link rel="stylesheet" href="/app.css?v=20261113_v321" />
+  <link rel="stylesheet" href="/survey-bim.css?v=20261113_v321" />
   <script src="https://accounts.google.com/gsi/client" async defer></script>
 
 </head>
@@ -1662,6 +1662,37 @@
           <tbody id="queueTableBody"></tbody>
         </table>
       </div>
+
+      <!-- admin-only: Workstation Coordination Panel -->
+      <div id="adminWorkstationsSection" style="display:none;margin-top:14px;border:1px solid var(--ui-accent);border-radius:8px;padding:12px 14px;background:var(--ui-bg-subtle);">
+        <div style="font-size:12px;font-weight:700;color:var(--ui-accent);margin-bottom:10px;display:flex;align-items:center;gap:6px;">
+          <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
+          <span data-i18n-zh="工作站協調設定（僅限管理員）" data-i18n-en="Workstation Coordination Settings (Admin Only)">工作站協調設定（僅限管理員）</span>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px;">
+          <div>
+            <label style="font-size:11px;color:var(--ui-text-secondary);display:block;margin-bottom:4px;" data-i18n-zh="查詢服務工作站（回應前端請求）" data-i18n-en="Query-Serving Workstation (responds to web requests)">查詢服務工作站</label>
+            <select id="selQueryServingWorkstation" style="width:100%;padding:4px 8px;font-size:12px;border:1px solid var(--ui-border-strong);border-radius:5px;background:var(--ui-bg-surface);color:var(--ui-text-primary);">
+              <option value="auto" data-i18n-zh="自動（任何上線工作站）" data-i18n-en="Auto (any online workstation)">自動（任何上線工作站）</option>
+            </select>
+          </div>
+          <div>
+            <label style="font-size:11px;color:var(--ui-text-secondary);display:block;margin-bottom:4px;" data-i18n-zh="建模處理工作站（執行 PIX4Dmatic）" data-i18n-en="Processing Workstation (runs PIX4Dmatic)">建模處理工作站</label>
+            <select id="selProcessingWorkstation" style="width:100%;padding:4px 8px;font-size:12px;border:1px solid var(--ui-border-strong);border-radius:5px;background:var(--ui-bg-surface);color:var(--ui-text-primary);">
+              <option value="auto" data-i18n-zh="自動（任何上線工作站）" data-i18n-en="Auto (any online workstation)">自動（任何上線工作站）</option>
+              <option value="both" data-i18n-zh="全部工作站" data-i18n-en="Both / All Workstations">全部工作站</option>
+              <option value="none" data-i18n-zh="暫停全部建模" data-i18n-en="None (Pause Processing)">暫停全部建模</option>
+            </select>
+          </div>
+        </div>
+        <div id="workstationDaemonToggles" style="margin-bottom:10px;font-size:11.5px;color:var(--ui-text-secondary);">
+          <!-- Populated dynamically by JS per registered workstation -->
+        </div>
+        <div style="display:flex;justify-content:flex-end;gap:8px;align-items:center;">
+          <span id="workstationSaveStatus" style="font-size:11px;color:var(--ui-text-muted);"></span>
+          <button type="button" class="btn-xs primary" id="btnSaveWorkstationSettings" data-i18n-zh="儲存工作站設定" data-i18n-en="Save Workstation Settings">儲存工作站設定</button>
+        </div>
+      </div>
     </div>
   </div>
 
@@ -2690,25 +2721,25 @@
   <!-- Three.js + 3D Tileset / KTX2 / Meshopt Libraries -->
   <script src="/lib/three.min.js"></script>
   <script src="/lib/OrbitControls.js?v=20261029_v48"></script>
-  <script src="/lib/GLTFLoader.js?v=20261111_v320"></script>
+  <script src="/lib/GLTFLoader.js?v=20261113_v321"></script>
   <script src="/lib/KTX2Loader.js"></script>
   <script src="/lib/meshopt_decoder.js"></script>
-  <script src="/lib/3d-tiles-renderer.bundle.js?v=20261111_v320"></script>
+  <script src="/lib/3d-tiles-renderer.bundle.js?v=20261113_v321"></script>
 
   <!-- Main GatheringScans Bilingual Translation & Modular Application Logic (< 5,000 lines per module) -->
-  <script src="/i18n.js?v=20261111_v320"></script>
-  <script src="/src/gatheren-loading-animation.js?v=20261111_v320"></script>
-  <script src="/src/01-core-state.js?v=20261111_v320"></script>
-  <script src="/src/02-map-and-timeline.js?v=20261111_v320"></script>
-  <script src="/src/03-studio-core.js?v=20261111_v320"></script>
-  <script src="/src/04-studio-lasso-and-edits.js?v=20261111_v320"></script>
-  <script src="/src/05-studio-civil-inspectors.js?v=20261111_v320"></script>
-  <script src="/src/06-studio-align-and-optimizer.js?v=20261111_v320"></script>
-  <script src="/src/07-compare-and-queue.js?v=20261111_v320"></script>
-  <script src="/src/08-advanced-surveying-and-qa.js?v=20261111_v320"></script>
-  <script src="/src/09-construction-survey-and-bim.js?v=20261111_v320"></script>
-  <script src="/src/10-construction-qa-and-stakeout.js?v=20261111_v320"></script>
-  <script src="/src/12-public-utilities-gis.js?v=20261111_v320"></script>
-  <script src="/app.js?v=20261111_v320"></script>
+  <script src="/i18n.js?v=20261113_v321"></script>
+  <script src="/src/gatheren-loading-animation.js?v=20261113_v321"></script>
+  <script src="/src/01-core-state.js?v=20261113_v321"></script>
+  <script src="/src/02-map-and-timeline.js?v=20261113_v321"></script>
+  <script src="/src/03-studio-core.js?v=20261113_v321"></script>
+  <script src="/src/04-studio-lasso-and-edits.js?v=20261113_v321"></script>
+  <script src="/src/05-studio-civil-inspectors.js?v=20261113_v321"></script>
+  <script src="/src/06-studio-align-and-optimizer.js?v=20261113_v321"></script>
+  <script src="/src/07-compare-and-queue.js?v=20261113_v321"></script>
+  <script src="/src/08-advanced-surveying-and-qa.js?v=20261113_v321"></script>
+  <script src="/src/09-construction-survey-and-bim.js?v=20261113_v321"></script>
+  <script src="/src/10-construction-qa-and-stakeout.js?v=20261113_v321"></script>
+  <script src="/src/12-public-utilities-gis.js?v=20261113_v321"></script>
+  <script src="/app.js?v=20261113_v321"></script>
 </body>
 </html>

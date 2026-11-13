@@ -2330,6 +2330,51 @@ def _inspect_raw_photo_scan_folder(folder_path: str) -> Tuple[bool, bool, int, i
     return True, is_settled, jpg_count, total_files
 
 
+def extract_input_preview_photo(source_zip_path: str, project_dir: str, scan_id: str) -> Optional[str]:
+    """Extracts 1 representative preview JPEG from source zip or input folder and caches it in DATA_DIR/thumbnails."""
+    from pc_worker.config import DATA_DIR, LOCAL_SCANS_ROOT
+    import zipfile
+    out_dir = os.path.join(DATA_DIR, "thumbnails")
+    os.makedirs(out_dir, exist_ok=True)
+    out_path = os.path.join(out_dir, f"{scan_id}_input_preview.jpg")
+    if os.path.isfile(out_path) and os.path.getsize(out_path) > 1024:
+        return out_path
+
+    # 1. Try from .zip archive
+    if source_zip_path:
+        first_zip = source_zip_path.split(";")[0].strip()
+        if os.path.isfile(first_zip) and zipfile.is_zipfile(first_zip):
+            try:
+                with zipfile.ZipFile(first_zip, "r") as zf:
+                    jpg_names = [n for n in zf.namelist() if n.lower().endswith((".jpg", ".jpeg")) and not n.startswith("__MACOSX")]
+                    if jpg_names:
+                        chosen_name = jpg_names[len(jpg_names) // 2]
+                        with zf.open(chosen_name) as src_f, open(out_path, "wb") as dst_f:
+                            dst_f.write(src_f.read())
+                        return out_path
+            except Exception:
+                pass
+
+    # 2. Try from local scan folder inputs / cameras
+    for cand_root in [project_dir, os.path.join(LOCAL_SCANS_ROOT, scan_id)]:
+        if not cand_root or not os.path.isdir(cand_root):
+            continue
+        for sub in ["inputs", "cameras", ""]:
+            img_dir = os.path.join(cand_root, sub) if sub else cand_root
+            if not os.path.isdir(img_dir):
+                continue
+            jpgs = [os.path.join(img_dir, f) for f in os.listdir(img_dir) if f.lower().endswith((".jpg", ".jpeg"))]
+            if jpgs:
+                chosen = jpgs[len(jpgs) // 2]
+                try:
+                    import shutil
+                    shutil.copy2(chosen, out_path)
+                    return out_path
+                except Exception:
+                    pass
+    return None
+
+
 import threading as _threading
 _DISCOVERY_LOCK = _threading.RLock()
 
@@ -2699,19 +2744,51 @@ def _seed_and_discover_scans_locked(db: ScanQueueDB) -> List[Dict[str, Any]]:
                 primary_meta["obj_path"] = existing.get("obj_path", "")
                 primary_meta["project_dir"] = existing.get("project_dir", "")
             else:
+                is_new_job = not existing or not existing.get("status")
                 primary_meta["status"] = "queued"
                 primary_meta["quality_stage"] = "none"
                 primary_meta["pending_pass"] = "preview"
                 primary_meta["progress_pct"] = 0.0
-                if total_parts > 1:
-                    primary_meta["stage_label"] = f"Queued for Pass 1/2 Fast 2K Preview (All {total_parts}/{total_parts} parts ready)"
-                    primary_meta["notes"] = (
-                        f"All {total_parts}/{total_parts} parts uploaded ({', '.join(os.path.basename(parts_map[p]) for p in present_parts)}). "
-                        f"Queued for Two-Pass PIX4Dmatic pipeline ({primary_meta['image_count']} RTK photos)."
-                    )
+
+                extra = primary_meta.get("extra_json") or {}
+                if isinstance(extra, str):
+                    try:
+                        extra = json.loads(extra)
+                    except Exception:
+                        extra = {}
+
+                if is_new_job:
+                    import hashlib, time
+                    primary_meta["stage_label"] = "待確認建模模式 (Google Chat 詢問中)"
+                    primary_meta["notes"] = f"新掃描 '{base_name}' ({primary_meta['image_count']} 張照片) 已排隊，等待 Google Chat 確認處理模式。"
+                    extra["awaiting_preset"] = True
+                    dec_token = hashlib.sha256(f"{scan_id}:{time.time()}:preset".encode()).hexdigest()[:16]
+                    extra["preset_token"] = dec_token
+                    primary_meta["extra_json"] = extra
+
+                    # Extract 1 representative preview picture for Google Chat
+                    try:
+                        extract_input_preview_photo(primary_meta.get("source_zip_path") or "", primary_meta.get("project_dir") or "", scan_id)
+                    except Exception as pe:
+                        print(f"[InboxDiscovery] Preview photo extract note: {pe}")
+
+                    # Dispatch Google Chat question card to 雲在天
+                    try:
+                        from server import GCHAT
+                        if GCHAT:
+                            GCHAT.notify_new_scan_preset_question(scan_id, primary_meta, decision_token=dec_token)
+                    except Exception as ge:
+                        print(f"[InboxDiscovery] GChat preset question note: {ge}")
                 else:
-                    primary_meta["stage_label"] = "Queued for Pass 1/2 Fast 2K Preview (TWD97 + TWVD2001)"
-                    primary_meta["notes"] = f"Scan '{base_name}' ({primary_meta['image_count']} RTK photos) queued for Pass 1 Fast Preview + Pass 2 Full HQ."
+                    if total_parts > 1:
+                        primary_meta["stage_label"] = f"Queued for Pass 1/2 Fast 2K Preview (All {total_parts}/{total_parts} parts ready)"
+                        primary_meta["notes"] = (
+                            f"All {total_parts}/{total_parts} parts uploaded ({', '.join(os.path.basename(parts_map[p]) for p in present_parts)}). "
+                            f"Queued for Two-Pass PIX4Dmatic pipeline ({primary_meta['image_count']} RTK photos)."
+                        )
+                    else:
+                        primary_meta["stage_label"] = "Queued for Pass 1/2 Fast 2K Preview (TWD97 + TWVD2001)"
+                        primary_meta["notes"] = f"Scan '{base_name}' ({primary_meta['image_count']} RTK photos) queued for Pass 1 Fast Preview + Pass 2 Full HQ."
 
         db.upsert_scan(primary_meta)
         discovered_ids.add(scan_id)

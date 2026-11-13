@@ -1064,6 +1064,10 @@ def generate_pix4dmatic_gst_script(
     mesh_pipeline = cfg["mesh_pipeline"]
     skyless = bool(cfg["skyless"])
     use_roi = bool(cfg["use_roi"])
+    if str(pipeline_pass).strip().lower() == "preview":
+        # Rule: Pass 1 fast 2K preview round MUST always have SkyMask ON and ROI ON
+        skyless = True
+        use_roi = True
     tex_size = int(cfg["texture_size"])
     dense_image_scale = str(cfg.get("dense_image_scale", "Full"))
     if dense_image_scale not in ("Full", "Half", "Quarter"):

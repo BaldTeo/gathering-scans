@@ -293,6 +293,46 @@ def clear_primary_if_moved_scans(scan_ids: List[str], target_group: str) -> None
             save_primary_scans_map(mp, sync_manifest=True)
 
 
+def apply_gchat_preset_decision(sid: str, dec: str, tok: str = "") -> Dict[str, Any]:
+    """Applies a Google Chat interactive preset decision ('cancel', 'optimal_nosky', 'optimal_sky', 'manual')."""
+    from pc_worker.config import OPTIMAL_PRESET_NO_SKYMASK, OPTIMAL_PRESET_WITH_SKYMASK
+    scan_row = DB.get_scan(sid)
+    if not scan_row:
+        raise KeyError(f"Scan not found: {sid}")
+    extra = scan_row.get("extra_json") or {}
+    if isinstance(extra, str):
+        try:
+            extra = json.loads(extra)
+        except Exception:
+            extra = {}
+    if tok and extra.get("preset_token") and tok != extra.get("preset_token"):
+        raise PermissionError("Invalid decision token")
+
+    dec_clean = str(dec or "").strip().lower()
+    if dec_clean == "cancel":
+        DB.cancel_scan(sid, actor_email="gchat_bot")
+        return {"status": "ok", "decision": "cancel", "scan_id": sid, "label": "已從佇列中取消此掃描"}
+    if dec_clean == "optimal_nosky":
+        extra["awaiting_preset"] = False
+        extra["pipeline_preset"] = "optimal_nosky"
+        extra["pipeline_settings"] = OPTIMAL_PRESET_NO_SKYMASK
+        scan_row["extra_json"] = extra
+        scan_row["stage_label"] = "Queued for Pass 1/2 Fast 2K Preview (Optimal without SkyMask)"
+        DB.upsert_scan(scan_row)
+        _PIX4D_WAKE_EVENT.set()
+        return {"status": "ok", "decision": "optimal_nosky", "scan_id": sid, "label": "已套用最佳化 (無天空遮罩) 參數"}
+    if dec_clean == "optimal_sky":
+        extra["awaiting_preset"] = False
+        extra["pipeline_preset"] = "optimal_sky"
+        extra["pipeline_settings"] = OPTIMAL_PRESET_WITH_SKYMASK
+        scan_row["extra_json"] = extra
+        scan_row["stage_label"] = "Queued for Pass 1/2 Fast 2K Preview (Optimal with SkyMask)"
+        DB.upsert_scan(scan_row)
+        _PIX4D_WAKE_EVENT.set()
+        return {"status": "ok", "decision": "optimal_sky", "scan_id": sid, "label": "已套用最佳化 (含天空遮罩) 參數"}
+    return {"status": "redirect", "decision": "manual", "scan_id": sid, "redirect_url": f"/?modal=queue&scan={urllib.parse.quote(sid)}&manual_preset=1"}
+
+
 class ServerWriteRoutesMixin:
     @staticmethod
     def _can_actor_modify_comment(
@@ -1733,6 +1773,30 @@ class ServerWriteRoutesMixin:
                 )
                 return
 
+            if path == "/api/queue/cancel":
+                if not actor_perms.get("can_manage_users"):
+                    self.send_json({"error": f"Role '{actor_role}' cannot cancel queued jobs (Admin or Owner required)."}, status=403)
+                    return
+                scan_id = str(payload.get("scan_id") or "").strip()
+                if not scan_id:
+                    self.send_json({"error": "scan_id is required"}, status=400)
+                    return
+                res = DB.cancel_scan(scan_id, actor_email=actor_email)
+                _PIX4D_WAKE_EVENT.set()
+                self.send_json({"ok": True, "status": "ok", "scan_id": scan_id, "result": res})
+                return
+
+            if path == "/api/admin/workstations":
+                from pc_worker.config import save_workstation_settings
+                if not actor_perms.get("can_manage_users"):
+                    self.send_json({"error": "Admin or Owner role required to update workstation settings."}, status=403)
+                    return
+                updated = save_workstation_settings(payload)
+                _PIX4D_WAKE_EVENT.set()
+                _DAEMON_WAKE_EVENT.set()
+                self.send_json({"ok": True, "status": "ok", "settings": updated})
+                return
+
             if path in ("/api/scans/rerun", "/api/queue/enqueue", "/api/queue/reprocess"):
                 if not actor_perms.get("can_run_workflows"):
                     self.send_json({"error": f"Role '{actor_role}' cannot run or re-run scans on the PC (Editor, Admin, or Owner required)."}, status=403)
@@ -2344,6 +2408,27 @@ class ServerWriteRoutesMixin:
                     return
 
             # 10. Google Chat Notification Dispatch, Interactive App Endpoint & Webhook Config
+            if path == "/api/gchat/preset-decision":
+                sid = str(payload.get("scan_id") or (query.get("scan_id") or [""])[0] or "").strip()
+                dec = str(payload.get("decision") or (query.get("decision") or [""])[0] or "").strip().lower()
+                tok = str(payload.get("token") or (query.get("token") or [""])[0] or "").strip()
+                if not sid or not dec:
+                    self.send_json({"error": "scan_id and decision ('cancel', 'optimal_nosky', 'optimal_sky', 'manual') required"}, status=400)
+                    return
+                try:
+                    res = apply_gchat_preset_decision(sid, dec, tok)
+                except PermissionError as pe:
+                    self.send_json({"error": str(pe)}, status=403)
+                    return
+                except KeyError as ke:
+                    self.send_json({"error": str(ke)}, status=404)
+                    return
+                if res.get("status") == "redirect":
+                    self.send_json(res)
+                    return
+                self.send_json(res)
+                return
+
             if path == "/api/gchat/island-decision":
                 from pc_worker.pix4d_runner import apply_mesh_island_decision
 

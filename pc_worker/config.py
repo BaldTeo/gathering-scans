@@ -167,10 +167,11 @@ DEFAULT_PIX4D_SETTINGS = {
 }
 
 # Option C — Hybrid Adaptive Pass 1 Fast Preview Settings (~3–6 min preview before Pass 2 16K HQ)
+# Rule: Preview round ALWAYS has SkyMask ON (skyless: True) and ROI ON (use_roi: True)
 FAST_PREVIEW_PIX4D_SETTINGS = {
     "mesh_pipeline": "FixedSize",
-    "skyless": False,
-    "use_roi": False,
+    "skyless": True,                        # Enforce SkyMask ON for fast preview
+    "use_roi": True,                        # Enforce ROI ON for fast preview
     "texture_size": 2048,
     "calib_image_scale": "AutoAdaptive",    # Full (1:1) if <=500 imgs & 1 part, else Quarter (1/4)
     "skip_dense_cloud": True,               # Use fast LiDAR DepthPointCloud directly in Pass 1
@@ -259,4 +260,136 @@ def load_pix4d_settings_from_dict(raw: dict) -> dict:
     if isinstance(raw, dict):
         cfg.update(raw)
     return _normalize_pix4d_settings_dict(cfg)
+
+
+# 8. Optimal Presets (for Google Chat bot interactive prompt & Queue options)
+OPTIMAL_PRESET_NO_SKYMASK = {
+    "mesh_pipeline": "Scalable",
+    "skyless": False,                        # Optimal without SkyMask (preserves full scene & vegetation)
+    "use_roi": True,                         # Enforce ROI clipping
+    "texture_size": 16384,
+    "calib_image_scale": "Full",
+    "dense_image_scale": "Full",
+    "depth_min_confidence": "Medium",
+    "model_simplification": "Conservative",
+    "deghosting": "Weak",
+    "export_lod": 13,
+}
+
+OPTIMAL_PRESET_WITH_SKYMASK = {
+    "mesh_pipeline": "Scalable",
+    "skyless": True,                         # Optimal with SkyMask (eliminates distant sky geometry)
+    "use_roi": True,                         # Enforce ROI clipping
+    "texture_size": 16384,
+    "calib_image_scale": "Full",
+    "dense_image_scale": "Full",
+    "depth_min_confidence": "Medium",
+    "model_simplification": "Conservative",
+    "deghosting": "Weak",
+    "export_lod": 13,
+}
+
+
+# 9. Dual-Workstation Coordination (Syncthing P2P Scan Folder Architecture)
+import socket
+WORKSTATION_ID = str(os.environ.get("WORKSTATION_ID") or socket.gethostname() or "workstation_1").strip()
+WORKSTATION_SETTINGS_PATH = os.path.join(DATA_DIR, "workstation_settings.json")
+
+DEFAULT_WORKSTATION_SETTINGS = {
+    "query_serving_workstation": "auto",     # "auto" (any online), or specific workstation_id
+    "processing_workstation": "auto",        # "auto", specific workstation_id, "both", or "none"
+    "workstations": {},                      # {workstation_id: {name, daemon_enabled, processing_enabled, last_seen, root_dir}}
+}
+
+
+def load_workstation_settings() -> dict:
+    import json
+    cfg = dict(DEFAULT_WORKSTATION_SETTINGS)
+    cfg["workstations"] = dict(DEFAULT_WORKSTATION_SETTINGS["workstations"])
+    if os.path.isfile(WORKSTATION_SETTINGS_PATH):
+        try:
+            with open(WORKSTATION_SETTINGS_PATH, "r", encoding="utf-8") as f:
+                saved = json.load(f)
+            if isinstance(saved, dict):
+                if "query_serving_workstation" in saved:
+                    cfg["query_serving_workstation"] = str(saved["query_serving_workstation"])
+                if "processing_workstation" in saved:
+                    cfg["processing_workstation"] = str(saved["processing_workstation"])
+                if isinstance(saved.get("workstations"), dict):
+                    cfg["workstations"] = saved["workstations"]
+        except Exception:
+            pass
+    return cfg
+
+
+def save_workstation_settings(updates: dict) -> dict:
+    import json
+    cfg = load_workstation_settings()
+    if isinstance(updates, dict):
+        if "query_serving_workstation" in updates:
+            cfg["query_serving_workstation"] = str(updates["query_serving_workstation"]).strip()
+        if "processing_workstation" in updates:
+            cfg["processing_workstation"] = str(updates["processing_workstation"]).strip()
+        if isinstance(updates.get("workstations"), dict):
+            for wid, winfo in updates["workstations"].items():
+                if wid not in cfg["workstations"]:
+                    cfg["workstations"][wid] = {}
+                if isinstance(winfo, dict):
+                    cfg["workstations"][wid].update(winfo)
+    try:
+        os.makedirs(os.path.dirname(WORKSTATION_SETTINGS_PATH), exist_ok=True)
+        tmp = WORKSTATION_SETTINGS_PATH + ".part"
+        with open(tmp, "w", encoding="utf-8") as f:
+            json.dump(cfg, f, indent=2, ensure_ascii=False)
+        os.replace(tmp, WORKSTATION_SETTINGS_PATH)
+    except Exception as e:
+        print(f"[Workstations] Warning saving workstation_settings.json: {e}")
+    return cfg
+
+
+def register_workstation_heartbeat(workstation_id: str = None, info: dict = None) -> dict:
+    import time
+    wid = str(workstation_id or WORKSTATION_ID).strip()
+    cfg = load_workstation_settings()
+    cur = cfg["workstations"].get(wid, {})
+    cur["workstation_id"] = wid
+    cur["name"] = cur.get("name") or (f"Workstation ({wid})" if wid else "Workstation")
+    cur["root_dir"] = LOCAL_SCANS_ROOT
+    cur["last_seen"] = time.time()
+    if "daemon_enabled" not in cur:
+        cur["daemon_enabled"] = True
+    if isinstance(info, dict):
+        cur.update(info)
+    cfg["workstations"][wid] = cur
+    return save_workstation_settings(cfg)
+
+
+def is_workstation_query_serving_active(workstation_id: str = None) -> bool:
+    wid = str(workstation_id or WORKSTATION_ID).strip().lower()
+    cfg = load_workstation_settings()
+    q_ws = str(cfg.get("query_serving_workstation") or "auto").strip().lower()
+    if q_ws in ("auto", "both", "*", ""):
+        return True
+    return q_ws == wid
+
+
+def is_workstation_processing_active(workstation_id: str = None) -> bool:
+    wid = str(workstation_id or WORKSTATION_ID).strip().lower()
+    cfg = load_workstation_settings()
+    p_ws = str(cfg.get("processing_workstation") or "auto").strip().lower()
+    if p_ws in ("auto", "both", "*"):
+        return True
+    if p_ws == "none":
+        return False
+    return p_ws == wid
+
+
+def is_workstation_daemon_active(workstation_id: str = None) -> bool:
+    wid = str(workstation_id or WORKSTATION_ID).strip()
+    cfg = load_workstation_settings()
+    ws_info = cfg.get("workstations", {}).get(wid)
+    if isinstance(ws_info, dict) and "daemon_enabled" in ws_info:
+        return bool(ws_info["daemon_enabled"])
+    return True
+
 
