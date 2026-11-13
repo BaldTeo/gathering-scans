@@ -160,7 +160,7 @@ DEFAULT_PIX4D_SETTINGS = {
     "model_simplification": "Conservative", # "Conservative", "Moderate", or "Aggressive"
     "deghosting": "Weak",                   # "Weak", "Strong", or "Disabled"
     "export_lod": 13,                       # 13 = Full detail LOD export
-    "compute_gaussian_splats": False,       # Optional 3D Gaussian Splatting (GenerateGaussianSplats + ExportGaussianSplatsToPly)
+    "compute_gaussian_splats": True,        # Default ON (GatheringCloud Hybrid 3DGS preset): 3D Gaussian Splatting (GenerateGaussianSplats + ExportGaussianSplatsToPly)
     "gaussian_splats_template": "Catch",    # "Catch", "Nadir", "Oblique", or "Mixed"
     "gaussian_splats_max_millions": 2.0,    # Max splats (in millions) packed into web tiles/splats.gsplat (2.0M = 64 MB)
     "cleanup_raw_splat_ply": True,          # Delete intermediate raw splats.ply after building tiles/splats.gsplat
@@ -215,7 +215,7 @@ def _normalize_pix4d_settings_dict(cfg: dict) -> dict:
         cfg["export_lod"] = max(0, min(20, int(cfg.get("export_lod", 13))))
     except Exception:
         cfg["export_lod"] = 13
-    cfg["compute_gaussian_splats"] = bool(cfg.get("compute_gaussian_splats", False))
+    cfg["compute_gaussian_splats"] = bool(cfg.get("compute_gaussian_splats", True))
     gs_tpl = str(cfg.get("gaussian_splats_template", "Catch"))
     cfg["gaussian_splats_template"] = gs_tpl if gs_tpl in ("Catch", "Nadir", "Oblique", "Mixed") else "Catch"
     try:

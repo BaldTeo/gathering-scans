@@ -3580,7 +3580,7 @@ class GatheringScansTestSuite(unittest.TestCase):
 
         with open(os.path.join(BASE_DIR, "web", "src", "02-map-and-timeline.js"), "r", encoding="utf-8") as f:
             js02 = f.read()
-        self.assertIn("tr.errorTarget = 1.2;", js02)
+        self.assertIn("tr.errorTarget = isWs ? 0.45 : 0.85;", js02)
 
         with open(os.path.join(BASE_DIR, "web", "src", "03-studio-core.js"), "r", encoding="utf-8") as f:
             js03 = f.read()
@@ -3837,8 +3837,8 @@ class GatheringScansTestSuite(unittest.TestCase):
 
         # 2. Distinct Rough, Auto, and Max errorTarget / maxDepth caps in configureTilesRendererLodAndCaps
         self.assertIn("tr.maxDepth = depthInfo.roughMaxDepth;", js02)
-        self.assertIn("tr.errorTarget = isPreview ? 0.35 : isMobOrTab ? 0.5 : 0.02;", js02)
-        self.assertIn("tr.errorTarget = 1.2;", js02)
+        self.assertIn("tr.errorTarget = isPreview ? 0.35 : isMobOrTab ? 0.5 : isWs ? 0.008 : 0.02;", js02)
+        self.assertIn("tr.errorTarget = isWs ? 0.45 : 0.85;", js02)
 
         # 3. Verify QiHu_Merged 3-level LOD hierarchy (tile_s4_l0.glb -> tile_s4_l1.glb -> tile_s4.glb) if present on disk
         qihu_ts = os.path.join(LOCAL_SCANS_ROOT, "edited_qihu_merged_2026_10_28_858499", "tileset", "tileset.json")

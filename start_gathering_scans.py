@@ -508,6 +508,23 @@ def pix4d_worker_loop():
                 src_zip = next_job.get("source_zip_path") or ""
                 out_dir = next_job.get("project_dir") or os.path.join(LOCAL_SCANS_ROOT, sid)
                 has_rerun_cfg = os.path.isfile(os.path.join(out_dir, "rerun_settings.json"))
+
+                # Multi-PC safety: never reprocess a scan another PC already finished, or one it is processing right now.
+                try:
+                    from pc_worker import portable_bundle as _pb
+                    if not has_rerun_cfg and not next_job.get("tileset_path") and _pb.bundle_available(sid):
+                        DB.update_job_progress(sid, "waiting_parts", 0.0, "Adopting finished scan from Google Drive...")
+                        _PIX4D_WAKE_EVENT.wait(timeout=3.0)
+                        continue
+                    _won, _other = _pb.try_claim(sid)
+                except Exception as _ce:
+                    print(f"[PortableBundle] claim check note: {_ce}")
+                    _won, _other = True, ""
+                if not _won:
+                    DB.update_job_progress(sid, "waiting_parts", 0.0, f"Being processed on {_other}")
+                    print(f"[InboxWatcher] {sid} is claimed by {_other}; skipping on this PC.")
+                    _PIX4D_WAKE_EVENT.wait(timeout=5.0)
+                    continue
                 raw_pending_pass = str(next_job.get("pending_pass") or "").strip().lower()
                 if has_rerun_cfg:
                     job_pass = "full_hq"
@@ -778,6 +795,10 @@ if __name__ == "__main__":
 
     t_prestager = threading.Thread(target=prestage_queued_inputs_loop, daemon=True)
     t_prestager.start()
+
+    # Drive is the source of truth: publish finished scans, adopt scans finished on other PCs, archive inputs to PROCESSED.
+    from pc_worker.portable_bundle import portable_sync_loop
+    threading.Thread(target=portable_sync_loop, args=(DB, is_pc_daemon_running), daemon=True).start()
 
     start_pc_reverse_tunnel_pool(local_port=SERVER_PORT)
 

@@ -17,9 +17,9 @@
   <meta name="twitter:description" content="Interactive 3D site scan viewer &amp; spatial review on GatheringCloud." />
   <meta name="twitter:image" content="https://scans.gatheren.cloud/assets/gathering_cloud_logo.png" />
   <!-- GS_SHARE_OG_END -->
-  <link rel="icon" type="image/png" href="/assets/logo_icon.png?v=20261112_v329" />
-  <link rel="stylesheet" href="/app.css?v=20261112_v329" />
-  <link rel="stylesheet" href="/survey-bim.css?v=20261112_v329" />
+  <link rel="icon" type="image/png" href="/assets/logo_icon.png?v=20261113_v330" />
+  <link rel="stylesheet" href="/app.css?v=20261113_v330" />
+  <link rel="stylesheet" href="/survey-bim.css?v=20261113_v330" />
   <script src="https://accounts.google.com/gsi/client" async defer></script>
 
 </head>
@@ -32,8 +32,8 @@
   <header class="gs-topbar top-navbar">
     <div class="gs-brand">
       <a href="/" class="brand-cluster" aria-label="Gathering Cloud 聚人雲端">
-        <img src="/assets/logo_dark.png?v=20261112_v329" alt="聚Gathering 雲Cloud" class="gs-brand-logo-img brand-logo-img gs-logo-dark brand-logo-dark" />
-        <img src="/assets/logo_transparent.png?v=20261112_v329" alt="聚Gathering 雲Cloud" class="gs-brand-logo-img brand-logo-img gs-logo-light brand-logo-light" />
+        <img src="/assets/logo_dark.png?v=20261113_v330" alt="聚Gathering 雲Cloud" class="gs-brand-logo-img brand-logo-img gs-logo-dark brand-logo-dark" />
+        <img src="/assets/logo_transparent.png?v=20261113_v330" alt="聚Gathering 雲Cloud" class="gs-brand-logo-img brand-logo-img gs-logo-light brand-logo-light" />
       </a>
       <div class="gs-brand-title" style="display:none;">
         <span class="gs-crs-pill" id="topCrsBadge" title="由 雲在天 博士與 Gemini 4 Argon 共同開發" data-i18n-zh="由 雲在天 博士與 Gemini 4 Argon 開發" data-i18n-en="Created by Glib Ivanov, PhD and Gemini 4 Argon" data-i18n-title-zh="由 雲在天 博士與 Gemini 4 Argon 共同開發" data-i18n-title-en="Created by Glib Ivanov, PhD and Gemini 4 Argon">
@@ -580,7 +580,7 @@
       <!-- Minimal Website Embed Floating HUD (?embed=1) -->
       <div class="gs-embed-floating-hud" id="gsEmbedFloatingHud" style="display:none;">
         <div class="gs-embed-hud-brand">
-          <img src="/assets/gathering_cloud_logo.png?v=20261112_v329" alt="GatheringCloud" class="gs-embed-hud-logo" />
+          <img src="/assets/gathering_cloud_logo.png?v=20261113_v330" alt="GatheringCloud" class="gs-embed-hud-logo" />
           <span class="gs-embed-hud-title" id="gsEmbedHudTitle">3D Scan</span>
           <select class="gs-scan-select" id="gsEmbedScanSelect" style="display:none;max-width:170px;height:24px;font-size:11px;" title="切換掃描模型" data-i18n-title-zh="切換掃描模型" data-i18n-title-en="Switch 3D Scan"></select>
         </div>
@@ -1900,8 +1900,8 @@
           </div>
           <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
             <select class="gs-select" id="selPix4dPresetUser" style="font-size:11px;padding:3px 8px;height:24px;min-width:255px;font-weight:600;border-color:var(--ui-accent);" title="選擇建模預設組" data-i18n-title-zh="選擇建模預設組" data-i18n-title-en="Select Pipeline Preset">
-              <option value="gatheringcloud" selected data-i18n-zh="GatheringCloud 最佳預設 (Scalable + 16K + 1x 原圖點雲 + L0/L1/L2 .3tz)" data-i18n-en="GatheringCloud Optimal (Scalable + 16K + 1x Full Dense + L0/L1/L2 .3tz)">GatheringCloud 最佳預設 (Scalable + 16K + 1x 原圖點雲 + L0/L1/L2 .3tz)</option>
-              <option value="gatheringcloud_3dgs" data-i18n-zh="GatheringCloud 混合實景 (Scalable 16K 網格 + 3DGS 高斯潑濺)" data-i18n-en="GatheringCloud Hybrid 3DGS (Scalable 16K Mesh + 3D Gaussian Splats)">GatheringCloud 混合實景 (Scalable 16K 網格 + 3DGS 高斯潑濺)</option>
+              <option value="gatheringcloud" data-i18n-zh="GatheringCloud 最佳預設 (Scalable + 16K + 1x 原圖點雲 + L0/L1/L2 .3tz)" data-i18n-en="GatheringCloud Optimal (Scalable + 16K + 1x Full Dense + L0/L1/L2 .3tz)">GatheringCloud 最佳預設 (Scalable + 16K + 1x 原圖點雲 + L0/L1/L2 .3tz)</option>
+              <option value="gatheringcloud_3dgs" selected data-i18n-zh="GatheringCloud 混合實景 (Scalable 16K 網格 + 3DGS 高斯潑濺)" data-i18n-en="GatheringCloud Hybrid 3DGS (Scalable 16K Mesh + 3D Gaussian Splats)">GatheringCloud 混合實景 (Scalable 16K 網格 + 3DGS 高斯潑濺)</option>
               <option value="compact_4k" data-i18n-zh="精簡 4K 單一網格 (FixedSize + 4K + LOD 13)" data-i18n-en="Compact 4K Single-Mesh (FixedSize + 4K + LOD 13)">精簡 4K 單一網格 (FixedSize + 4K + LOD 13)</option>
               <option value="fast_field" data-i18n-zh="快速外業預覽 (2K + 適度簡化 + LOD 12)" data-i18n-en="Fast Field Preview (2K + Moderate + LOD 12)">快速外業預覽 (2K + 適度簡化 + LOD 12)</option>
               <option value="archival_8k" data-i18n-zh="超高解析度典藏版 (8K + 多分塊 + LOD 15)" data-i18n-en="Ultra Archival Multi-Tile (8K + Scalable + LOD 15)">超高解析度典藏版 (8K + 多分塊 + LOD 15)</option>
@@ -2162,8 +2162,8 @@
 
       <!-- Brand Lockup & Domain Pill (Matching files.gatheren.cloud) -->
       <div class="oauth-brand-row">
-        <img src="/assets/logo_dark.png?v=20261112_v329" alt="聚Gathering 雲Cloud" class="brand-logo-img brand-logo-dark oauth-logo" />
-        <img src="/assets/logo_transparent.png?v=20261112_v329" alt="聚Gathering 雲Cloud" class="brand-logo-img brand-logo-light oauth-logo" />
+        <img src="/assets/logo_dark.png?v=20261113_v330" alt="聚Gathering 雲Cloud" class="brand-logo-img brand-logo-dark oauth-logo" />
+        <img src="/assets/logo_transparent.png?v=20261113_v330" alt="聚Gathering 雲Cloud" class="brand-logo-img brand-logo-light oauth-logo" />
         <span class="domain-pill oauth-domain-pill">scans.gatheren.cloud</span>
       </div>
 
@@ -2690,25 +2690,26 @@
   <!-- Three.js + 3D Tileset / KTX2 / Meshopt Libraries -->
   <script src="/lib/three.min.js"></script>
   <script src="/lib/OrbitControls.js?v=20261029_v48"></script>
-  <script src="/lib/GLTFLoader.js?v=20261112_v329"></script>
+  <script src="/lib/GLTFLoader.js?v=20261113_v330"></script>
   <script src="/lib/KTX2Loader.js"></script>
   <script src="/lib/meshopt_decoder.js"></script>
-  <script src="/lib/3d-tiles-renderer.bundle.js?v=20261112_v329"></script>
+  <script src="/lib/3d-tiles-renderer.bundle.js?v=20261113_v330"></script>
 
   <!-- Main GatheringScans Bilingual Translation & Modular Application Logic (< 5,000 lines per module) -->
-  <script src="/i18n.js?v=20261112_v329"></script>
-  <script src="/src/gatheren-loading-animation.js?v=20261112_v329"></script>
-  <script src="/src/01-core-state.js?v=20261112_v329"></script>
-  <script src="/src/02-map-and-timeline.js?v=20261112_v329"></script>
-  <script src="/src/03-studio-core.js?v=20261112_v329"></script>
-  <script src="/src/04-studio-lasso-and-edits.js?v=20261112_v329"></script>
-  <script src="/src/05-studio-civil-inspectors.js?v=20261112_v329"></script>
-  <script src="/src/06-studio-align-and-optimizer.js?v=20261112_v329"></script>
-  <script src="/src/07-compare-and-queue.js?v=20261112_v329"></script>
-  <script src="/src/08-advanced-surveying-and-qa.js?v=20261112_v329"></script>
-  <script src="/src/09-construction-survey-and-bim.js?v=20261112_v329"></script>
-  <script src="/src/10-construction-qa-and-stakeout.js?v=20261112_v329"></script>
-  <script src="/src/12-public-utilities-gis.js?v=20261112_v329"></script>
-  <script src="/app.js?v=20261112_v329"></script>
+  <script src="/i18n.js?v=20261113_v330"></script>
+  <script src="/src/gatheren-loading-animation.js?v=20261113_v330"></script>
+  <script src="/src/01-core-state.js?v=20261113_v330"></script>
+<script src="/src/01b-studio-hd-profile.js?v=20261113_v330"></script>
+  <script src="/src/02-map-and-timeline.js?v=20261113_v330"></script>
+  <script src="/src/03-studio-core.js?v=20261113_v330"></script>
+  <script src="/src/04-studio-lasso-and-edits.js?v=20261113_v330"></script>
+  <script src="/src/05-studio-civil-inspectors.js?v=20261113_v330"></script>
+  <script src="/src/06-studio-align-and-optimizer.js?v=20261113_v330"></script>
+  <script src="/src/07-compare-and-queue.js?v=20261113_v330"></script>
+  <script src="/src/08-advanced-surveying-and-qa.js?v=20261113_v330"></script>
+  <script src="/src/09-construction-survey-and-bim.js?v=20261113_v330"></script>
+  <script src="/src/10-construction-qa-and-stakeout.js?v=20261113_v330"></script>
+  <script src="/src/12-public-utilities-gis.js?v=20261113_v330"></script>
+  <script src="/app.js?v=20261113_v330"></script>
 </body>
 </html>

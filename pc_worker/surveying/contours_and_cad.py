@@ -2532,7 +2532,13 @@ class ContoursAndCadMixin:
                 matches = glob.glob(os.path.join(sdir, "**", base_key), recursive=True)
                 if matches and os.path.isfile(matches[0]):
                     return matches[0]
-        return None
+        # 4. Raw photos are not on this PC (scan adopted from another workstation): read from the Drive photo archive.
+        try:
+            from pc_worker.portable_bundle import extract_photo_from_archive
+
+            return extract_photo_from_archive(clean_id, norm_key)
+        except Exception:
+            return None
 
     def inspect_rtk_camera_photos(self, payload: Dict[str, Any]) -> Dict[str, Any]:
         """

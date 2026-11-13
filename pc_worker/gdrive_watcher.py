@@ -2586,6 +2586,20 @@ def _seed_and_discover_scans_locked(db: ScanQueueDB) -> List[Dict[str, Any]]:
             primary_meta["name"] = base_name
             primary_meta["user_edited_name"] = 0
 
+        # Multi-PC: if another PC already finished this scan (Drive SCANS bundle) or is processing it right now,
+        # do NOT queue it here. The background portable sync adopts the bundle into this PC.
+        _pb_hold = ""
+        try:
+            from pc_worker import portable_bundle as _pb
+            if existing.get("status") not in ("processing", "queued", "failed"):
+                if _pb.bundle_available(scan_id):
+                    _pb_hold = "Adopting finished scan from Google Drive..."
+                else:
+                    _own = _pb.foreign_claim_owner(scan_id)
+                    if _own:
+                        _pb_hold = f"Being processed on {_own}"
+        except Exception:
+            _pb_hold = ""
         cand_processed_dir = os.path.join(LOCAL_SCANS_ROOT, scan_id)
         cand_processed_ts = os.path.join(cand_processed_dir, "tileset", "tileset.json")
         if existing.get("status") in ("processing", "queued", "failed"):
@@ -2698,6 +2712,11 @@ def _seed_and_discover_scans_locked(db: ScanQueueDB) -> List[Dict[str, Any]]:
                 primary_meta["tileset_path"] = existing.get("tileset_path", "")
                 primary_meta["obj_path"] = existing.get("obj_path", "")
                 primary_meta["project_dir"] = existing.get("project_dir", "")
+            elif _pb_hold:
+                primary_meta["status"] = "waiting_parts"
+                primary_meta["progress_pct"] = 0.0
+                primary_meta["stage_label"] = _pb_hold
+                primary_meta["notes"] = f"'{base_name}': {_pb_hold}"
             else:
                 primary_meta["status"] = "queued"
                 primary_meta["quality_stage"] = "none"

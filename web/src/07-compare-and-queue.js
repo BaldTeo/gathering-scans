@@ -1509,7 +1509,7 @@
   };
 
   function detectPix4dPresetKey(cfg) {
-    if (!cfg) return "gatheringcloud";
+    if (!cfg) return "gatheringcloud_3dgs";
     for (const [k, p] of Object.entries(PIX4D_PRESETS)) {
       if (
         String(cfg.mesh_pipeline || "Scalable") === p.mesh_pipeline &&
@@ -1556,7 +1556,7 @@
         model_simplification: "Conservative",
         deghosting: "Weak",
         export_lod: 13,
-        compute_gaussian_splats: false,
+        compute_gaussian_splats: true,
         gaussian_splats_template: "Catch",
         gaussian_splats_max_millions: 2.0,
       },
@@ -1608,7 +1608,7 @@
     });
   }
 
-  async function applyPix4dPreset(presetKey = "gatheringcloud") {
+  async function applyPix4dPreset(presetKey = "gatheringcloud_3dgs") {
     const preset = PIX4D_PRESETS[presetKey];
     if (!preset) return;
     _pix4dSettingsDirty = false;
@@ -1669,7 +1669,7 @@
       export_lod: Math.max(0, Math.min(20, Number(getVal("inpPix4dExportLod", "export_lod", 13)) || 13)),
       skyless: getChk("chkPix4dSkyless", "skyless", false),
       use_roi: getChk("chkPix4dUseRoi", "use_roi", false),
-      compute_gaussian_splats: getChk("chkPix4dGaussianSplats", "compute_gaussian_splats", false),
+      compute_gaussian_splats: getChk("chkPix4dGaussianSplats", "compute_gaussian_splats", true),
       gaussian_splats_template: String(getVal("selPix4dGaussianTemplate", "gaussian_splats_template", "Catch")),
       gaussian_splats_max_millions: Math.max(
         0.5,
@@ -2127,7 +2127,7 @@
   });
   ["btnApplyGatheringCloudPreset", "btnApplyGatheringCloudPresetUser"].forEach((bid) => {
     document.getElementById(bid)?.addEventListener("click", () => {
-      applyPix4dPreset("gatheringcloud");
+      applyPix4dPreset("gatheringcloud_3dgs");
     });
   });
 

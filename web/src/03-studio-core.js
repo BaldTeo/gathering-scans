@@ -560,31 +560,7 @@
     };
   }
 
-  const HD_SCALE_KEY = "gs_hd_budget_scale_v1";
-  function getLearnedHdScale() {
-    try { return Math.max(0.3, Math.min(1, Number(localStorage.getItem(HD_SCALE_KEY)) || 1)); } catch (_) { return 1; }
-  }
-  function shrinkHdBudgetAfterCrash() {
-    try { localStorage.setItem(HD_SCALE_KEY, String(Math.max(0.3, getLearnedHdScale() * 0.65))); } catch (_) {}
-  }
-  function getStudioHdTileBudget(lodMode) {
-    const isIOS = typeof isIOSOrIPadDevice === "function" && isIOSOrIPadDevice();
-    const isPhone = typeof isIPhoneOrMobilePhone === "function" && isIPhoneOrMobilePhone();
-    const isMobOrTab = isIOS || isPhone || (typeof isMobileOrTabletDevice === "function" && isMobileOrTabletDevice());
-    const MB = 1024 * 1024;
-    if (lodMode === "rough") return { maxHdBytes: 32 * MB, maxHdTiles: 8 };
-    const dm = Number((typeof navigator !== "undefined" && navigator.deviceMemory) || (isIOS ? 6 : 8));
-    const max = lodMode === "max";
-    let mb;
-    if (isMobOrTab) {
-      mb = dm >= 8 ? (max ? 896 : 640) : dm >= 6 ? (max ? 704 : 512) : dm >= 4 ? (max ? 512 : 384) : (max ? 320 : 256);
-    } else {
-      mb = dm >= 8 ? (max ? 1536 : 640) : (max ? 1024 : 480);
-    }
-    mb = Math.round(mb * getLearnedHdScale());
-    return { maxHdBytes: mb * MB, maxHdTiles: Math.max(12, Math.round(mb / 5.0)) };
-  }
-  window.getStudioHdTileBudget = getStudioHdTileBudget;
+  // HD budget + workstation profile live in 01b-studio-hd-profile.js (getStudioHdTileBudget, getLearnedHdScale, shrinkHdBudgetAfterCrash).
 
   function computeStudioTilePriority(tr, tile) {
     if (!tile) return 0;
@@ -818,7 +794,7 @@
     const nowB = performance.now();
     // Coarsen at most once per 450 ms (was per tile request => runaway to max coarseness) and never beyond 40x.
     if (factor > 1 && nowB - (tr._gsLastBumpMs || 0) < 450) return;
-    const next = Math.max(1, Math.min(40, prev * factor));
+    const next = Math.max(1, Math.min(isWorkstationClassDevice() ? 6 : 40, prev * factor));
     if (next === prev) return;
     if (factor > 1) tr._gsLastBumpMs = nowB;
     tr._gsErrBump = next;
@@ -915,7 +891,8 @@
       origViewError(tile, target);
       const press = ((tr._gsErrBump || 1) - 1) * 0.5;
       if (press > 0 && target.inView) {
-        const r = (target.distanceFromCamera || 0) / (tr._gsLodMode === "max" ? 60.0 : 20.0);
+        const wsK = isWorkstationClassDevice() ? 2.5 : 1;
+        const r = (target.distanceFromCamera || 0) / ((tr._gsLodMode === "max" ? 60.0 : 20.0) * wsK);
         target.error /= 1 + r * r * press;
       }
     };
