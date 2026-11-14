@@ -86,6 +86,9 @@ from pc_worker.config import (
     load_workstation_settings,
     save_workstation_settings,
     register_workstation_heartbeat,
+    normalize_windows_root_dir,
+    set_local_workstation_root_override,
+    _drive_exists_for_path,
 )
 from pc_worker.gchat_notifier import GoogleChatNotifier
 
@@ -361,9 +364,135 @@ _ACTIVE_TUNNEL_SOCKETS_BY_WS: Dict[str, int] = {}
 _LAST_TUNNEL_HB_BY_WS: Dict[str, float] = {}
 
 
+_ROOT_RESPAWN_LOCK = threading.Lock()
+_ROOT_RESPAWN_SCHEDULED = False
+
+
 def get_active_tunnel_socket_counts() -> Dict[str, int]:
     with _ACTIVE_TUNNEL_LOCK:
         return {k: v for k, v in _ACTIVE_TUNNEL_SOCKETS_BY_WS.items() if v > 0}
+
+
+def enrich_workstations_response(cfg: Dict[str, Any], caller_ip: str = "") -> Dict[str, Any]:
+    out = dict(cfg or {})
+    now_ws = time.time()
+    active_tunnels_ci = {
+        str(k).strip().lower(): int(v)
+        for k, v in (get_active_tunnel_socket_counts() if os.name != "nt" else {}).items()
+    }
+    ws_out: Dict[str, Any] = {}
+    for wid, winfo in (out.get("workstations") or {}).items():
+        if not isinstance(winfo, dict):
+            continue
+        item = dict(winfo)
+        wid_low = str(wid).strip().lower()
+        if os.name == "nt" and wid_low == WORKSTATION_ID.lower():
+            item["last_seen"] = now_ws
+            item["active_root_dir"] = LOCAL_SCANS_ROOT
+            if not item.get("root_dir"):
+                item["root_dir"] = LOCAL_SCANS_ROOT
+            item["daemon_enabled"] = is_pc_daemon_running()
+        tun_sockets = active_tunnels_ci.get(wid_low, 0)
+        if tun_sockets > 0:
+            item["last_seen"] = max(float(item.get("last_seen") or 0.0), now_ws)
+            item["tunnel_sockets"] = tun_sockets
+        ls = float(item.get("last_seen") or 0.0)
+        age_s = round(max(0.0, now_ws - ls), 1) if ls > 0 else 999999.0
+        online = bool(tun_sockets > 0) or (ls > 0 and age_s <= 45.0)
+        d_en = bool(item.get("daemon_enabled", True))
+        busy = bool(item.get("pix4d_busy", False)) and online
+        item["online"] = online
+        item["age_sec"] = age_s if ls > 0 else None
+        item["status"] = "processing" if busy else ("online" if (online and d_en) else ("paused" if online else "offline"))
+        ws_out[wid] = item
+    out["workstations"] = ws_out
+    if caller_ip:
+        out["caller_ip"] = caller_ip
+    out["local_workstation_id"] = WORKSTATION_ID if os.name == "nt" else ""
+    return out
+
+
+def apply_local_workstation_root_if_changed(
+    desired_root: str,
+    root_updated_at: float = 0.0,
+    allow_respawn: bool = True,
+) -> bool:
+    """
+    Persists an admin-configured `root_dir` override on this Windows workstation and, if it differs
+    from the currently loaded `LOCAL_SCANS_ROOT` (and PIX4Dmatic is idle), self-respawns cleanly onto
+    the newly configured root folder.
+    """
+    global _ROOT_RESPAWN_SCHEDULED
+    if os.name != "nt":
+        return False
+    norm_root = normalize_windows_root_dir(desired_root)
+    if not norm_root or not _drive_exists_for_path(norm_root):
+        return False
+    set_local_workstation_root_override(norm_root, updated_at=root_updated_at)
+    if os.path.normcase(norm_root) == os.path.normcase(normalize_windows_root_dir(LOCAL_SCANS_ROOT)):
+        return False
+    try:
+        os.makedirs(norm_root, exist_ok=True)
+    except Exception:
+        pass
+    if not allow_respawn or "unittest" in sys.modules:
+        return True
+    try:
+        import psutil
+
+        for p in psutil.process_iter(["name"]):
+            nm = (p.info.get("name") or "").lower()
+            if "pix4dmatic" in nm:
+                try:
+                    cmd_s = " ".join(p.cmdline() or []).lower()
+                except Exception:
+                    cmd_s = ""
+                if "--gst" in cmd_s:
+                    return True
+    except Exception:
+        pass
+    with _ROOT_RESPAWN_LOCK:
+        if _ROOT_RESPAWN_SCHEDULED:
+            return True
+        _ROOT_RESPAWN_SCHEDULED = True
+
+    def _delayed_respawn():
+        import subprocess
+
+        time.sleep(0.45)
+        try:
+            cand_ensure = os.path.join(norm_root, "_app", "ensure_daemon_running.ps1")
+            cur_ensure = os.path.join(BASE_DIR, "ensure_daemon_running.ps1")
+            cand_launcher = os.path.join(norm_root, "_app", "start_gathering_scans.py")
+            cur_launcher = os.path.join(BASE_DIR, "start_gathering_scans.py")
+            target_ensure = cand_ensure if os.path.isfile(cand_ensure) else (cur_ensure if os.path.isfile(cur_ensure) else "")
+            target_launcher = cand_launcher if os.path.isfile(cand_launcher) else cur_launcher
+            target_cwd = os.path.dirname(target_launcher)
+            if target_ensure:
+                ps_cmd = f'$env:LOCAL_SCANS_ROOT = "{norm_root}"; Start-Sleep -Seconds 2; & "{target_ensure}"'
+            else:
+                ps_cmd = (
+                    f'$env:LOCAL_SCANS_ROOT = "{norm_root}"; Start-Sleep -Seconds 2; '
+                    f'Start-Process -FilePath "{sys.executable}" -ArgumentList "-u","{target_launcher}" '
+                    f'-WorkingDirectory "{target_cwd}" -WindowStyle Hidden'
+                )
+            win_no_win = getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000)
+            detached = getattr(subprocess, "DETACHED_PROCESS", 0x00000008)
+            subprocess.Popen(
+                ["powershell.exe", "-NoProfile", "-WindowStyle", "Hidden", "-ExecutionPolicy", "Bypass", "-Command", ps_cmd],
+                cwd=target_cwd,
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                creationflags=detached | win_no_win,
+            )
+            print(f"[Workstation] Switching LOCAL_SCANS_ROOT {LOCAL_SCANS_ROOT} -> {norm_root}; respawning...", flush=True)
+        except Exception as e:
+            print(f"[Workstation] Root respawn helper warning: {e}", flush=True)
+        os._exit(0)
+
+    threading.Thread(target=_delayed_respawn, daemon=True).start()
+    return True
 
 CLOUD_MANIFEST_PATH = (
     "/host_docker/gathering_scans/data/gdrive_cloud_manifest.json"
@@ -966,7 +1095,7 @@ def send_rpc_to_workstation_via_tunnel(
     try:
         tun_sock.settimeout(max(5.0, timeout))
         raw_body = json.dumps(body_obj or {}).encode("utf-8") if body_obj is not None else b""
-        hdrs = {"Content-Type": "application/json", "X-Tunnel-Key": TUNNEL_SHARED_KEY}
+        hdrs = {"Content-Type": "application/json", "X-Tunnel-Key": TUNNEL_SHARED_KEY, "X-From-Vps": "1"}
         envelope = json.dumps(
             {
                 "method": method,
@@ -1047,6 +1176,7 @@ def start_pc_reverse_tunnel_pool(local_port: int = SERVER_PORT, pool_size: int =
                     f"X-Tunnel-Key: {TUNNEL_SHARED_KEY}\r\n"
                     f"X-Tunnel-Proto: 2\r\n"
                     f"X-Workstation-Id: {WORKSTATION_ID}\r\n"
+                    f"X-Workstation-Root: {urllib.parse.quote(LOCAL_SCANS_ROOT, safe='')}\r\n"
                     f"Connection: keep-alive\r\n\r\n"
                 ).encode("ascii")
                 s.sendall(handshake)
@@ -1188,13 +1318,19 @@ def start_pc_reverse_tunnel_pool(local_port: int = SERVER_PORT, pool_size: int =
                                     break
                     except Exception:
                         pass
-                    active_job = DB.get_active_job()
+                    active_job = None
+                    try:
+                        if hasattr(DB, "get_active_job"):
+                            active_job = DB.get_active_job()
+                    except Exception:
+                        active_job = None
                     active_sid = str(active_job.get("scan_id") or "") if isinstance(active_job, dict) else ""
                     hb_payload = json.dumps(
                         {
                             "workstation_id": WORKSTATION_ID,
                             "hostname": WORKSTATION_ID,
                             "root_dir": LOCAL_SCANS_ROOT,
+                            "active_root_dir": LOCAL_SCANS_ROOT,
                             "daemon_running": is_pc_daemon_running(),
                             "daemon_updated_at": float(load_pc_daemon_state().get("updated_at") or 0.0),
                             "pix4d_busy": bool(p4d_busy or active_sid),
@@ -1208,6 +1344,7 @@ def start_pc_reverse_tunnel_pool(local_port: int = SERVER_PORT, pool_size: int =
                         {
                             "hostname": WORKSTATION_ID,
                             "root_dir": LOCAL_SCANS_ROOT,
+                            "active_root_dir": LOCAL_SCANS_ROOT,
                             "daemon_enabled": is_pc_daemon_running(),
                             "pix4d_busy": bool(p4d_busy or active_sid),
                             "active_scan_id": active_sid,
@@ -1251,12 +1388,21 @@ def start_pc_reverse_tunnel_pool(local_port: int = SERVER_PORT, pool_size: int =
                                     if str(wk).strip().lower() == WORKSTATION_ID.lower() and isinstance(wv, dict):
                                         my_entry = wv
                                         break
-                                if my_entry is not None and "daemon_enabled" in my_entry:
-                                    vps_d_ts = float(my_entry.get("daemon_updated_at") or 0.0)
-                                    loc_d_ts = float(load_pc_daemon_state().get("updated_at") or 0.0)
-                                    desired_running = bool(my_entry.get("daemon_enabled", True))
-                                    if vps_d_ts > loc_d_ts + 0.5 and desired_running != is_pc_daemon_running():
-                                        set_pc_daemon_running(desired_running, actor_email="vps_coordinator")
+                                if my_entry is not None:
+                                    if "daemon_enabled" in my_entry:
+                                        vps_d_ts = float(my_entry.get("daemon_updated_at") or 0.0)
+                                        loc_d_ts = float(load_pc_daemon_state().get("updated_at") or 0.0)
+                                        desired_running = bool(my_entry.get("daemon_enabled", True))
+                                        if vps_d_ts > loc_d_ts + 0.5 and desired_running != is_pc_daemon_running():
+                                            set_pc_daemon_running(desired_running, actor_email="vps_coordinator")
+                                    vps_r_ts = float(my_entry.get("root_dir_updated_at") or 0.0)
+                                    vps_root = str(my_entry.get("root_dir") or "").strip()
+                                    if vps_root and vps_r_ts > 0:
+                                        apply_local_workstation_root_if_changed(
+                                            vps_root,
+                                            root_updated_at=vps_r_ts,
+                                            allow_respawn=not bool(p4d_busy or active_sid),
+                                        )
 
                     t_hb_once = threading.Thread(target=_send_hb_once, daemon=True)
                     t_hb_once.start()
@@ -1298,6 +1444,7 @@ class CloudAndTunnelHandlerMixin:
             return
 
         ws_id = self.headers.get("X-Workstation-Id", "").strip() or "workstation_1"
+        ws_root_hdr = urllib.parse.unquote(self.headers.get("X-Workstation-Root", "").strip())
         client_ip = self.client_address[0] if getattr(self, "client_address", None) else ""
         done_evt = threading.Event()
         done_evt.last_ts = time.time()
@@ -1313,7 +1460,11 @@ class CloudAndTunnelHandlerMixin:
                     should_write = True
             if should_write:
                 try:
-                    register_workstation_heartbeat(ws_id, {"last_seen": now_t, "ip": client_ip})
+                    hb_extra: Dict[str, Any] = {"last_seen": now_t, "ip": client_ip}
+                    if ws_root_hdr:
+                        hb_extra["root_dir"] = ws_root_hdr
+                        hb_extra["active_root_dir"] = ws_root_hdr
+                    register_workstation_heartbeat(ws_id, hb_extra)
                 except Exception:
                     pass
 

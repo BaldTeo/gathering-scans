@@ -35,7 +35,7 @@ from typing import Any, Dict, Optional, Tuple
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if BASE_DIR not in sys.path:
     sys.path.insert(0, BASE_DIR)
-from pc_worker.config import RUNTIME_DATA_DIR
+from pc_worker.config import RUNTIME_DATA_DIR, get_local_workstation_root_override, _drive_exists_for_path
 
 LAUNCHER_SCRIPT = os.path.join(BASE_DIR, "start_gathering_scans.py")
 LOG_FILE = os.path.join(RUNTIME_DATA_DIR, "daemon_watchdog.log")
@@ -165,7 +165,17 @@ class GatheringScansController:
             # Always keep HTTP server (port 8095) running while controller is active unless watchdog_exit is set,
             # so Web UI can still be opened when paused, OR if user wants server running only when daemon_running=True:
             if not is_port_open(8095):
-                log_msg(f"Port 8095 offline; launching {LAUNCHER_SCRIPT}")
+                target_launcher = LAUNCHER_SCRIPT
+                target_cwd = BASE_DIR
+                child_env = os.environ.copy()
+                ov_root = get_local_workstation_root_override()
+                if ov_root and _drive_exists_for_path(ov_root):
+                    child_env["LOCAL_SCANS_ROOT"] = ov_root
+                    cand_script = os.path.join(ov_root, "_app", "start_gathering_scans.py")
+                    if os.path.isfile(cand_script):
+                        target_launcher = cand_script
+                        target_cwd = os.path.dirname(cand_script)
+                log_msg(f"Port 8095 offline; launching {target_launcher} (root={child_env.get('LOCAL_SCANS_ROOT', '')})")
                 try:
                     os.makedirs(RUNTIME_DATA_DIR, exist_ok=True)
                     out_log = open(STDOUT_LOG_FILE, "a", encoding="utf-8")
@@ -173,8 +183,9 @@ class GatheringScansController:
                     if os.name == "nt":
                         creationflags = subprocess.CREATE_NEW_PROCESS_GROUP | _WIN_NO_WINDOW
                     self.child_proc = subprocess.Popen(
-                        [sys.executable, "-u", LAUNCHER_SCRIPT],
-                        cwd=BASE_DIR,
+                        [sys.executable, "-u", target_launcher],
+                        cwd=target_cwd,
+                        env=child_env,
                         stdin=subprocess.DEVNULL,
                         stdout=out_log,
                         stderr=subprocess.STDOUT,

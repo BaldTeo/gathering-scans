@@ -8,6 +8,7 @@ Enforces:
    offline caching is strictly client-side in the user's browser via IndexedDB / CacheStorage).
 """
 
+import json as _cfg_json
 import os
 import shutil
 import socket
@@ -16,10 +17,81 @@ import time
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 WORKSTATION_ID = str(os.environ.get("WORKSTATION_ID") or socket.gethostname() or "workstation_1").strip()
 
-# Derive default scans root dynamically from _app parent (e.g. D:\GatheringScans\_app -> D:\GatheringScans)
-if os.path.basename(BASE_DIR).lower() == "_app":
+
+def normalize_windows_root_dir(raw_path: str) -> str:
+    """Normalizes a Windows workstation folder path (e.g. 'D:/GatheringScans/' -> 'D:\\GatheringScans')."""
+    s = str(raw_path or "").strip().strip('"').strip("'")
+    if not s:
+        return ""
+    if len(s) >= 2 and s[1] == ":":
+        s = s.replace("/", "\\")
+        if len(s) == 2:
+            return s + "\\"
+        s = s.rstrip("\\")
+        return s + "\\" if len(s) == 2 else s
+    return s.rstrip("/\\") or s
+
+
+def _get_local_ws_override_path() -> str:
+    if os.name == "nt" and "GATHERING_SCANS_RUNTIME_DIR" not in os.environ:
+        la = os.environ.get("LOCALAPPDATA") or os.path.expanduser(r"~\AppData\Local")
+        rt_dir = os.path.join(la, "GatheringScans", WORKSTATION_ID, "data")
+    else:
+        rt_dir = os.environ.get("GATHERING_SCANS_RUNTIME_DIR") or os.path.join(BASE_DIR, "data")
+    return os.path.join(rt_dir, "local_workstation_override.json")
+
+
+def get_local_workstation_root_override() -> str:
+    p = _get_local_ws_override_path()
+    if not os.path.isfile(p):
+        return ""
+    try:
+        with open(p, "r", encoding="utf-8") as f:
+            obj = _cfg_json.load(f)
+        if isinstance(obj, dict):
+            return normalize_windows_root_dir(obj.get("root_dir") or "")
+    except Exception:
+        pass
+    return ""
+
+
+def set_local_workstation_root_override(root_dir: str, updated_at: float = 0.0) -> str:
+    norm = normalize_windows_root_dir(root_dir)
+    p = _get_local_ws_override_path()
+    try:
+        os.makedirs(os.path.dirname(p), exist_ok=True)
+        payload = {
+            "workstation_id": WORKSTATION_ID,
+            "root_dir": norm,
+            "updated_at": float(updated_at or time.time()),
+        }
+        tmp = f"{p}.{os.getpid()}.part"
+        with open(tmp, "w", encoding="utf-8") as f:
+            _cfg_json.dump(payload, f, indent=2, ensure_ascii=False)
+        os.replace(tmp, p)
+    except Exception:
+        pass
+    return norm
+
+
+def _drive_exists_for_path(win_path: str) -> bool:
+    if os.name != "nt" or not win_path:
+        return False
+    if len(win_path) >= 2 and win_path[1] == ":":
+        return os.path.isdir(win_path[:2] + "\\")
+    return os.path.isdir(win_path)
+
+
+# Derive default scans root:
+# 1. Explicit admin-saved per-workstation override (%LOCALAPPDATA%\GatheringScans\<WORKSTATION_ID>\data\local_workstation_override.json)
+# 2. _app parent directory (e.g. D:\GatheringScans\_app -> D:\GatheringScans)
+# 3. Known workstation ID defaults (DESKTOP-ETIHJO1 -> D:\GatheringScans, DESKTOP-OEBISC7 -> C:\GatheringScans)
+_LOCAL_ROOT_OVERRIDE = get_local_workstation_root_override() if os.name == "nt" else ""
+if _LOCAL_ROOT_OVERRIDE and _drive_exists_for_path(_LOCAL_ROOT_OVERRIDE):
+    _DEFAULT_SCANS_ROOT = _LOCAL_ROOT_OVERRIDE
+elif os.path.basename(BASE_DIR).lower() == "_app":
     _DEFAULT_SCANS_ROOT = os.path.dirname(BASE_DIR)
-elif WORKSTATION_ID.upper() == "WORKPC1" and os.path.isdir(r"D:\GatheringScans"):
+elif WORKSTATION_ID.upper() in ("DESKTOP-ETIHJO1", "WORKPC1") and _drive_exists_for_path(r"D:\GatheringScans"):
     _DEFAULT_SCANS_ROOT = r"D:\GatheringScans"
 elif os.path.isdir(r"C:\GatheringScans"):
     _DEFAULT_SCANS_ROOT = r"C:\GatheringScans"
@@ -374,13 +446,15 @@ PREDEFINED_WORKSTATIONS = {
     "DESKTOP-OEBISC7": {
         "workstation_id": "DESKTOP-OEBISC7",
         "name": "Stronger Processing PC (DESKTOP-OEBISC7)",
+        "nickname": "HomePC",
         "daemon_enabled": True,
         "root_dir": r"C:\GatheringScans",
         "last_seen": 0.0,
     },
-    "WorkPC1": {
-        "workstation_id": "WorkPC1",
-        "name": "Office Always-On PC (WorkPC1)",
+    "DESKTOP-ETIHJO1": {
+        "workstation_id": "DESKTOP-ETIHJO1",
+        "name": "Office Always-On PC (DESKTOP-ETIHJO1)",
+        "nickname": "WorkPC",
         "daemon_enabled": True,
         "root_dir": r"D:\GatheringScans",
         "last_seen": 0.0,
@@ -389,7 +463,7 @@ PREDEFINED_WORKSTATIONS = {
 
 DEFAULT_WORKSTATION_SETTINGS = {
     "query_serving_workstation": "auto",            # "auto" (prefer online), or specific workstation_id with failover
-    "processing_workstation": "DESKTOP-OEBISC7",    # Strict pinning by default ("DESKTOP-OEBISC7", "WorkPC1", "auto", "none")
+    "processing_workstation": "DESKTOP-OEBISC7",    # Strict pinning by default ("DESKTOP-OEBISC7", "DESKTOP-ETIHJO1", "auto", "none")
     "workstations": {k: dict(v) for k, v in PREDEFINED_WORKSTATIONS.items()},
 }
 
@@ -398,6 +472,23 @@ import threading as _ws_threading
 import uuid as _ws_uuid
 
 _WS_CFG_LOCK = _ws_threading.RLock()
+
+
+def _prune_legacy_workstation_placeholders(cfg: dict) -> None:
+    ws_map = cfg.get("workstations")
+    if not isinstance(ws_map, dict):
+        return
+    legacy_w1 = ws_map.get("WorkPC1")
+    if isinstance(legacy_w1, dict) and float(legacy_w1.get("last_seen") or 0.0) <= 0.0:
+        leg_nick = str(legacy_w1.get("nickname") or "").strip()
+        et_entry = ws_map.get("DESKTOP-ETIHJO1")
+        if isinstance(et_entry, dict) and leg_nick and not str(et_entry.get("nickname") or "").strip():
+            et_entry["nickname"] = leg_nick
+        ws_map.pop("WorkPC1", None)
+    if str(cfg.get("processing_workstation") or "").strip() == "WorkPC1":
+        cfg["processing_workstation"] = "DESKTOP-ETIHJO1"
+    if str(cfg.get("query_serving_workstation") or "").strip() == "WorkPC1":
+        cfg["query_serving_workstation"] = "DESKTOP-ETIHJO1"
 
 
 def load_workstation_settings() -> dict:
@@ -429,10 +520,13 @@ def load_workstation_settings() -> dict:
                                 continue
                             merged = dict(cfg["workstations"].get(wid, {"workstation_id": wid, "daemon_enabled": True, "last_seen": 0.0}))
                             merged.update(winfo)
+                            if merged.get("root_dir"):
+                                merged["root_dir"] = normalize_windows_root_dir(merged["root_dir"])
                             merged["workstation_id"] = wid
                             cfg["workstations"][wid] = merged
             except Exception:
                 pass
+        _prune_legacy_workstation_placeholders(cfg)
         return cfg
 
 
@@ -450,10 +544,28 @@ def save_workstation_settings(updates: dict) -> dict:
                 for wid, winfo in updates["workstations"].items():
                     if not wid or not isinstance(winfo, dict):
                         continue
+                    if wid == "WorkPC1" and float(winfo.get("last_seen") or 0.0) <= 0.0:
+                        continue
                     if wid not in cfg["workstations"]:
                         cfg["workstations"][wid] = {"workstation_id": wid, "daemon_enabled": True, "last_seen": 0.0}
-                    cfg["workstations"][wid].update(winfo)
+                    clean_info = dict(winfo)
+                    if "root_dir" in clean_info and clean_info["root_dir"] is not None:
+                        norm_r = normalize_windows_root_dir(clean_info["root_dir"])
+                        if norm_r:
+                            clean_info["root_dir"] = norm_r
+                        else:
+                            clean_info.pop("root_dir", None)
+                    clean_info.pop("_override_name", None)
+                    clean_info.pop("_override_daemon", None)
+                    clean_info.pop("_override_root_dir", None)
+                    cfg["workstations"][wid].update(clean_info)
                     cfg["workstations"][wid]["workstation_id"] = wid
+            if isinstance(updates.get("remove_workstation_ids"), list):
+                for rm_id in updates["remove_workstation_ids"]:
+                    rm_s = str(rm_id or "").strip()
+                    if rm_s:
+                        cfg["workstations"].pop(rm_s, None)
+        _prune_legacy_workstation_placeholders(cfg)
         try:
             os.makedirs(os.path.dirname(WORKSTATION_SETTINGS_PATH), exist_ok=True)
             tmp = f"{WORKSTATION_SETTINGS_PATH}.{os.getpid()}.{_ws_threading.get_ident()}.{_ws_uuid.uuid4().hex[:6]}.part"
@@ -469,28 +581,65 @@ def register_workstation_heartbeat(workstation_id: str = None, info: dict = None
     with _WS_CFG_LOCK:
         wid = str(workstation_id or WORKSTATION_ID).strip()
         cfg = load_workstation_settings()
+        # Match canonical workstation key case-insensitively if already registered
+        for existing_k in list(cfg["workstations"].keys()):
+            if existing_k.lower() == wid.lower():
+                wid = existing_k
+                break
+        predef = PREDEFINED_WORKSTATIONS.get(wid) or next(
+            (pv for pk, pv in PREDEFINED_WORKSTATIONS.items() if pk.lower() == wid.lower()),
+            {},
+        )
         cur = dict(cfg["workstations"].get(wid) or {})
         cur["workstation_id"] = wid
         if not cur.get("name"):
-            cur["name"] = PREDEFINED_WORKSTATIONS.get(wid, {}).get("name") or f"Workstation ({wid})"
-        if wid == WORKSTATION_ID and os.name == "nt":
-            cur["root_dir"] = LOCAL_SCANS_ROOT
-        elif not cur.get("root_dir"):
-            cur["root_dir"] = PREDEFINED_WORKSTATIONS.get(wid, {}).get("root_dir") or LOCAL_SCANS_ROOT
+            cur["name"] = predef.get("name") or f"Workstation ({wid})"
+        if not cur.get("nickname") and predef.get("nickname"):
+            cur["nickname"] = predef["nickname"]
+
+        preserve_name = cur.get("name")
+        preserve_daemon = cur.get("daemon_enabled", True)
+        preserve_root = normalize_windows_root_dir(cur.get("root_dir") or "")
+        preserve_root_ts = float(cur.get("root_dir_updated_at") or 0.0)
+
         cur["last_seen"] = time.time()
         if "daemon_enabled" not in cur:
             cur["daemon_enabled"] = True
+
         if isinstance(info, dict):
-            # Preserve admin-configured `name` and `daemon_enabled` unless explicitly supplied as admin update
-            preserve_name = cur.get("name")
-            preserve_daemon = cur.get("daemon_enabled", True)
-            cur.update(info)
-            if preserve_name and not info.get("_override_name"):
+            incoming = dict(info)
+            in_active_root = normalize_windows_root_dir(incoming.get("active_root_dir") or incoming.get("root_dir") or "")
+            if in_active_root:
+                cur["active_root_dir"] = in_active_root
+            override_root = bool(incoming.pop("_override_root_dir", False))
+            override_name = bool(incoming.pop("_override_name", False))
+            override_daemon = bool(incoming.pop("_override_daemon", False))
+            in_root = normalize_windows_root_dir(incoming.get("root_dir") or "")
+            if in_root:
+                incoming["root_dir"] = in_root
+            else:
+                incoming.pop("root_dir", None)
+            cur.update(incoming)
+            if preserve_name and not override_name:
                 cur["name"] = preserve_name
-            if not info.get("_override_daemon"):
+            if not override_daemon:
                 cur["daemon_enabled"] = preserve_daemon
-            cur.pop("_override_name", None)
-            cur.pop("_override_daemon", None)
+            # Never overwrite an admin-configured root_dir from a background heartbeat!
+            if preserve_root and preserve_root_ts > 0 and not override_root:
+                cur["root_dir"] = preserve_root
+                cur["root_dir_updated_at"] = preserve_root_ts
+            elif not cur.get("root_dir"):
+                if in_root:
+                    cur["root_dir"] = in_root
+                elif predef.get("root_dir"):
+                    cur["root_dir"] = predef["root_dir"]
+                elif os.name == "nt" and wid.lower() == WORKSTATION_ID.lower():
+                    cur["root_dir"] = LOCAL_SCANS_ROOT
+        elif not cur.get("root_dir"):
+            cur["root_dir"] = predef.get("root_dir") or (
+                LOCAL_SCANS_ROOT if (os.name == "nt" and wid.lower() == WORKSTATION_ID.lower()) else r"C:\GatheringScans"
+            )
+
         cfg["workstations"][wid] = cur
         return save_workstation_settings(cfg)
 

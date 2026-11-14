@@ -1863,13 +1863,14 @@
     if (!panels.length) return;
     if (!forceRender && panels.some((p) => p.contains(document.activeElement))) return;
 
-    const workstations = wsData.workstations || {};
-    const qChosen = String(wsData.query_serving_workstation || "auto");
-    const pChosen = String(wsData.processing_workstation || "auto");
+    const rootData = wsData.settings && !wsData.workstations ? wsData.settings : wsData;
+    const workstations = rootData.workstations || {};
+    const qChosen = String(rootData.query_serving_workstation || "auto");
+    const pChosen = String(rootData.processing_workstation || "auto");
     const wids = Object.keys(workstations);
-    let thisPcWid = String(wsData.local_workstation_id || _detectedLocalWorkstationId || "").trim();
-    if (!thisPcWid && wsData.caller_ip) {
-      const callerIp = String(wsData.caller_ip).trim();
+    let thisPcWid = String(rootData.local_workstation_id || _detectedLocalWorkstationId || "").trim();
+    if (!thisPcWid && rootData.caller_ip) {
+      const callerIp = String(rootData.caller_ip).trim();
       const ipMatches = wids.filter((wid) => String((workstations[wid] || {}).ip || "").trim() === callerIp);
       if (ipMatches.length === 1) thisPcWid = ipMatches[0];
     }
@@ -1954,16 +1955,32 @@
             const thisPcBadge = isThisPc
               ? `<span class="gs-crs-pill" style="background:rgba(37,99,235,0.14);color:#2563eb;border:1px solid rgba(37,99,235,0.35);font-weight:700;font-size:10px;">${escapeHtml(tr("此電腦", "This PC"))}</span>`
               : "";
+            const activeRoot = String(wInfo.active_root_dir || "").trim();
+            const rootTitle =
+              activeRoot && activeRoot.toLowerCase() !== rootDir.toLowerCase()
+                ? tr(
+                    `此工作站設定的掃描資料夾路徑（目前執行中路徑：${activeRoot}，儲存後將自動切換）`,
+                    `Configured scans folder path on this PC (currently active: ${activeRoot}; switches automatically)`
+                  )
+                : tr(
+                    "此工作站的掃描資料夾路徑（例如 C:\\GatheringScans 或 D:\\GatheringScans）",
+                    "Local scans folder path on this workstation (e.g. C:\\GatheringScans or D:\\GatheringScans)"
+                  );
+            const removeBtnHtml =
+              !st.online && !isThisPc
+                ? `<button type="button" class="gs-btn js-btn-remove-ws" data-ws-remove="${escapeHtml(wid)}" title="${escapeHtml(tr("移除此離線工作站項目", "Remove offline workstation entry"))}" style="height:22px;padding:0 6px;font-size:12px;line-height:1;color:var(--ui-text-muted);">×</button>`
+                : "";
             return `<div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--ui-border);flex-wrap:wrap;">
               <code style="font-size:11px;font-weight:700;color:var(--ui-text-primary);min-width:128px;">${escapeHtml(wid)}</code>
               ${thisPcBadge}
-              <input type="text" class="gs-input" data-ws-nick="${escapeHtml(wid)}" value="${escapeHtml(nick)}" placeholder="${escapeHtml(tr("別名（選填）", "Nickname"))}" style="width:135px;height:24px;font-size:11px;padding:2px 7px;" />
-              ${rootDir ? `<code style="font-size:10.5px;color:var(--ui-text-muted);">${escapeHtml(rootDir)}</code>` : ""}
+              <input type="text" class="gs-input" data-ws-nick="${escapeHtml(wid)}" value="${escapeHtml(nick)}" placeholder="${escapeHtml(tr("別名（選填）", "Nickname"))}" style="width:125px;height:24px;font-size:11px;padding:2px 7px;" />
+              <input type="text" class="gs-input" data-ws-root="${escapeHtml(wid)}" value="${escapeHtml(rootDir)}" placeholder="C:\\GatheringScans" title="${escapeHtml(rootTitle)}" style="width:168px;height:24px;font-size:11px;font-family:ui-monospace,SFMono-Regular,Consolas,monospace;padding:2px 7px;" />
               <span class="gs-crs-pill" style="background:${st.pillBg};color:${st.pillCol};font-weight:700;font-size:10px;">${escapeHtml(st.tag)}</span>
               <label style="display:flex;align-items:center;gap:5px;font-size:11px;margin-left:auto;cursor:pointer;font-weight:600;color:var(--ui-text-primary);">
                 <input type="checkbox" data-ws-id="${escapeHtml(wid)}" data-ws-perm="daemon_enabled" ${dOn ? "checked" : ""}>
                 ${tr("啟用守護程式 (Daemon)", "Daemon On")}
               </label>
+              ${removeBtnHtml}
             </div>`;
           })
           .join("");
@@ -1999,7 +2016,8 @@
         t.classList?.contains("js-sel-query-ws") ||
         t.classList?.contains("js-sel-proc-ws") ||
         t.hasAttribute?.("data-ws-id") ||
-        t.hasAttribute?.("data-ws-nick")
+        t.hasAttribute?.("data-ws-nick") ||
+        t.hasAttribute?.("data-ws-root")
       ) {
         _workstationPanelDirty = true;
       }
@@ -2007,6 +2025,22 @@
     document.addEventListener("change", markDirtyIfWsControl);
     document.addEventListener("input", markDirtyIfWsControl);
     document.addEventListener("click", async (e) => {
+      const rmBtn = e.target?.closest?.(".js-btn-remove-ws");
+      if (rmBtn) {
+        const rmWid = rmBtn.getAttribute("data-ws-remove");
+        if (!rmWid) return;
+        try {
+          const savedRm = await apiPost("/api/admin/workstations", {
+            remove_workstation_ids: [rmWid],
+          });
+          _workstationPanelDirty = false;
+          _populateWorkstationPanel(savedRm, true);
+          showToast(tr(`已移除離線工作站：${rmWid}`, `Removed offline workstation: ${rmWid}`));
+        } catch (err) {
+          showToast(`Remove failed: ${err.message}`);
+        }
+        return;
+      }
       const saveBtn = e.target?.closest?.(".js-btn-save-ws");
       if (!saveBtn) return;
       const panel = saveBtn.closest("[data-ws-coordinator-panel]") || document;
@@ -2028,6 +2062,16 @@
           workstationsPayload[wid] = Object.assign(workstationsPayload[wid] || {}, {
             nickname: String(inp.value || "").trim(),
           });
+        });
+        panel.querySelectorAll("input[data-ws-root]").forEach((inp) => {
+          const wid = inp.getAttribute("data-ws-root");
+          if (!wid) return;
+          const rootVal = String(inp.value || "").trim();
+          if (rootVal) {
+            workstationsPayload[wid] = Object.assign(workstationsPayload[wid] || {}, {
+              root_dir: rootVal,
+            });
+          }
         });
         const savedData = await apiPost("/api/admin/workstations", {
           query_serving_workstation: selQuery?.value || "auto",

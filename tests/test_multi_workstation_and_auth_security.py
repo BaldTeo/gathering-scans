@@ -45,44 +45,62 @@ class TestMultiWorkstationAuthAndImports(unittest.TestCase):
         tmp_dir = tempfile.mkdtemp(prefix="gs_ws_coord_")
         try:
             ws_file = os.path.join(tmp_dir, "workstation_settings.json")
-            with patch.object(gs_config, "WORKSTATION_SETTINGS_PATH", ws_file):
+            with patch.object(gs_config, "WORKSTATION_SETTINGS_PATH", ws_file), patch.dict(
+                os.environ, {"GATHERING_SCANS_RUNTIME_DIR": tmp_dir}, clear=False
+            ):
                 cfg = gs_config.load_workstation_settings()
                 self.assertIn("DESKTOP-OEBISC7", cfg["workstations"])
-                self.assertIn("WorkPC1", cfg["workstations"])
-                self.assertEqual(cfg["workstations"]["WorkPC1"]["root_dir"], r"D:\GatheringScans")
+                self.assertIn("DESKTOP-ETIHJO1", cfg["workstations"])
+                self.assertNotIn("WorkPC1", cfg["workstations"])
+                self.assertEqual(cfg["workstations"]["DESKTOP-ETIHJO1"]["root_dir"], r"D:\GatheringScans")
+                self.assertEqual(cfg["workstations"]["DESKTOP-ETIHJO1"]["nickname"], "WorkPC")
+                self.assertEqual(cfg["workstations"]["DESKTOP-OEBISC7"]["nickname"], "HomePC")
 
-                # Strict processing_workstation pinning: if pinned to DESKTOP-OEBISC7, WorkPC1 NEVER processes even if DESKTOP-OEBISC7 is offline
+                # Strict processing_workstation pinning: if pinned to DESKTOP-OEBISC7, DESKTOP-ETIHJO1 NEVER processes even if DESKTOP-OEBISC7 is offline
                 cfg["processing_workstation"] = "DESKTOP-OEBISC7"
-                cfg["query_serving_workstation"] = "WorkPC1"
+                cfg["query_serving_workstation"] = "DESKTOP-ETIHJO1"
                 cfg["workstations"]["DESKTOP-OEBISC7"]["last_seen"] = time.time() - 3600  # offline 1h
-                cfg["workstations"]["WorkPC1"]["last_seen"] = time.time()  # online now
+                cfg["workstations"]["DESKTOP-ETIHJO1"]["last_seen"] = time.time()  # online now
                 gs_config.save_workstation_settings(cfg)
 
                 self.assertTrue(gs_config.is_workstation_processing_active("DESKTOP-OEBISC7"))
-                self.assertFalse(gs_config.is_workstation_processing_active("WorkPC1"))
+                self.assertFalse(gs_config.is_workstation_processing_active("DESKTOP-ETIHJO1"))
 
-                # Query serving respects online WorkPC1, and fails over to DESKTOP-OEBISC7 in 0ms once WorkPC1 goes stale > 45s
-                self.assertTrue(gs_config.is_workstation_query_serving_active("WorkPC1"))
+                # Query serving respects online DESKTOP-ETIHJO1, and fails over to DESKTOP-OEBISC7 in 0ms once DESKTOP-ETIHJO1 goes stale > 45s
+                self.assertTrue(gs_config.is_workstation_query_serving_active("DESKTOP-ETIHJO1"))
                 self.assertFalse(gs_config.is_workstation_query_serving_active("DESKTOP-OEBISC7"))
 
-                cfg["workstations"]["WorkPC1"]["last_seen"] = time.time() - 120
+                cfg["workstations"]["DESKTOP-ETIHJO1"]["last_seen"] = time.time() - 120
                 gs_config.save_workstation_settings(cfg)
                 self.assertTrue(gs_config.is_workstation_query_serving_active("DESKTOP-OEBISC7"))
 
-                # Heartbeat preserves admin-configured nickname and daemon_enabled toggle
-                cfg["workstations"]["WorkPC1"]["name"] = "Always-On Office Server"
-                cfg["workstations"]["WorkPC1"]["daemon_enabled"] = False
+                # Heartbeat preserves admin-configured name, daemon_enabled toggle, AND admin-saved root_dir!
+                cfg["workstations"]["DESKTOP-ETIHJO1"]["name"] = "Always-On Office Server"
+                cfg["workstations"]["DESKTOP-ETIHJO1"]["daemon_enabled"] = False
+                cfg["workstations"]["DESKTOP-ETIHJO1"]["root_dir"] = r"D:\GatheringScans"
+                cfg["workstations"]["DESKTOP-ETIHJO1"]["root_dir_updated_at"] = time.time()
                 gs_config.save_workstation_settings(cfg)
-                updated = gs_config.register_workstation_heartbeat("WorkPC1", {"name": "IgnoredDefaultName", "daemon_enabled": True})
-                self.assertEqual(updated["workstations"]["WorkPC1"]["name"], "Always-On Office Server")
-                self.assertFalse(updated["workstations"]["WorkPC1"]["daemon_enabled"])
+                updated = gs_config.register_workstation_heartbeat(
+                    "DESKTOP-ETIHJO1",
+                    {"name": "IgnoredDefaultName", "daemon_enabled": True, "root_dir": r"C:\GatheringScans"},
+                )
+                self.assertEqual(updated["workstations"]["DESKTOP-ETIHJO1"]["name"], "Always-On Office Server")
+                self.assertFalse(updated["workstations"]["DESKTOP-ETIHJO1"]["daemon_enabled"])
+                self.assertEqual(updated["workstations"]["DESKTOP-ETIHJO1"]["root_dir"], r"D:\GatheringScans")
+                self.assertEqual(updated["workstations"]["DESKTOP-ETIHJO1"]["active_root_dir"], r"C:\GatheringScans")
+
+                # Local workstation override round-trip
+                saved_ov = gs_config.set_local_workstation_root_override("D:/GatheringScans/", updated_at=12345.0)
+                self.assertEqual(saved_ov, r"D:\GatheringScans")
+                self.assertEqual(gs_config.get_local_workstation_root_override(), r"D:\GatheringScans")
         finally:
             shutil.rmtree(tmp_dir, ignore_errors=True)
 
-        # Verify UI renders zero '(this PC)' labels
+        # Verify UI renders editable data-ws-root input and zero '(this PC)' labels
         with open(os.path.join(BASE_DIR, "web", "src", "07-compare-and-queue.js"), "r", encoding="utf-8") as f:
             js07 = f.read()
         self.assertNotIn("(this PC)", js07)
+        self.assertIn("data-ws-root", js07)
         self.assertIn("refreshWorkstationCoordinatorPanels", js07)
 
     def test_02_syncthing_folder_readiness_guard(self):
@@ -211,11 +229,34 @@ class TestMultiWorkstationAuthAndImports(unittest.TestCase):
                     st_vcancel, _ = _req("POST", "/api/queue/cancel", {"scan_id": "test_scan_beta"}, token=viewer_tok)
                     self.assertEqual(st_vcancel, 403)
 
-                    # 4. Admin can cancel queued scan and manage workstations
+                    # 4. Admin can cancel queued scan and manage workstations (including editable root_dir!)
+                    self.assertIsNone(tmp_db.get_active_job())
                     st_aws, aws_data = _req("GET", "/api/admin/workstations", token=old_owner_tok)
                     self.assertEqual(st_aws, 200)
                     self.assertIn("DESKTOP-OEBISC7", aws_data["workstations"])
-                    self.assertIn("WorkPC1", aws_data["workstations"])
+                    self.assertIn("DESKTOP-ETIHJO1", aws_data["workstations"])
+                    self.assertNotIn("WorkPC1", aws_data["workstations"])
+
+                    st_upd_ws, upd_ws_data = _req(
+                        "POST",
+                        "/api/admin/workstations",
+                        {
+                            "query_serving_workstation": "auto",
+                            "processing_workstation": "DESKTOP-OEBISC7",
+                            "workstations": {
+                                "DESKTOP-ETIHJO1": {
+                                    "nickname": "WorkPC",
+                                    "root_dir": "D:/GatheringScans/",
+                                    "daemon_enabled": True,
+                                }
+                            },
+                        },
+                        token=old_owner_tok,
+                    )
+                    self.assertEqual(st_upd_ws, 200)
+                    self.assertEqual(upd_ws_data["workstations"]["DESKTOP-ETIHJO1"]["root_dir"], r"D:\GatheringScans")
+                    self.assertEqual(upd_ws_data["workstations"]["DESKTOP-ETIHJO1"]["nickname"], "WorkPC")
+
                     st_acancel, _ = _req("POST", "/api/queue/cancel", {"scan_id": "test_scan_beta"}, token=old_owner_tok)
                     self.assertEqual(st_acancel, 200)
                     self.assertEqual(tmp_db.get_scan("test_scan_beta")["status"], "cancelled")

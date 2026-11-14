@@ -2243,6 +2243,13 @@ class ScanQueueDB:
                 merged.append(fn)
         return merged
 
+    def get_active_job(self) -> Optional[Dict[str, Any]]:
+        with DB_LOCK, self._connect() as conn:
+            row = conn.execute(
+                "SELECT * FROM scans WHERE status = 'processing' ORDER BY uploaded_at DESC LIMIT 1"
+            ).fetchone()
+            return self._row_to_dict(row) if row else None
+
     def get_scan(self, scan_id: str) -> Optional[Dict[str, Any]]:
         with DB_LOCK, self._connect() as conn:
             row = conn.execute("SELECT * FROM scans WHERE scan_id = ?", (scan_id,)).fetchone()

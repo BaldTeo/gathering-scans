@@ -6,6 +6,7 @@ Separated from server.py to keep all server modules strictly under 2,650 lines.
 
 import os
 import re
+import sys
 import json
 import time
 import base64
@@ -17,6 +18,7 @@ from typing import Dict, Any, Optional, Tuple, List
 
 from pc_worker.config import (
     VPS_HOST,
+    PUBLIC_BASE_URL,
     WORKSTATION_ID,
     TUNNEL_SHARED_KEY,
     LOCAL_SCANS_ROOT,
@@ -32,6 +34,7 @@ from pc_worker.config import (
     load_workstation_settings,
     save_workstation_settings,
     register_workstation_heartbeat,
+    normalize_windows_root_dir,
     get_min_valid_session_iat,
     set_min_valid_session_iat,
 )
@@ -71,6 +74,8 @@ from pc_worker.server_cloud_and_tunnel import (
     _save_cloud_auth,
     _test_gdrive_service_account,
     send_rpc_to_workstation_via_tunnel,
+    enrich_workstations_response,
+    apply_local_workstation_root_if_changed,
 )
 from pc_worker.surveying.rust_accel import (
     HAS_RUST_CORE,
@@ -556,6 +561,7 @@ class ServerWriteRoutesMixin:
             hb_info: Dict[str, Any] = {
                 "hostname": str(payload.get("hostname") or ws_id).strip(),
                 "root_dir": str(payload.get("root_dir") or "").strip(),
+                "active_root_dir": str(payload.get("active_root_dir") or payload.get("root_dir") or "").strip(),
                 "pix4d_busy": bool(payload.get("pix4d_busy", False)),
                 "active_scan_id": str(payload.get("active_scan_id") or "").strip(),
                 "ip": client_ip,
@@ -898,6 +904,10 @@ class ServerWriteRoutesMixin:
 
         try:
             actor_email, actor_role, actor_perms = self._resolve_request_role(payload, query, share_token)
+            is_internal_tun_sync = (
+                self.headers.get("X-Tunnel-Key", "").strip() == TUNNEL_SHARED_KEY
+                and path in ("/api/admin/workstations", "/api/admin/logout-everyone")
+            )
             is_public_post = path in (
                 "/api/auth/google",
                 "/api/auth/logout",
@@ -907,7 +917,7 @@ class ServerWriteRoutesMixin:
                 "/api/gchat/webhook",
                 "/api/share/telemetry",
             )
-            if not is_public_post and not share_token and actor_role == "guest":
+            if not is_public_post and not is_internal_tun_sync and not share_token and actor_role == "guest":
                 self.send_json(
                     {"error": "Authentication required. Please sign in with Google.", "auth_required": True},
                     status=401,
@@ -1981,7 +1991,7 @@ class ServerWriteRoutesMixin:
                 return
 
             if path == "/api/admin/workstations":
-                if share_token or not actor_perms.get("can_manage_users"):
+                if not is_internal_tun_sync and (share_token or not actor_perms.get("can_manage_users")):
                     self.send_json({"error": "Admin or Owner role required to update workstation settings."}, status=403)
                     return
                 now_upd = time.time()
@@ -1998,40 +2008,61 @@ class ServerWriteRoutesMixin:
                             item_w["daemon_updated_at"] = now_upd
                         elif "daemon_enabled" in item_w and "daemon_updated_at" not in item_w:
                             item_w["daemon_updated_at"] = now_upd
+                        if "root_dir" in item_w and item_w["root_dir"] is not None:
+                            norm_r = normalize_windows_root_dir(item_w["root_dir"])
+                            if norm_r:
+                                item_w["root_dir"] = norm_r
+                                item_w["_override_root_dir"] = True
+                                if not is_internal_tun_sync or "root_dir_updated_at" not in item_w:
+                                    item_w["root_dir_updated_at"] = now_upd
+                            else:
+                                item_w.pop("root_dir", None)
                         clean_ws_dict[wk] = item_w
                     ws_patch["workstations"] = clean_ws_dict
                 updated = save_workstation_settings(ws_patch)
-                # Apply local daemon toggle immediately if running on Windows PC
+                # Apply local daemon toggle & local root_dir override immediately if running on Windows PC
                 if os.name == "nt":
                     for wk, wv in (updated.get("workstations") or {}).items():
-                        if str(wk).strip().lower() == WORKSTATION_ID.lower() and isinstance(wv, dict) and "daemon_enabled" in wv:
-                            want_d = bool(wv.get("daemon_enabled", True))
-                            if want_d != is_pc_daemon_running():
-                                set_pc_daemon_running(want_d, actor_email=actor_email)
-                    if self.headers.get("X-From-Vps", "") != "1":
-                        def _sync_ws_to_vps(patch_copy: Dict[str, Any]):
-                            try:
-                                import http.client as _hc
-
-                                c_v = _hc.HTTPConnection(VPS_HOST, 8095, timeout=3.0)
-                                c_v.request(
-                                    "POST",
-                                    "/api/admin/workstations",
-                                    body=json.dumps(patch_copy).encode("utf-8"),
-                                    headers={
-                                        "Content-Type": "application/json",
-                                        "X-Tunnel-Key": TUNNEL_SHARED_KEY,
-                                        "X-From-Vps": "1",
-                                    },
+                        if str(wk).strip().lower() == WORKSTATION_ID.lower() and isinstance(wv, dict):
+                            if "daemon_enabled" in wv:
+                                want_d = bool(wv.get("daemon_enabled", True))
+                                if want_d != is_pc_daemon_running():
+                                    set_pc_daemon_running(want_d, actor_email=actor_email or "vps_coordinator")
+                            upd_root = str(wv.get("root_dir") or "").strip()
+                            upd_root_ts = float(wv.get("root_dir_updated_at") or 0.0)
+                            if upd_root and upd_root_ts > 0:
+                                apply_local_workstation_root_if_changed(
+                                    upd_root,
+                                    root_updated_at=upd_root_ts,
+                                    allow_respawn=True,
                                 )
-                                c_v.getresponse().read()
-                                c_v.close()
-                            except Exception:
-                                pass
+                    if "unittest" not in sys.modules and self.headers.get("X-From-Vps", "") != "1":
+                        def _sync_ws_to_vps(patch_copy: Dict[str, Any]):
+                            import urllib.request as _ur_ws
+
+                            raw_b = json.dumps(patch_copy).encode("utf-8")
+                            hdrs_v = {
+                                "Content-Type": "application/json",
+                                "X-Tunnel-Key": TUNNEL_SHARED_KEY,
+                                "X-From-Vps": "1",
+                                "Connection": "close",
+                            }
+                            for ep_v in (
+                                f"{PUBLIC_BASE_URL.rstrip('/')}/api/admin/workstations",
+                                f"http://{VPS_HOST}:8095/api/admin/workstations",
+                            ):
+                                try:
+                                    req_v = _ur_ws.Request(ep_v, data=raw_b, headers=hdrs_v, method="POST")
+                                    with _ur_ws.urlopen(req_v, timeout=3.5) as r_v:
+                                        if r_v.status == 200:
+                                            r_v.read()
+                                            break
+                                except Exception:
+                                    continue
 
                         threading.Thread(target=_sync_ws_to_vps, args=(ws_patch,), daemon=True).start()
                 else:
-                    # Running on VPS coordinator: push updated settings & daemon toggles immediately to online workstations
+                    # Running on VPS coordinator: push updated settings & root_dir/daemon overrides immediately to online workstations
                     def _push_ws_to_pcs(full_cfg: Dict[str, Any]):
                         for wk in list((full_cfg.get("workstations") or {}).keys()):
                             try:
@@ -2048,7 +2079,8 @@ class ServerWriteRoutesMixin:
                     threading.Thread(target=_push_ws_to_pcs, args=(updated,), daemon=True).start()
                 _PIX4D_WAKE_EVENT.set()
                 _DAEMON_WAKE_EVENT.set()
-                self.send_json({"ok": True, "status": "ok", "settings": updated})
+                enriched_updated = enrich_workstations_response(updated, caller_ip=self._extract_client_ip())
+                self.send_json({**enriched_updated, "ok": True, "status": "ok", "settings": enriched_updated})
                 return
 
             if path in ("/api/scans/rerun", "/api/queue/enqueue", "/api/queue/reprocess"):

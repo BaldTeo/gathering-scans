@@ -2641,11 +2641,11 @@ class GatheringScansHandler(CloudAndTunnelHandlerMixin, ServerWriteRoutesMixin, 
                 self.send_json({"error": "Owner or Admin session required to inspect workstation settings."}, status=403)
                 return
             from pc_worker.config import load_workstation_settings, save_workstation_settings
-            from pc_worker.server_cloud_and_tunnel import get_active_tunnel_socket_counts
+            from pc_worker.server_cloud_and_tunnel import enrich_workstations_response
             import urllib.request as _ur
 
             cfg = load_workstation_settings()
-            if os.name == "nt" and self.headers.get("X-From-Vps", "") != "1":
+            if os.name == "nt" and "unittest" not in sys.modules and self.headers.get("X-From-Vps", "") != "1":
                 # Fetch authoritative multi-workstation coordinator state from VPS so local port 8095 & scans.gatheren.cloud always match
                 for _vps_ep in (
                     f"{PUBLIC_BASE_URL.rstrip('/')}/api/admin/workstations",
@@ -2664,37 +2664,7 @@ class GatheringScansHandler(CloudAndTunnelHandlerMixin, ServerWriteRoutesMixin, 
                                     break
                     except Exception:
                         continue
-            now_ws = time.time()
-            active_tunnels_ci = {
-                str(k).strip().lower(): int(v)
-                for k, v in (get_active_tunnel_socket_counts() if os.name != "nt" else {}).items()
-            }
-            ws_out: Dict[str, Any] = {}
-            for wid, winfo in (cfg.get("workstations") or {}).items():
-                if not isinstance(winfo, dict):
-                    continue
-                item = dict(winfo)
-                wid_low = str(wid).strip().lower()
-                if os.name == "nt" and wid_low == WORKSTATION_ID.lower():
-                    item["last_seen"] = now_ws
-                    item["root_dir"] = LOCAL_SCANS_ROOT
-                    item["daemon_enabled"] = is_pc_daemon_running()
-                tun_sockets = active_tunnels_ci.get(wid_low, 0)
-                if tun_sockets > 0:
-                    item["last_seen"] = max(float(item.get("last_seen") or 0.0), now_ws)
-                    item["tunnel_sockets"] = tun_sockets
-                ls = float(item.get("last_seen") or 0.0)
-                age_s = round(max(0.0, now_ws - ls), 1) if ls > 0 else 999999.0
-                online = bool(tun_sockets > 0) or (ls > 0 and age_s <= 45.0)
-                d_en = bool(item.get("daemon_enabled", True))
-                busy = bool(item.get("pix4d_busy", False)) and online
-                item["online"] = online
-                item["age_sec"] = age_s if ls > 0 else None
-                item["status"] = "processing" if busy else ("online" if (online and d_en) else ("paused" if online else "offline"))
-                ws_out[wid] = item
-            cfg["workstations"] = ws_out
-            cfg["caller_ip"] = self._extract_client_ip()
-            cfg["local_workstation_id"] = WORKSTATION_ID if os.name == "nt" else ""
+            cfg = enrich_workstations_response(cfg, caller_ip=self._extract_client_ip())
             cfg["coordinator_source"] = "vps" if os.name != "nt" else "synced_vps_coordinator"
             self.send_json(cfg)
             return
