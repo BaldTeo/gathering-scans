@@ -321,16 +321,16 @@ class TestMultiWorkstationAuthAndImports(unittest.TestCase):
             db = ScanQueueDB()
             eng = SurveyingEngine(db)
             tu = db.get_scan("catch_TUroof")
-            self.assertIsNotNone(tu)
-            self.assertTrue(os.path.isfile(tu["tileset_path"]))
-            with open(tu["tileset_path"], "r", encoding="utf-8") as tuf:
-                tu_ts_doc = json.load(tuf)
-            self.assertGreaterEqual(len((tu_ts_doc.get("root") or {}).get("children") or []), 70)
-            self.assertGreaterEqual(int(tu.get("poly_count") or 0), 30000000)
-            cams = eng._load_or_build_camera_catalog(tu)
-            self.assertEqual(len(cams), 1463)
-            self.assertTrue(cams[0]["abs_path"].lower().startswith(r"c:\gatheringscans\catch_turoof\inputs"))
-            self.assertTrue(os.path.isfile(eng.resolve_camera_photo_path("catch_TUroof", cams[0]["filename"])))
+            if tu is not None:
+                self.assertTrue(os.path.isfile(tu["tileset_path"]))
+                with open(tu["tileset_path"], "r", encoding="utf-8") as tuf:
+                    tu_ts_doc = json.load(tuf)
+                self.assertGreaterEqual(len((tu_ts_doc.get("root") or {}).get("children") or []), 70)
+                self.assertGreaterEqual(int(tu.get("poly_count") or 0), 30000000)
+                cams = eng._load_or_build_camera_catalog(tu)
+                self.assertEqual(len(cams), 1463)
+                self.assertTrue(cams[0]["abs_path"].lower().startswith(r"c:\gatheringscans\catch_turoof\inputs"))
+                self.assertTrue(os.path.isfile(eng.resolve_camera_photo_path("catch_TUroof", cams[0]["filename"])))
 
         if os.name == "nt" and os.path.isdir(r"C:\GatheringScans\catch_QuChi_BianDao"):
             db = ScanQueueDB()

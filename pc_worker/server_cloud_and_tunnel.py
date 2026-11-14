@@ -356,6 +356,14 @@ def is_pc_simulated_offline() -> bool:
 VPS_TUNNEL_POOL: "queue.LifoQueue[Tuple[socket.socket, threading.Event, float, int]]" = queue.LifoQueue()
 _VPS_RAM_FALLBACK_CACHE: Dict[str, Tuple[int, Dict[str, str], bytes]] = {}
 _TUNNEL_POOL_STARTED = False
+_ACTIVE_TUNNEL_LOCK = threading.Lock()
+_ACTIVE_TUNNEL_SOCKETS_BY_WS: Dict[str, int] = {}
+_LAST_TUNNEL_HB_BY_WS: Dict[str, float] = {}
+
+
+def get_active_tunnel_socket_counts() -> Dict[str, int]:
+    with _ACTIVE_TUNNEL_LOCK:
+        return {k: v for k, v in _ACTIVE_TUNNEL_SOCKETS_BY_WS.items() if v > 0}
 
 CLOUD_MANIFEST_PATH = (
     "/host_docker/gathering_scans/data/gdrive_cloud_manifest.json"
@@ -1158,6 +1166,8 @@ def start_pc_reverse_tunnel_pool(local_port: int = SERVER_PORT, pool_size: int =
             time.sleep(90.0)
 
     def _workstation_heartbeat_loop():
+        import urllib.request
+
         time.sleep(1.0)
         while True:
             try:
@@ -1166,10 +1176,13 @@ def start_pc_reverse_tunnel_pool(local_port: int = SERVER_PORT, pool_size: int =
                     try:
                         import psutil
 
-                        for p in psutil.process_iter(["name", "cmdline"]):
+                        for p in psutil.process_iter(["name"]):
                             nm = (p.info.get("name") or "").lower()
                             if "pix4dmatic" in nm:
-                                cmd_s = " ".join(p.info.get("cmdline") or []).lower()
+                                try:
+                                    cmd_s = " ".join(p.cmdline() or []).lower()
+                                except Exception:
+                                    cmd_s = ""
                                 if "--gst" in cmd_s:
                                     p4d_busy = True
                                     break
@@ -1201,21 +1214,30 @@ def start_pc_reverse_tunnel_pool(local_port: int = SERVER_PORT, pool_size: int =
                             "last_seen": time.time(),
                         },
                     )
-                    hb_conn = http.client.HTTPConnection(VPS_HOST, 8095, timeout=6.0)
-                    try:
-                        hb_conn.request(
-                            "POST",
-                            "/api/workstation/heartbeat",
-                            body=hb_payload,
-                            headers={
-                                "Content-Type": "application/json",
-                                "X-Tunnel-Key": TUNNEL_SHARED_KEY,
-                                "X-Workstation-Id": WORKSTATION_ID,
-                            },
-                        )
-                        hb_resp = hb_conn.getresponse()
-                        raw_hb = hb_resp.read()
-                        if hb_resp.status == 200 and raw_hb:
+
+                    def _send_hb_once():
+                        hdrs = {
+                            "Content-Type": "application/json",
+                            "X-Tunnel-Key": TUNNEL_SHARED_KEY,
+                            "X-Workstation-Id": WORKSTATION_ID,
+                            "Connection": "close",
+                        }
+                        endpoints = [
+                            f"{PUBLIC_BASE_URL.rstrip('/')}/api/workstation/heartbeat",
+                            f"http://{VPS_HOST}:8095/api/workstation/heartbeat",
+                        ]
+                        raw_hb = b""
+                        for ep_url in endpoints:
+                            try:
+                                req_hb = urllib.request.Request(ep_url, data=hb_payload, headers=hdrs, method="POST")
+                                with urllib.request.urlopen(req_hb, timeout=5.0) as r_hb:
+                                    if r_hb.status == 200:
+                                        raw_hb = r_hb.read()
+                                        if raw_hb:
+                                            break
+                            except Exception:
+                                continue
+                        if raw_hb:
                             hb_data = json.loads(raw_hb.decode("utf-8"))
                             vps_iat = int(hb_data.get("min_valid_iat") or 0)
                             if vps_iat > get_min_valid_session_iat():
@@ -1235,11 +1257,10 @@ def start_pc_reverse_tunnel_pool(local_port: int = SERVER_PORT, pool_size: int =
                                     desired_running = bool(my_entry.get("daemon_enabled", True))
                                     if vps_d_ts > loc_d_ts + 0.5 and desired_running != is_pc_daemon_running():
                                         set_pc_daemon_running(desired_running, actor_email="vps_coordinator")
-                    finally:
-                        try:
-                            hb_conn.close()
-                        except Exception:
-                            pass
+
+                    t_hb_once = threading.Thread(target=_send_hb_once, daemon=True)
+                    t_hb_once.start()
+                    t_hb_once.join(timeout=8.0)
             except Exception:
                 pass
             time.sleep(15.0)
@@ -1262,6 +1283,13 @@ class CloudAndTunnelHandlerMixin:
         proto_ver = 2 if proto_hdr == "2" else 1
         try:
             self.connection.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+            self.connection.setsockopt(socket.SOL_SOCKET, socket.SO_KEEPALIVE, 1)
+            if hasattr(socket, "TCP_KEEPIDLE"):
+                self.connection.setsockopt(socket.IPPROTO_TCP, socket.TCP_KEEPIDLE, 20)
+            if hasattr(socket, "TCP_KEEPINTVL"):
+                self.connection.setsockopt(socket.IPPROTO_TCP, socket.TCP_KEEPINTVL, 10)
+            if hasattr(socket, "TCP_KEEPCNT"):
+                self.connection.setsockopt(socket.IPPROTO_TCP, socket.TCP_KEEPCNT, 3)
             self.connection.sendall(
                 f"HTTP/1.1 200 OK\r\nX-Tunnel-Ready: {proto_ver}\r\nContent-Length: 0\r\n\r\n".encode("ascii")
             )
@@ -1270,30 +1298,60 @@ class CloudAndTunnelHandlerMixin:
             return
 
         ws_id = self.headers.get("X-Workstation-Id", "").strip() or "workstation_1"
+        client_ip = self.client_address[0] if getattr(self, "client_address", None) else ""
         done_evt = threading.Event()
         done_evt.last_ts = time.time()
         done_evt.in_use = False
         done_evt.workstation_id = ws_id
+
+        def _touch_tunnel_ws_heartbeat(force: bool = False) -> None:
+            now_t = time.time()
+            should_write = force
+            with _ACTIVE_TUNNEL_LOCK:
+                if now_t - _LAST_TUNNEL_HB_BY_WS.get(ws_id, 0.0) >= 12.0:
+                    _LAST_TUNNEL_HB_BY_WS[ws_id] = now_t
+                    should_write = True
+            if should_write:
+                try:
+                    register_workstation_heartbeat(ws_id, {"last_seen": now_t, "ip": client_ip})
+                except Exception:
+                    pass
+
+        with _ACTIVE_TUNNEL_LOCK:
+            _ACTIVE_TUNNEL_SOCKETS_BY_WS[ws_id] = _ACTIVE_TUNNEL_SOCKETS_BY_WS.get(ws_id, 0) + 1
         try:
-            from .config import register_workstation_heartbeat
-            client_ip = self.client_address[0] if getattr(self, "client_address", None) else ""
-            register_workstation_heartbeat(ws_id, {"last_seen": time.time(), "ip": client_ip})
-        except Exception:
-            pass
-        VPS_TUNNEL_POOL.put((self.connection, done_evt, done_evt.last_ts, proto_ver))
-        # Hold handler thread open while persistent socket serves requests in the pool
-        max_idle = 600.0 if proto_ver >= 2 else 45.0
-        while not done_evt.is_set():
-            done_evt.wait(timeout=30.0)
-            if done_evt.is_set():
-                break
-            if not getattr(done_evt, "in_use", False) and (time.time() - getattr(done_evt, "last_ts", 0.0) > max_idle):
-                done_evt.set()
-                break
-        while getattr(done_evt, "in_use", False):
-            time.sleep(0.05)
-        done_evt.set()
-        self.close_connection = True
+            _touch_tunnel_ws_heartbeat(force=True)
+            VPS_TUNNEL_POOL.put((self.connection, done_evt, done_evt.last_ts, proto_ver))
+            # Hold handler thread open while persistent socket serves requests in the pool
+            max_idle = 600.0 if proto_ver >= 2 else 45.0
+            while not done_evt.is_set():
+                done_evt.wait(timeout=20.0)
+                if done_evt.is_set():
+                    break
+                if not getattr(done_evt, "in_use", False):
+                    try:
+                        rlist, _, xlist = select.select([self.connection], [], [self.connection], 0)
+                        if rlist or xlist:
+                            done_evt.set()
+                            break
+                    except Exception:
+                        done_evt.set()
+                        break
+                    if time.time() - getattr(done_evt, "last_ts", 0.0) > max_idle:
+                        done_evt.set()
+                        break
+                _touch_tunnel_ws_heartbeat(force=False)
+            while getattr(done_evt, "in_use", False):
+                time.sleep(0.05)
+        finally:
+            with _ACTIVE_TUNNEL_LOCK:
+                cur_cnt = _ACTIVE_TUNNEL_SOCKETS_BY_WS.get(ws_id, 1) - 1
+                if cur_cnt <= 0:
+                    _ACTIVE_TUNNEL_SOCKETS_BY_WS.pop(ws_id, None)
+                else:
+                    _ACTIVE_TUNNEL_SOCKETS_BY_WS[ws_id] = cur_cnt
+            done_evt.set()
+            self.close_connection = True
 
     def _validate_cloud_share_token(
         self, share_token: str, requested_scan_id: Optional[str] = None

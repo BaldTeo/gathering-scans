@@ -1829,6 +1829,34 @@
   // Admin Workstation Panel helpers (Synced across Queue Modal & Admin Settings)
   // ---------------------------------------------------------------------------
   let _workstationPanelDirty = false;
+  let _detectedLocalWorkstationId = "";
+  let _lastLocalWsProbeTs = 0;
+
+  async function _probeLocalWorkstationId() {
+    if (_detectedLocalWorkstationId) return _detectedLocalWorkstationId;
+    const now = Date.now();
+    if (now - _lastLocalWsProbeTs < 8000) return _detectedLocalWorkstationId;
+    _lastLocalWsProbeTs = now;
+    try {
+      const ctrl = new AbortController();
+      const tId = setTimeout(() => ctrl.abort(), 1200);
+      const r = await fetch("http://127.0.0.1:8095/api/status", {
+        method: "GET",
+        mode: "cors",
+        cache: "no-store",
+        signal: ctrl.signal,
+      });
+      clearTimeout(tId);
+      if (r.ok) {
+        const j = await r.json();
+        if (j && j.workstation_id) {
+          _detectedLocalWorkstationId = String(j.workstation_id).trim();
+        }
+      }
+    } catch (_) {}
+    return _detectedLocalWorkstationId;
+  }
+
   function _populateWorkstationPanel(wsData, forceRender = false) {
     if (!wsData || (_workstationPanelDirty && !forceRender)) return;
     const panels = Array.from(document.querySelectorAll("[data-ws-coordinator-panel]"));
@@ -1839,6 +1867,12 @@
     const qChosen = String(wsData.query_serving_workstation || "auto");
     const pChosen = String(wsData.processing_workstation || "auto");
     const wids = Object.keys(workstations);
+    let thisPcWid = String(wsData.local_workstation_id || _detectedLocalWorkstationId || "").trim();
+    if (!thisPcWid && wsData.caller_ip) {
+      const callerIp = String(wsData.caller_ip).trim();
+      const ipMatches = wids.filter((wid) => String((workstations[wid] || {}).ip || "").trim() === callerIp);
+      if (ipMatches.length === 1) thisPcWid = ipMatches[0];
+    }
 
     function wsStateSummary(wInfo) {
       const online =
@@ -1890,7 +1924,9 @@
         const w = workstations[wid] || {};
         const st = wsStateSummary(w);
         const nick = String(w.nickname || "").trim();
-        const label = nick && nick !== wid ? `${nick} (${wid})` : wid;
+        const isThisPc = Boolean(thisPcWid && wid.toLowerCase() === thisPcWid.toLowerCase());
+        const baseLabel = nick && nick !== wid ? `${nick} (${wid})` : wid;
+        const label = isThisPc ? `${baseLabel} [${tr("此電腦", "This PC")}]` : baseLabel;
         const opt = document.createElement("option");
         opt.value = wid;
         opt.textContent = `${label} · ${st.tag}`;
@@ -1914,8 +1950,13 @@
             const nick = String(wInfo.nickname || "").trim();
             const rootDir = String(wInfo.root_dir || "").trim();
             const st = wsStateSummary(wInfo);
+            const isThisPc = Boolean(thisPcWid && wid.toLowerCase() === thisPcWid.toLowerCase());
+            const thisPcBadge = isThisPc
+              ? `<span class="gs-crs-pill" style="background:rgba(37,99,235,0.14);color:#2563eb;border:1px solid rgba(37,99,235,0.35);font-weight:700;font-size:10px;">${escapeHtml(tr("此電腦", "This PC"))}</span>`
+              : "";
             return `<div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--ui-border);flex-wrap:wrap;">
               <code style="font-size:11px;font-weight:700;color:var(--ui-text-primary);min-width:128px;">${escapeHtml(wid)}</code>
+              ${thisPcBadge}
               <input type="text" class="gs-input" data-ws-nick="${escapeHtml(wid)}" value="${escapeHtml(nick)}" placeholder="${escapeHtml(tr("別名（選填）", "Nickname"))}" style="width:135px;height:24px;font-size:11px;padding:2px 7px;" />
               ${rootDir ? `<code style="font-size:10.5px;color:var(--ui-text-muted);">${escapeHtml(rootDir)}</code>` : ""}
               <span class="gs-crs-pill" style="background:${st.pillBg};color:${st.pillCol};font-weight:700;font-size:10px;">${escapeHtml(st.tag)}</span>
@@ -1938,7 +1979,10 @@
   window.refreshWorkstationCoordinatorPanels = async function (forceRender = false) {
     if (!Boolean(getCurrentUserRoleInfo?.()?.canManageUsers)) return null;
     try {
-      const wsData = await apiGet("/api/admin/workstations");
+      const [wsData] = await Promise.all([
+        apiGet("/api/admin/workstations"),
+        _probeLocalWorkstationId(),
+      ]);
       _populateWorkstationPanel(wsData, forceRender);
       return wsData;
     } catch (_) {

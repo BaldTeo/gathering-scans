@@ -222,6 +222,7 @@ class GatheringScansHandler(CloudAndTunnelHandlerMixin, ServerWriteRoutesMixin, 
                 allowed_origin = origin
         self.send_header("Access-Control-Allow-Origin", allowed_origin)
         self.send_header("Access-Control-Allow-Credentials", "true")
+        self.send_header("Access-Control-Allow-Private-Network", "true")
         self.send_header("Vary", "Origin")
         self.send_header("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS")
         self.send_header(
@@ -1802,6 +1803,7 @@ class GatheringScansHandler(CloudAndTunnelHandlerMixin, ServerWriteRoutesMixin, 
                     "status": "offline" if (is_pc_simulated_offline() or not d_running) else "online",
                     "pc_online": (not is_pc_simulated_offline()) and d_running,
                     "daemon_running": d_running,
+                    "workstation_id": WORKSTATION_ID if os.name == "nt" else "",
                     "app": "GatheringScans",
                     "domain": "scans.gatheren.cloud",
                     "crs": TWD97_TWVD2001_LABEL,
@@ -2633,44 +2635,56 @@ class GatheringScansHandler(CloudAndTunnelHandlerMixin, ServerWriteRoutesMixin, 
 
         if path == "/api/admin/workstations":
             _, _, ws_perms = self._resolve_request_role(None, query, share_token)
-            if share_token or not ws_perms.get("can_manage_users"):
+            is_internal_tun_sync = self.headers.get("X-Tunnel-Key", "").strip() == TUNNEL_SHARED_KEY
+            if not is_internal_tun_sync and (share_token or not ws_perms.get("can_manage_users")):
                 self.send_json({"error": "Owner or Admin session required to inspect workstation settings."}, status=403)
                 return
             from pc_worker.config import load_workstation_settings, save_workstation_settings, WORKSTATION_ID
-            import http.client as _hc
+            from pc_worker.server_cloud_and_tunnel import get_active_tunnel_socket_counts
+            import urllib.request as _ur
 
             cfg = load_workstation_settings()
             if os.name == "nt" and self.headers.get("X-From-Vps", "") != "1":
                 # Fetch authoritative multi-workstation coordinator state from VPS so local port 8095 & scans.gatheren.cloud always match
-                try:
-                    c_ws = _hc.HTTPConnection(VPS_HOST, 8095, timeout=1.8)
-                    c_ws.request(
-                        "GET",
-                        "/api/admin/workstations",
-                        headers={"X-Tunnel-Key": TUNNEL_SHARED_KEY, "X-From-Vps": "1"},
-                    )
-                    r_ws = c_ws.getresponse()
-                    raw_ws = r_ws.read()
-                    c_ws.close()
-                    if r_ws.status == 200 and raw_ws:
-                        vps_cfg = json.loads(raw_ws.decode("utf-8"))
-                        if isinstance(vps_cfg, dict) and isinstance(vps_cfg.get("workstations"), dict):
-                            cfg = save_workstation_settings(vps_cfg)
-                except Exception:
-                    pass
+                for _vps_ep in (
+                    f"{PUBLIC_BASE_URL.rstrip('/')}/api/admin/workstations",
+                    f"http://{VPS_HOST}:8095/api/admin/workstations",
+                ):
+                    try:
+                        _req_ws = _ur.Request(
+                            _vps_ep,
+                            headers={"X-Tunnel-Key": TUNNEL_SHARED_KEY, "X-From-Vps": "1", "Connection": "close"},
+                        )
+                        with _ur.urlopen(_req_ws, timeout=1.8) as _r_ws:
+                            if _r_ws.status == 200:
+                                vps_cfg = json.loads(_r_ws.read().decode("utf-8"))
+                                if isinstance(vps_cfg, dict) and isinstance(vps_cfg.get("workstations"), dict):
+                                    cfg = save_workstation_settings(vps_cfg)
+                                    break
+                    except Exception:
+                        continue
             now_ws = time.time()
+            active_tunnels_ci = {
+                str(k).strip().lower(): int(v)
+                for k, v in (get_active_tunnel_socket_counts() if os.name != "nt" else {}).items()
+            }
             ws_out: Dict[str, Any] = {}
             for wid, winfo in (cfg.get("workstations") or {}).items():
                 if not isinstance(winfo, dict):
                     continue
                 item = dict(winfo)
-                if os.name == "nt" and str(wid).strip().lower() == WORKSTATION_ID.lower():
+                wid_low = str(wid).strip().lower()
+                if os.name == "nt" and wid_low == WORKSTATION_ID.lower():
                     item["last_seen"] = now_ws
                     item["root_dir"] = LOCAL_SCANS_ROOT
                     item["daemon_enabled"] = is_pc_daemon_running()
+                tun_sockets = active_tunnels_ci.get(wid_low, 0)
+                if tun_sockets > 0:
+                    item["last_seen"] = max(float(item.get("last_seen") or 0.0), now_ws)
+                    item["tunnel_sockets"] = tun_sockets
                 ls = float(item.get("last_seen") or 0.0)
                 age_s = round(max(0.0, now_ws - ls), 1) if ls > 0 else 999999.0
-                online = ls > 0 and age_s <= 45.0
+                online = bool(tun_sockets > 0) or (ls > 0 and age_s <= 45.0)
                 d_en = bool(item.get("daemon_enabled", True))
                 busy = bool(item.get("pix4d_busy", False)) and online
                 item["online"] = online
@@ -2678,6 +2692,8 @@ class GatheringScansHandler(CloudAndTunnelHandlerMixin, ServerWriteRoutesMixin, 
                 item["status"] = "processing" if busy else ("online" if (online and d_en) else ("paused" if online else "offline"))
                 ws_out[wid] = item
             cfg["workstations"] = ws_out
+            cfg["caller_ip"] = self._extract_client_ip()
+            cfg["local_workstation_id"] = WORKSTATION_ID if os.name == "nt" else ""
             cfg["coordinator_source"] = "vps" if os.name != "nt" else "synced_vps_coordinator"
             self.send_json(cfg)
             return

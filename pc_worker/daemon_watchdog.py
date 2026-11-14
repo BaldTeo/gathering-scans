@@ -35,20 +35,20 @@ from typing import Any, Dict, Optional, Tuple
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if BASE_DIR not in sys.path:
     sys.path.insert(0, BASE_DIR)
-from pc_worker.config import DATA_DIR
+from pc_worker.config import RUNTIME_DATA_DIR
 
 LAUNCHER_SCRIPT = os.path.join(BASE_DIR, "start_gathering_scans.py")
-LOG_FILE = os.path.join(DATA_DIR, "daemon_watchdog.log")
-STDOUT_LOG_FILE = os.path.join(DATA_DIR, "daemon_stdout.log")
-DAEMON_STATE_PATH = os.path.join(DATA_DIR, "daemon_state.json")
-PID_LOCK_PATH = os.path.join(DATA_DIR, "daemon_watchdog.pid")
+LOG_FILE = os.path.join(RUNTIME_DATA_DIR, "daemon_watchdog.log")
+STDOUT_LOG_FILE = os.path.join(RUNTIME_DATA_DIR, "daemon_stdout.log")
+DAEMON_STATE_PATH = os.path.join(RUNTIME_DATA_DIR, "daemon_state.json")
+PID_LOCK_PATH = os.path.join(RUNTIME_DATA_DIR, "daemon_watchdog.pid")
 
 _WIN_NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000) if os.name == "nt" else 0
 
 
 def log_msg(msg: str) -> None:
     try:
-        os.makedirs(DATA_DIR, exist_ok=True)
+        os.makedirs(RUNTIME_DATA_DIR, exist_ok=True)
         with open(LOG_FILE, "a", encoding="utf-8") as lf:
             lf.write(f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] {msg}\n")
     except Exception:
@@ -74,7 +74,7 @@ def read_daemon_state() -> Dict[str, Any]:
 
 
 def write_daemon_state(daemon_running: bool, watchdog_exit: bool = False, actor: str = "tray") -> Dict[str, Any]:
-    os.makedirs(DATA_DIR, exist_ok=True)
+    os.makedirs(RUNTIME_DATA_DIR, exist_ok=True)
     state = {
         "daemon_running": bool(daemon_running),
         "watchdog_exit": bool(watchdog_exit),
@@ -167,7 +167,7 @@ class GatheringScansController:
             if not is_port_open(8095):
                 log_msg(f"Port 8095 offline; launching {LAUNCHER_SCRIPT}")
                 try:
-                    os.makedirs(DATA_DIR, exist_ok=True)
+                    os.makedirs(RUNTIME_DATA_DIR, exist_ok=True)
                     out_log = open(STDOUT_LOG_FILE, "a", encoding="utf-8")
                     creationflags = 0
                     if os.name == "nt":
@@ -510,7 +510,7 @@ def main() -> None:
 
     # Prevent duplicate watchdog instances
     kill_all_gathering_scans_processes(include_self=True)
-    os.makedirs(DATA_DIR, exist_ok=True)
+    os.makedirs(RUNTIME_DATA_DIR, exist_ok=True)
     with open(PID_LOCK_PATH, "w", encoding="utf-8") as pf:
         pf.write(str(os.getpid()))
 

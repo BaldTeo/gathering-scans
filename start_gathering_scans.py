@@ -794,7 +794,25 @@ def _app_code_autoreload_loop():
                 p4d_busy, _, _ = _detect_running_pix4dmatic()
                 if p4d_busy:
                     continue
-                print("[AutoReload] Detected Syncthing update to _app Python modules; exiting cleanly for watchdog restart.")
+                print("[AutoReload] Detected Syncthing update to _app Python modules; self-respawning with fresh code.")
+                if os.name == "nt":
+                    try:
+                        ensure_ps1 = os.path.join(BASE_DIR, "ensure_daemon_running.ps1")
+                        launcher_py = os.path.join(BASE_DIR, "start_gathering_scans.py")
+                        if os.path.isfile(ensure_ps1):
+                            ps_cmd = f'Start-Sleep -Seconds 2; & "{ensure_ps1}"'
+                        else:
+                            ps_cmd = f'Start-Sleep -Seconds 2; Start-Process -FilePath "{sys.executable}" -ArgumentList "-u","{launcher_py}" -WorkingDirectory "{BASE_DIR}" -WindowStyle Hidden'
+                        subprocess.Popen(
+                            ["powershell.exe", "-NoProfile", "-WindowStyle", "Hidden", "-ExecutionPolicy", "Bypass", "-Command", ps_cmd],
+                            cwd=BASE_DIR,
+                            stdin=subprocess.DEVNULL,
+                            stdout=subprocess.DEVNULL,
+                            stderr=subprocess.DEVNULL,
+                            creationflags=getattr(subprocess, "DETACHED_PROCESS", 0x00000008) | _WIN_NO_WINDOW,
+                        )
+                    except Exception as re_err:
+                        print(f"[AutoReload] Respawn helper warning: {re_err}")
                 os._exit(0)
         except Exception:
             pass
