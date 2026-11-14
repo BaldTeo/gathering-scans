@@ -323,6 +323,10 @@ class TestMultiWorkstationAuthAndImports(unittest.TestCase):
             tu = db.get_scan("catch_TUroof")
             self.assertIsNotNone(tu)
             self.assertTrue(os.path.isfile(tu["tileset_path"]))
+            with open(tu["tileset_path"], "r", encoding="utf-8") as tuf:
+                tu_ts_doc = json.load(tuf)
+            self.assertGreaterEqual(len((tu_ts_doc.get("root") or {}).get("children") or []), 70)
+            self.assertGreaterEqual(int(tu.get("poly_count") or 0), 30000000)
             cams = eng._load_or_build_camera_catalog(tu)
             self.assertEqual(len(cams), 1463)
             self.assertTrue(cams[0]["abs_path"].lower().startswith(r"c:\gatheringscans\catch_turoof\inputs"))
@@ -336,6 +340,10 @@ class TestMultiWorkstationAuthAndImports(unittest.TestCase):
             self.assertEqual(qc_bd["name"], "屈尺便道")
             self.assertEqual(qc_bd["project_group"], "QuChi Dam")
             self.assertTrue(os.path.isfile(qc_bd["tileset_path"]))
+            with open(qc_bd["tileset_path"], "r", encoding="utf-8") as tsf:
+                qc_ts_doc = json.load(tsf)
+            self.assertGreaterEqual(len((qc_ts_doc.get("root") or {}).get("children") or []), 40)
+            self.assertGreaterEqual(int(qc_bd.get("poly_count") or 0), 5000000)
             cams_bd = eng._load_or_build_camera_catalog(qc_bd)
             self.assertGreaterEqual(len(cams_bd), 2400)
             self.assertTrue(cams_bd[0]["abs_path"].lower().startswith(r"c:\gatheringscans\catch_quchi_biandao\inputs"))

@@ -206,10 +206,11 @@ def build_3d_occupancy_mask_from_tileset(
 def _batch_transcode_ktx2_cells(
     cell_records: List[Dict[str, Any]],
     tmp_dir: str,
-) -> Tuple[str, List[Dict[str, int]]]:
+) -> Tuple[List[str], List[Dict[str, int]]]:
     """
     Uses parallel `node.exe` workers with `basis_transcoder.wasm` to transcode the KTX2 texture
-    of every cell in `cell_records` into a contiguous RGB24 binary file (`rgb_pack.bin`) + metadata.
+    of every cell in `cell_records` into per-shard RGB24 binary files (`rgb_pack_<shard>.bin`) + metadata.
+    Keeping per-shard files avoids a redundant multi-GB merge copy for large 12+ level octrees.
     """
     from concurrent.futures import ThreadPoolExecutor
 
@@ -221,11 +222,11 @@ def _batch_transcode_ktx2_cells(
         }
         for rec in cell_records
     ]
-    out_bin_path = os.path.join(tmp_dir, "rgb_pack.bin")
     if not jobs:
+        out_bin_path = os.path.join(tmp_dir, "rgb_pack_0.bin")
         with open(out_bin_path, "wb") as _:
             pass
-        return out_bin_path, []
+        return [out_bin_path], []
 
     basis_js_esc = BASIS_JS_PATH.replace("\\", "/")
     basis_wasm_esc = BASIS_WASM_PATH.replace("\\", "/")
@@ -313,28 +314,21 @@ BASIS({{ wasmBinary: wasmBin }}).then(Module => {{
 
     if len(shards) == 1:
         _, only_bin, only_meta = _run_shard(shards[0])
-        os.replace(only_bin, out_bin_path)
-        return out_bin_path, only_meta
+        for m_item in only_meta:
+            m_item["shard"] = 0
+        return [only_bin], only_meta
 
     with ThreadPoolExecutor(max_workers=len(shards)) as pool:
         shard_results = sorted(pool.map(_run_shard, shards), key=lambda x: x[0])
 
+    bin_paths: List[str] = []
     meta_list: List[Dict[str, int]] = []
-    running_off = 0
-    with open(out_bin_path, "wb") as out_f:
-        for _, s_bin_fp, s_meta in shard_results:
-            for m_item in s_meta:
-                m_item["off"] = int(m_item["off"]) + running_off
-                meta_list.append(m_item)
-            s_size = os.path.getsize(s_bin_fp)
-            with open(s_bin_fp, "rb") as in_f:
-                shutil.copyfileobj(in_f, out_f, length=16 * 1024 * 1024)
-            running_off += s_size
-            try:
-                os.remove(s_bin_fp)
-            except OSError:
-                pass
-    return out_bin_path, meta_list
+    for pos_idx, (_, s_bin_fp, s_meta) in enumerate(shard_results):
+        bin_paths.append(s_bin_fp)
+        for m_item in s_meta:
+            m_item["shard"] = pos_idx
+            meta_list.append(m_item)
+    return bin_paths, meta_list
 
 
 def _eval_shelf_width(
@@ -458,8 +452,9 @@ def _pack_cells_to_glb_tile(
     for idx, c in enumerate(cells):
         m_info = c["rgb_meta"]
         w_full, h_full = int(m_info["w"]), int(m_info["h"])
+        src_mmap = rgb_mmap[int(m_info.get("shard", 0))] if isinstance(rgb_mmap, (list, tuple)) else rgb_mmap
         raw_rgb = np.frombuffer(
-            rgb_mmap, dtype=np.uint8, count=int(m_info["len"]), offset=int(m_info["off"])
+            src_mmap, dtype=np.uint8, count=int(m_info["len"]), offset=int(m_info["off"])
         ).reshape((h_full, w_full, 3))
 
         px0, py0, px1, py1 = int(c["px0"]), int(c["py0"]), int(c["px1"]), int(c["py1"])
@@ -795,14 +790,28 @@ def build_tileset_from_pix4d_native_octree(
     # Resolve 64-bit TWD97 offset.xyz + optional UTM->TWD97 XY Jacobian from root.p4m
     (ox, oy, oz), xy_jacobian = _resolve_pix4d_origin_and_xy_jacobian(src_proj_dir, target_proj_dir)
 
-    # 1. Scan & filter all native octree cells across Levels 2..9
+    # 1. Scan & filter all native octree cells across all levels (L1 leaves + L2..L13+)
     all_files: Dict[Tuple[int, int, int, int], str] = {}
     for fp in content_glbs:
         bn = os.path.splitext(os.path.basename(fp))[0]
         toks = bn.split("_")
         if len(toks) == 4 and all(t.isdigit() for t in toks):
             c = (int(toks[0]), int(toks[1]), int(toks[2]), int(toks[3]))
-            all_files[c] = fp
+            if c[0] >= 1:
+                all_files[c] = fp
+
+    # Drop coarse L1 wrapper cells ONLY when they already have finer descendants in `all_files`;
+    # preserve genuine L1 leaf cells (which have zero descendants).
+    l1_candidates = [c for c in all_files if c[0] == 1]
+    if l1_candidates:
+        occupied_l1_from_deeper = {
+            (c[1] >> (c[0] - 1), c[2] >> (c[0] - 1), c[3] >> (c[0] - 1))
+            for c in all_files
+            if c[0] > 1
+        }
+        for c1 in l1_candidates:
+            if (c1[1], c1[2], c1[3]) in occupied_l1_from_deeper:
+                all_files.pop(c1, None)
 
     vmin_occ = occ_mask["vmin"] if occ_mask else None
     vmax_occ = occ_mask["vmax"] if occ_mask else None
@@ -936,32 +945,41 @@ def build_tileset_from_pix4d_native_octree(
     if not cell_records:
         raise RuntimeError("No octree cells survived spatial filtering")
 
+    def _nearest_existing_ancestor(
+        c_node: Tuple[int, int, int, int], pool: Any
+    ) -> Optional[Tuple[int, int, int, int]]:
+        lvl_n, xn, yn, zn = c_node
+        for anc_lvl in range(lvl_n - 1, 0, -1):
+            sh = lvl_n - anc_lvl
+            anc = (anc_lvl, xn >> sh, yn >> sh, zn >> sh)
+            if anc in pool:
+                return anc
+        return None
+
     # Enforce Ancestor + Sibling Octant Closure to fixed point so no subdivided parent node ever loses child octants under REPLACE
     raw_children_by_parent: Dict[Tuple[int, int, int, int], List[Tuple[int, int, int, int]]] = {}
     for c_raw in sorted(all_files.keys()):
-        if c_raw[0] > 2:
-            p_raw = (c_raw[0] - 1, c_raw[1] // 2, c_raw[2] // 2, c_raw[3] // 2)
+        p_raw = _nearest_existing_ancestor(c_raw, all_files)
+        if p_raw is not None:
             raw_children_by_parent.setdefault(p_raw, []).append(c_raw)
 
     while True:
         added_in_pass = False
-        # 1. Ensure every surviving cell's parent up to L2 is present in cell_records
+        # 1. Ensure every surviving cell's nearest existing ancestor in `all_files` is present in `cell_records`
         for c_surv in sorted(cell_records.keys()):
-            if c_surv[0] > 2:
-                p_surv = (c_surv[0] - 1, c_surv[1] // 2, c_surv[2] // 2, c_surv[3] // 2)
-                if p_surv not in cell_records and p_surv in all_files:
-                    p_rec = _load_single_cell_record(p_surv, all_files[p_surv], apply_focal_filter=False)
-                    if p_rec is not None:
-                        cell_records[p_surv] = p_rec
-                        added_in_pass = True
+            p_surv = _nearest_existing_ancestor(c_surv, all_files)
+            if p_surv is not None and p_surv not in cell_records:
+                p_rec = _load_single_cell_record(p_surv, all_files[p_surv], apply_focal_filter=False)
+                if p_rec is not None:
+                    cell_records[p_surv] = p_rec
+                    added_in_pass = True
 
         # 2. Ensure every parent with >=1 surviving child includes all its valid sibling octants
         active_parents: Set[Tuple[int, int, int, int]] = set()
         for c_surv in list(cell_records.keys()):
-            if c_surv[0] > 2:
-                p_surv = (c_surv[0] - 1, c_surv[1] // 2, c_surv[2] // 2, c_surv[3] // 2)
-                if p_surv in cell_records:
-                    active_parents.add(p_surv)
+            p_surv = _nearest_existing_ancestor(c_surv, cell_records)
+            if p_surv is not None:
+                active_parents.add(p_surv)
 
         for p_act in sorted(active_parents):
             for sib_c in raw_children_by_parent.get(p_act, []):
@@ -974,15 +992,18 @@ def build_tileset_from_pix4d_native_octree(
         if not added_in_pass:
             break
 
-    # Build octree parent-child adjacency over surviving cells
+    # Build octree parent-child adjacency over surviving cells using nearest-existing-ancestor
+    # AND collect all top-level subtree roots (including L3/L4/L5+ roots when Pix4Dmatic skips coarse empty octants!)
     children_map: Dict[Tuple[int, int, int, int], List[Tuple[int, int, int, int]]] = {
         c: [] for c in cell_records
     }
+    top_root_coords: List[Tuple[int, int, int, int]] = []
     for c in sorted(cell_records.keys()):
-        if c[0] > 2:
-            p = (c[0] - 1, c[1] // 2, c[2] // 2, c[3] // 2)
-            if p in children_map:
-                children_map[p].append(c)
+        p = _nearest_existing_ancestor(c, cell_records)
+        if p is not None:
+            children_map[p].append(c)
+        else:
+            top_root_coords.append(c)
 
     def _get_true_leaves(c: Tuple[int, int, int, int]) -> List[Tuple[int, int, int, int]]:
         chs = children_map.get(c) or []
@@ -993,15 +1014,16 @@ def build_tileset_from_pix4d_native_octree(
             out.extend(_get_true_leaves(ch))
         return out
 
-    # 2. Batch-transcode all active KTX2 textures in one single Node.js + WASM pass
+    # 2. Batch-transcode all active KTX2 textures in one single Node.js + WASM pass (per-shard memmaps, zero merge copy)
     ordered_coords = sorted(cell_records.keys())
     ordered_recs = [cell_records[c] for c in ordered_coords]
 
-    tmp_work_dir = tempfile.mkdtemp(prefix="gs_octree_")
+    os.makedirs(target_proj_dir, exist_ok=True)
+    tmp_work_dir = tempfile.mkdtemp(prefix=".gs_octree_tmp_", dir=target_proj_dir)
     try:
         if progress_callback:
             progress_callback(30.0, f"Transcoding {len(ordered_recs)} multi-level KTX2 octree textures...")
-        rgb_bin_path, meta_list = _batch_transcode_ktx2_cells(ordered_recs, tmp_work_dir)
+        rgb_bin_paths, meta_list = _batch_transcode_ktx2_cells(ordered_recs, tmp_work_dir)
         for rec, m_info in zip(ordered_recs, meta_list):
             rec["rgb_meta"] = m_info
             # Clamp crop box to actual transcoded dimensions
@@ -1011,7 +1033,10 @@ def build_tileset_from_pix4d_native_octree(
             rec["ch"] = max(1, rec["py1"] - rec["py0"])
             rec["texels"] = int(rec["cw"] * rec["ch"])
 
-        rgb_mmap = np.memmap(rgb_bin_path, dtype=np.uint8, mode="r")
+        rgb_mmap = [
+            np.memmap(bp, dtype=np.uint8, mode="r") if os.path.getsize(bp) > 0 else np.empty(0, dtype=np.uint8)
+            for bp in rgb_bin_paths
+        ]
 
         final_tileset_dir = os.path.join(target_proj_dir, "tileset")
         staging_dir = os.path.join(target_proj_dir, "tileset_octree_staging")
@@ -1031,27 +1056,22 @@ def build_tileset_from_pix4d_native_octree(
             "total_bytes": 0,
         }
 
-        # 3. Build Level-0 Root Overview Tile (`tiles/root.glb`) from Level-2 cells
-        l2_coords = sorted(c for c in cell_records if c[0] == 2)
-        if not l2_coords:
-            min_lvl = min(c[0] for c in cell_records)
-            l2_coords = sorted(c for c in cell_records if c[0] == min_lvl)
-
+        # 3. Build Level-0 Root Overview Tile (`tiles/root.glb`) from all top-level octree roots (`top_root_coords`)
         from concurrent.futures import ThreadPoolExecutor
 
-        root_cells = [cell_records[c] for c in l2_coords]
+        root_cells = [cell_records[c] for c in top_root_coords]
         root_glb_path = os.path.join(tiles_out_dir, "root.glb")
-        root_bmin = np.min(np.vstack([c["bmin"] for c in root_cells]), axis=0)
-        root_bmax = np.max(np.vstack([c["bmax"] for c in root_cells]), axis=0)
+        root_bmin = np.min(np.vstack([c["bmin"] for c in ordered_recs]), axis=0)
+        root_bmax = np.max(np.vstack([c["bmax"] for c in ordered_recs]), axis=0)
         diag = float(np.linalg.norm(root_bmax - root_bmin))
-        root_error = round(max(1.8, min(6.0, diag / 15.0)), 3)
+        root_error = round(max(1.8, min(8.0, diag / 15.0)), 3)
 
         pack_jobs: List[Dict[str, Any]] = [
             {
                 "cells": root_cells,
                 "out_glb_path": root_glb_path,
-                "max_tex_dim": 2048,
-                "target_tris": 150000,
+                "max_tex_dim": 4096 if len(root_cells) > 16 else 2048,
+                "target_tris": 220000 if len(root_cells) > 16 else 150000,
                 "jpeg_quality": 86,
                 "is_leaf": False,
                 "is_root": True,
@@ -1124,7 +1144,12 @@ def build_tileset_from_pix4d_native_octree(
                 }
             )
 
-            node_err = round(max(0.015, parent_err / 2.6), 3)
+            all_sub_bmins = [cell_records[x]["bmin"] for x in leaves] if leaves else [bmin_i]
+            all_sub_bmaxs = [cell_records[x]["bmax"] for x in leaves] if leaves else [bmax_i]
+            u_bmin = np.min(np.vstack(all_sub_bmins), axis=0)
+            u_bmax = np.max(np.vstack(all_sub_bmaxs), axis=0)
+            sub_diag = float(np.linalg.norm(u_bmax - u_bmin))
+            node_err = round(max(0.008, min(parent_err * 0.58, max(0.02, sub_diag / 12.0))), 4)
             child_nodes: List[Dict[str, Any]] = []
             ready_siblings: List[Tuple[Tuple[int, int, int, int], List[Tuple[int, int, int, int]], int, int]] = []
 
@@ -1167,11 +1192,6 @@ def build_tileset_from_pix4d_native_octree(
                 pack_tag = f"{tag}_leaf{pack_idx}"
                 child_nodes.append(_build_leaf_node_from_coords(cur_leaves, depth + 1, pack_tag))
 
-            all_sub_bmins = [cell_records[x]["bmin"] for x in leaves] if leaves else [bmin_i]
-            all_sub_bmaxs = [cell_records[x]["bmax"] for x in leaves] if leaves else [bmax_i]
-            u_bmin = np.min(np.vstack(all_sub_bmins), axis=0)
-            u_bmax = np.max(np.vstack(all_sub_bmaxs), axis=0)
-
             return {
                 "boundingVolume": {"box": _compute_3dtiles_box(u_bmin, u_bmax, ox, oy, oz)},
                 "geometricError": node_err if child_nodes else 0.0,
@@ -1181,7 +1201,7 @@ def build_tileset_from_pix4d_native_octree(
             }
 
         root_children: List[Dict[str, Any]] = []
-        for r_coord in l2_coords:
+        for r_coord in top_root_coords:
             root_children.append(_build_subtree_node(r_coord, 1, root_error))
 
         def _run_pack_job(job: Dict[str, Any]) -> Tuple[Dict[str, Any], int, int, Tuple[int, int]]:
@@ -1410,7 +1430,7 @@ def build_native_octree_from_scalable_tileset(
         target_proj_dir=dst_proj_dir,
         occ_mask=occ_mask,
         focal_bbox_local=None,
-        outer_max_level=9,
+        outer_max_level=13,
         progress_callback=progress_callback,
     )
 
