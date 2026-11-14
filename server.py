@@ -78,6 +78,7 @@ from pc_worker.config import (
     PUBLIC_BASE_URL,
     TUNNEL_SHARED_KEY,
     LOCAL_SCANS_ROOT,
+    WORKSTATION_ID,
     REPORTS_DIR,
     CONTOURS_DIR,
     GDRIVE_INBOX_DIR,
@@ -2639,7 +2640,7 @@ class GatheringScansHandler(CloudAndTunnelHandlerMixin, ServerWriteRoutesMixin, 
             if not is_internal_tun_sync and (share_token or not ws_perms.get("can_manage_users")):
                 self.send_json({"error": "Owner or Admin session required to inspect workstation settings."}, status=403)
                 return
-            from pc_worker.config import load_workstation_settings, save_workstation_settings, WORKSTATION_ID
+            from pc_worker.config import load_workstation_settings, save_workstation_settings
             from pc_worker.server_cloud_and_tunnel import get_active_tunnel_socket_counts
             import urllib.request as _ur
 

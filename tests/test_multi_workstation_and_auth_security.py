@@ -185,6 +185,11 @@ class TestMultiWorkstationAuthAndImports(unittest.TestCase):
                         except urllib.error.HTTPError as he:
                             return he.code, json.loads(he.read().decode("utf-8"))
 
+                    # 0. /api/status returns 200 and includes workstation_id on Windows
+                    st_stat, stat_data = _req("GET", "/api/status")
+                    self.assertEqual(st_stat, 200)
+                    self.assertIn("workstation_id", stat_data)
+
                     # 1. Zero guest access: unauthenticated /api/scans returns 401
                     st_unauth, _ = _req("GET", "/api/scans")
                     self.assertEqual(st_unauth, 401)
