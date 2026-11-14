@@ -218,7 +218,8 @@ def acquire_global_pix4d_seat_lock(scan_id: str, pid: int = 0) -> bool:
     }
     try:
         os.makedirs(os.path.dirname(GLOBAL_PIX4D_LOCK_PATH), exist_ok=True)
-        tmp = GLOBAL_PIX4D_LOCK_PATH + f".{os.getpid()}.part"
+        import uuid as _lk_uuid
+        tmp = f"{GLOBAL_PIX4D_LOCK_PATH}.{os.getpid()}.{_lk_uuid.uuid4().hex[:6]}.part"
         with open(tmp, "w", encoding="utf-8") as wf:
             json.dump(payload, wf, indent=2)
         os.replace(tmp, GLOBAL_PIX4D_LOCK_PATH)

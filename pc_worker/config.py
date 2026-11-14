@@ -394,96 +394,105 @@ DEFAULT_WORKSTATION_SETTINGS = {
 }
 
 
+import threading as _ws_threading
+import uuid as _ws_uuid
+
+_WS_CFG_LOCK = _ws_threading.RLock()
+
+
 def load_workstation_settings() -> dict:
     import json
-    cfg = {
-        "query_serving_workstation": DEFAULT_WORKSTATION_SETTINGS["query_serving_workstation"],
-        "processing_workstation": DEFAULT_WORKSTATION_SETTINGS["processing_workstation"],
-        "workstations": {k: dict(v) for k, v in PREDEFINED_WORKSTATIONS.items()},
-    }
-    if os.path.isfile(WORKSTATION_SETTINGS_PATH):
-        try:
-            with open(WORKSTATION_SETTINGS_PATH, "r", encoding="utf-8") as f:
-                saved = json.load(f)
-            if isinstance(saved, dict):
-                if "query_serving_workstation" in saved and saved["query_serving_workstation"]:
-                    cfg["query_serving_workstation"] = str(saved["query_serving_workstation"]).strip()
-                if "processing_workstation" in saved and saved["processing_workstation"]:
-                    p_val = str(saved["processing_workstation"]).strip()
-                    # Migrate legacy "auto" default to "DESKTOP-OEBISC7" unless user explicitly saved `explicit_processing_choice`
-                    if p_val == "auto" and not saved.get("explicit_processing_choice"):
-                        p_val = "DESKTOP-OEBISC7"
-                    cfg["processing_workstation"] = p_val
-                if saved.get("explicit_processing_choice"):
-                    cfg["explicit_processing_choice"] = True
-                if isinstance(saved.get("workstations"), dict):
-                    for wid, winfo in saved["workstations"].items():
-                        if not wid or not isinstance(winfo, dict):
-                            continue
-                        merged = dict(cfg["workstations"].get(wid, {"workstation_id": wid, "daemon_enabled": True, "last_seen": 0.0}))
-                        merged.update(winfo)
-                        merged["workstation_id"] = wid
-                        cfg["workstations"][wid] = merged
-        except Exception:
-            pass
-    return cfg
+    with _WS_CFG_LOCK:
+        cfg = {
+            "query_serving_workstation": DEFAULT_WORKSTATION_SETTINGS["query_serving_workstation"],
+            "processing_workstation": DEFAULT_WORKSTATION_SETTINGS["processing_workstation"],
+            "workstations": {k: dict(v) for k, v in PREDEFINED_WORKSTATIONS.items()},
+        }
+        if os.path.isfile(WORKSTATION_SETTINGS_PATH):
+            try:
+                with open(WORKSTATION_SETTINGS_PATH, "r", encoding="utf-8") as f:
+                    saved = json.load(f)
+                if isinstance(saved, dict):
+                    if "query_serving_workstation" in saved and saved["query_serving_workstation"]:
+                        cfg["query_serving_workstation"] = str(saved["query_serving_workstation"]).strip()
+                    if "processing_workstation" in saved and saved["processing_workstation"]:
+                        p_val = str(saved["processing_workstation"]).strip()
+                        # Migrate legacy "auto" default to "DESKTOP-OEBISC7" unless user explicitly saved `explicit_processing_choice`
+                        if p_val == "auto" and not saved.get("explicit_processing_choice"):
+                            p_val = "DESKTOP-OEBISC7"
+                        cfg["processing_workstation"] = p_val
+                    if saved.get("explicit_processing_choice"):
+                        cfg["explicit_processing_choice"] = True
+                    if isinstance(saved.get("workstations"), dict):
+                        for wid, winfo in saved["workstations"].items():
+                            if not wid or not isinstance(winfo, dict):
+                                continue
+                            merged = dict(cfg["workstations"].get(wid, {"workstation_id": wid, "daemon_enabled": True, "last_seen": 0.0}))
+                            merged.update(winfo)
+                            merged["workstation_id"] = wid
+                            cfg["workstations"][wid] = merged
+            except Exception:
+                pass
+        return cfg
 
 
 def save_workstation_settings(updates: dict) -> dict:
     import json
-    cfg = load_workstation_settings()
-    if isinstance(updates, dict):
-        if "query_serving_workstation" in updates:
-            cfg["query_serving_workstation"] = str(updates["query_serving_workstation"]).strip() or "auto"
-        if "processing_workstation" in updates:
-            cfg["processing_workstation"] = str(updates["processing_workstation"]).strip() or "DESKTOP-OEBISC7"
-            cfg["explicit_processing_choice"] = True
-        if isinstance(updates.get("workstations"), dict):
-            for wid, winfo in updates["workstations"].items():
-                if not wid or not isinstance(winfo, dict):
-                    continue
-                if wid not in cfg["workstations"]:
-                    cfg["workstations"][wid] = {"workstation_id": wid, "daemon_enabled": True, "last_seen": 0.0}
-                cfg["workstations"][wid].update(winfo)
-                cfg["workstations"][wid]["workstation_id"] = wid
-    try:
-        os.makedirs(os.path.dirname(WORKSTATION_SETTINGS_PATH), exist_ok=True)
-        tmp = WORKSTATION_SETTINGS_PATH + f".{os.getpid()}.part"
-        with open(tmp, "w", encoding="utf-8") as f:
-            json.dump(cfg, f, indent=2, ensure_ascii=False)
-        os.replace(tmp, WORKSTATION_SETTINGS_PATH)
-    except Exception as e:
-        print(f"[Workstations] Warning saving workstation_settings.json: {e}")
-    return cfg
+    with _WS_CFG_LOCK:
+        cfg = load_workstation_settings()
+        if isinstance(updates, dict):
+            if "query_serving_workstation" in updates:
+                cfg["query_serving_workstation"] = str(updates["query_serving_workstation"]).strip() or "auto"
+            if "processing_workstation" in updates:
+                cfg["processing_workstation"] = str(updates["processing_workstation"]).strip() or "DESKTOP-OEBISC7"
+                cfg["explicit_processing_choice"] = True
+            if isinstance(updates.get("workstations"), dict):
+                for wid, winfo in updates["workstations"].items():
+                    if not wid or not isinstance(winfo, dict):
+                        continue
+                    if wid not in cfg["workstations"]:
+                        cfg["workstations"][wid] = {"workstation_id": wid, "daemon_enabled": True, "last_seen": 0.0}
+                    cfg["workstations"][wid].update(winfo)
+                    cfg["workstations"][wid]["workstation_id"] = wid
+        try:
+            os.makedirs(os.path.dirname(WORKSTATION_SETTINGS_PATH), exist_ok=True)
+            tmp = f"{WORKSTATION_SETTINGS_PATH}.{os.getpid()}.{_ws_threading.get_ident()}.{_ws_uuid.uuid4().hex[:6]}.part"
+            with open(tmp, "w", encoding="utf-8") as f:
+                json.dump(cfg, f, indent=2, ensure_ascii=False)
+            os.replace(tmp, WORKSTATION_SETTINGS_PATH)
+        except Exception as e:
+            print(f"[Workstations] Warning saving workstation_settings.json: {e}")
+        return cfg
 
 
 def register_workstation_heartbeat(workstation_id: str = None, info: dict = None) -> dict:
-    wid = str(workstation_id or WORKSTATION_ID).strip()
-    cfg = load_workstation_settings()
-    cur = dict(cfg["workstations"].get(wid) or {})
-    cur["workstation_id"] = wid
-    if not cur.get("name"):
-        cur["name"] = PREDEFINED_WORKSTATIONS.get(wid, {}).get("name") or f"Workstation ({wid})"
-    if wid == WORKSTATION_ID and os.name == "nt":
-        cur["root_dir"] = LOCAL_SCANS_ROOT
-    elif not cur.get("root_dir"):
-        cur["root_dir"] = PREDEFINED_WORKSTATIONS.get(wid, {}).get("root_dir") or LOCAL_SCANS_ROOT
-    cur["last_seen"] = time.time()
-    if "daemon_enabled" not in cur:
-        cur["daemon_enabled"] = True
-    if isinstance(info, dict):
-        # Preserve admin-configured `name` and `daemon_enabled` unless explicitly supplied as admin update
-        preserve_name = cur.get("name")
-        preserve_daemon = cur.get("daemon_enabled", True)
-        cur.update(info)
-        if preserve_name and not info.get("_override_name"):
-            cur["name"] = preserve_name
-        if not info.get("_override_daemon"):
-            cur["daemon_enabled"] = preserve_daemon
-        cur.pop("_override_name", None)
-        cur.pop("_override_daemon", None)
-    cfg["workstations"][wid] = cur
-    return save_workstation_settings(cfg)
+    with _WS_CFG_LOCK:
+        wid = str(workstation_id or WORKSTATION_ID).strip()
+        cfg = load_workstation_settings()
+        cur = dict(cfg["workstations"].get(wid) or {})
+        cur["workstation_id"] = wid
+        if not cur.get("name"):
+            cur["name"] = PREDEFINED_WORKSTATIONS.get(wid, {}).get("name") or f"Workstation ({wid})"
+        if wid == WORKSTATION_ID and os.name == "nt":
+            cur["root_dir"] = LOCAL_SCANS_ROOT
+        elif not cur.get("root_dir"):
+            cur["root_dir"] = PREDEFINED_WORKSTATIONS.get(wid, {}).get("root_dir") or LOCAL_SCANS_ROOT
+        cur["last_seen"] = time.time()
+        if "daemon_enabled" not in cur:
+            cur["daemon_enabled"] = True
+        if isinstance(info, dict):
+            # Preserve admin-configured `name` and `daemon_enabled` unless explicitly supplied as admin update
+            preserve_name = cur.get("name")
+            preserve_daemon = cur.get("daemon_enabled", True)
+            cur.update(info)
+            if preserve_name and not info.get("_override_name"):
+                cur["name"] = preserve_name
+            if not info.get("_override_daemon"):
+                cur["daemon_enabled"] = preserve_daemon
+            cur.pop("_override_name", None)
+            cur.pop("_override_daemon", None)
+        cfg["workstations"][wid] = cur
+        return save_workstation_settings(cfg)
 
 
 def is_workstation_query_serving_active(workstation_id: str = None) -> bool:
@@ -547,17 +556,18 @@ def get_min_valid_session_iat() -> int:
 def set_min_valid_session_iat(min_iat: int, updated_by: str = "") -> int:
     """Persists global minimum valid session issued-at epoch timestamp atomically."""
     import json
-    cur = get_min_valid_session_iat()
-    val = max(cur, int(min_iat or 0))
-    payload = {"min_valid_iat": val, "updated_by": str(updated_by or "")}
-    try:
-        os.makedirs(os.path.dirname(AUTH_GLOBAL_STATE_PATH), exist_ok=True)
-        tmp = AUTH_GLOBAL_STATE_PATH + f".{os.getpid()}.part"
-        with open(tmp, "w", encoding="utf-8") as f:
-            json.dump(payload, f, indent=2, ensure_ascii=False)
-        os.replace(tmp, AUTH_GLOBAL_STATE_PATH)
-    except Exception as e:
-        print(f"[AuthGlobal] Warning saving auth_global_state.json: {e}")
-    return val
+    with _WS_CFG_LOCK:
+        cur = get_min_valid_session_iat()
+        val = max(cur, int(min_iat or 0))
+        payload = {"min_valid_iat": val, "updated_by": str(updated_by or "")}
+        try:
+            os.makedirs(os.path.dirname(AUTH_GLOBAL_STATE_PATH), exist_ok=True)
+            tmp = f"{AUTH_GLOBAL_STATE_PATH}.{os.getpid()}.{_ws_threading.get_ident()}.{_ws_uuid.uuid4().hex[:6]}.part"
+            with open(tmp, "w", encoding="utf-8") as f:
+                json.dump(payload, f, indent=2, ensure_ascii=False)
+            os.replace(tmp, AUTH_GLOBAL_STATE_PATH)
+        except Exception as e:
+            print(f"[AuthGlobal] Warning saving auth_global_state.json: {e}")
+        return val
 
 
