@@ -208,9 +208,11 @@ def _batch_transcode_ktx2_cells(
     tmp_dir: str,
 ) -> Tuple[str, List[Dict[str, int]]]:
     """
-    Uses a single `node.exe` invocation with `basis_transcoder.wasm` to transcode the KTX2 texture
+    Uses parallel `node.exe` workers with `basis_transcoder.wasm` to transcode the KTX2 texture
     of every cell in `cell_records` into a contiguous RGB24 binary file (`rgb_pack.bin`) + metadata.
     """
+    from concurrent.futures import ThreadPoolExecutor
+
     jobs = [
         {
             "fp": rec["fp"],
@@ -219,29 +221,25 @@ def _batch_transcode_ktx2_cells(
         }
         for rec in cell_records
     ]
-    jobs_path = os.path.join(tmp_dir, "ktx2_jobs.json")
     out_bin_path = os.path.join(tmp_dir, "rgb_pack.bin")
-    out_meta_path = os.path.join(tmp_dir, "rgb_meta.json")
-    js_script_path = os.path.join(tmp_dir, "transcode_worker.js")
-
-    with open(jobs_path, "w", encoding="utf-8") as jf:
-        json.dump(jobs, jf)
+    if not jobs:
+        with open(out_bin_path, "wb") as _:
+            pass
+        return out_bin_path, []
 
     basis_js_esc = BASIS_JS_PATH.replace("\\", "/")
     basis_wasm_esc = BASIS_WASM_PATH.replace("\\", "/")
-    jobs_esc = jobs_path.replace("\\", "/")
-    out_bin_esc = out_bin_path.replace("\\", "/")
-    out_meta_esc = out_meta_path.replace("\\", "/")
-
+    js_worker_path = os.path.join(tmp_dir, "transcode_worker.js")
     js_code = f"""
 const fs = require('fs');
 const BASIS = require('{basis_js_esc}');
 const wasmBin = fs.readFileSync('{basis_wasm_esc}');
+const [jobsPath, outBinPath, outMetaPath] = process.argv.slice(2);
 
 BASIS({{ wasmBinary: wasmBin }}).then(Module => {{
   Module.initializeBasis();
-  const jobs = JSON.parse(fs.readFileSync('{jobs_esc}', 'utf8'));
-  const outFd = fs.openSync('{out_bin_esc}', 'w');
+  const jobs = JSON.parse(fs.readFileSync(jobsPath, 'utf8'));
+  const outFd = fs.openSync(outBinPath, 'w');
   const meta = [];
   let curOffset = 0;
 
@@ -278,24 +276,64 @@ BASIS({{ wasmBinary: wasmBin }}).then(Module => {{
   }}
 
   fs.closeSync(outFd);
-  fs.writeFileSync('{out_meta_esc}', JSON.stringify(meta));
+  fs.writeFileSync(outMetaPath, JSON.stringify(meta));
 }}).catch(err => {{
   console.error(err);
   process.exit(1);
 }});
 """
-    with open(js_script_path, "w", encoding="utf-8") as sf:
+    with open(js_worker_path, "w", encoding="utf-8") as sf:
         sf.write(js_code)
 
-    subprocess.run(
-        ["node", js_script_path],
-        check=True,
-        capture_output=True,
-        timeout=300,
-        creationflags=_WIN_NO_WINDOW,
-    )
-    with open(out_meta_path, "r", encoding="utf-8") as mf:
-        meta_list = json.load(mf)
+    n_shards = 1 if len(jobs) < 1200 else min(6, max(2, (os.cpu_count() or 8) // 2))
+    chunk_sz = (len(jobs) + n_shards - 1) // n_shards
+    shards: List[Tuple[int, List[Dict[str, Any]]]] = []
+    for s_idx in range(n_shards):
+        part = jobs[s_idx * chunk_sz : (s_idx + 1) * chunk_sz]
+        if part:
+            shards.append((s_idx, part))
+
+    def _run_shard(item: Tuple[int, List[Dict[str, Any]]]) -> Tuple[int, str, List[Dict[str, int]]]:
+        s_idx, s_jobs = item
+        s_jobs_fp = os.path.join(tmp_dir, f"ktx2_jobs_{s_idx}.json")
+        s_bin_fp = os.path.join(tmp_dir, f"rgb_pack_{s_idx}.bin")
+        s_meta_fp = os.path.join(tmp_dir, f"rgb_meta_{s_idx}.json")
+        with open(s_jobs_fp, "w", encoding="utf-8") as jf:
+            json.dump(s_jobs, jf)
+        subprocess.run(
+            ["node", js_worker_path, s_jobs_fp, s_bin_fp, s_meta_fp],
+            check=True,
+            capture_output=True,
+            timeout=1800,
+            creationflags=_WIN_NO_WINDOW,
+        )
+        with open(s_meta_fp, "r", encoding="utf-8") as mf:
+            s_meta = json.load(mf)
+        return s_idx, s_bin_fp, s_meta
+
+    if len(shards) == 1:
+        _, only_bin, only_meta = _run_shard(shards[0])
+        os.replace(only_bin, out_bin_path)
+        return out_bin_path, only_meta
+
+    with ThreadPoolExecutor(max_workers=len(shards)) as pool:
+        shard_results = sorted(pool.map(_run_shard, shards), key=lambda x: x[0])
+
+    meta_list: List[Dict[str, int]] = []
+    running_off = 0
+    with open(out_bin_path, "wb") as out_f:
+        for _, s_bin_fp, s_meta in shard_results:
+            for m_item in s_meta:
+                m_item["off"] = int(m_item["off"]) + running_off
+                meta_list.append(m_item)
+            s_size = os.path.getsize(s_bin_fp)
+            with open(s_bin_fp, "rb") as in_f:
+                shutil.copyfileobj(in_f, out_f, length=16 * 1024 * 1024)
+            running_off += s_size
+            try:
+                os.remove(s_bin_fp)
+            except OSError:
+                pass
     return out_bin_path, meta_list
 
 
@@ -634,6 +672,100 @@ def _pack_cells_to_glb_tile(
     return final_tris, len(comp_bytes), final_tex_dims, bmin_local, bmax_local
 
 
+def _resolve_pix4d_origin_and_xy_jacobian(
+    src_proj_dir: str,
+    target_proj_dir: str,
+) -> Tuple[Tuple[float, float, float], Optional[np.ndarray]]:
+    """
+    Resolves the 64-bit TWD97 (121) + TWVD2001 origin (ox, oy, oz) and optional 2x2 XY conformal
+    Jacobian matrix (e.g., when `src_proj_dir` was processed in UTM Zone 51N instead of TM2-121).
+    Checks `exports/obj_mesh/offset.xyz` first, then `root.p4m` CBOR `state.refFrame`, then `tileset/offset.xyz`.
+    """
+    from pc_worker.gdrive_watcher import utm51n_to_wgs84, wgs84_to_twd97
+
+    exp_off = os.path.join(src_proj_dir, "exports", "obj_mesh", "offset.xyz")
+    if os.path.isfile(exp_off):
+        try:
+            with open(exp_off, "r", encoding="utf-8") as f:
+                parts = [float(x) for x in f.read().strip().split()]
+            if len(parts) >= 3 and (abs(parts[0]) > 1.0 or abs(parts[1]) > 1.0):
+                return (parts[0], parts[1], parts[2]), None
+        except Exception:
+            pass
+
+    p4m_candidates = [
+        os.path.join(src_proj_dir, "root.p4m"),
+        os.path.join(src_proj_dir, "project", "root.p4m"),
+    ]
+    if not any(os.path.isfile(p) for p in p4m_candidates):
+        p4m_candidates.extend(glob.glob(os.path.join(src_proj_dir, "**", "root.p4m"), recursive=True))
+
+    for p4m_fp in p4m_candidates:
+        if not os.path.isfile(p4m_fp):
+            continue
+        try:
+            from pc_worker.surveying_engine import SurveyingEngine
+
+            with open(p4m_fp, "rb") as pf:
+                raw_p4m = pf.read()
+            idx_cbor = raw_p4m.find(b"creationSoftwareVersion")
+            if idx_cbor < 2:
+                continue
+            doc = SurveyingEngine._decode_cbor_bytes(raw_p4m[idx_cbor - 2 :])
+            rf = ((doc.get("state") or {}).get("refFrame") or {}) if isinstance(doc, dict) else {}
+            shift = rf.get("shift")
+            if not (isinstance(shift, (list, tuple)) and len(shift) >= 3):
+                continue
+            raw_ox = -float(shift[0])
+            raw_oy = -float(shift[1])
+            raw_oz = -float(shift[2])
+            if abs(raw_ox) < 1.0 and abs(raw_oy) < 1.0:
+                continue
+
+            sr = rf.get("spatialReference") or rf.get("horizontal") or {}
+            wkt2 = str((sr.get("wkt2") if isinstance(sr, dict) else "") or "")
+            wkt_up = wkt2.upper()
+            is_ellip = ("ELLIPSOID" in wkt_up or "4979" in wkt_up) and ("TWVD" not in wkt_up and "8904" not in wkt_up and "HEIGHT" not in wkt_up.split("PROJCRS")[0])
+
+            if ("UTM ZONE 51N" in wkt_up or "UTM_ZONE_51N" in wkt_up or raw_ox > 345000.0) and 100000.0 <= raw_ox <= 850000.0 and 2400000.0 <= raw_oy <= 3000000.0:
+                lat0, lon0 = utm51n_to_wgs84(raw_ox, raw_oy)
+                ortho_oz = raw_oz - 17.20 if is_ellip else raw_oz
+                e0, n0, h0 = wgs84_to_twd97(lat0, lon0, ortho_oz)
+                lat_x, lon_x = utm51n_to_wgs84(raw_ox + 100.0, raw_oy)
+                ex, nx, _ = wgs84_to_twd97(lat_x, lon_x, 0.0)
+                lat_y, lon_y = utm51n_to_wgs84(raw_ox, raw_oy + 100.0)
+                ey, ny, _ = wgs84_to_twd97(lat_y, lon_y, 0.0)
+                j_xy = np.array(
+                    [
+                        [(ex - e0) / 100.0, (ey - e0) / 100.0],
+                        [(nx - n0) / 100.0, (ny - n0) / 100.0],
+                    ],
+                    dtype=np.float64,
+                )
+                return (float(e0), float(n0), float(h0)), j_xy
+
+            if 150000.0 <= raw_ox <= 345000.0 and 2400000.0 <= raw_oy <= 2850000.0:
+                ortho_oz = raw_oz - 17.20 if is_ellip else raw_oz
+                return (raw_ox, raw_oy, ortho_oz), None
+        except Exception as p4m_err:
+            print(f"[NativeOctreeBuilder] Note reading refFrame from {p4m_fp}: {p4m_err}")
+
+    for off_cand in (
+        os.path.join(src_proj_dir, "tileset", "offset.xyz"),
+        os.path.join(target_proj_dir, "tileset", "offset.xyz"),
+    ):
+        if os.path.isfile(off_cand):
+            try:
+                with open(off_cand, "r", encoding="utf-8") as f:
+                    parts = [float(x) for x in f.read().strip().split()]
+                if len(parts) >= 3:
+                    return (parts[0], parts[1], parts[2]), None
+            except Exception:
+                pass
+
+    return (0.0, 0.0, 0.0), None
+
+
 def build_tileset_from_pix4d_native_octree(
     src_proj_dir: str,
     target_proj_dir: str,
@@ -649,7 +781,7 @@ def build_tileset_from_pix4d_native_octree(
     directly from Pix4Dmatic's native octree (`<src_proj_dir>/**/processing/meshes/*/content/*.glb`).
     - If `occ_mask` is provided (e.g. for `edited_daan_661536`), filters every cell across L2-L9 by
       the 3D voxel occupancy mask so only the cropped structure is kept at full L2-L9 resolution.
-    - If `focal_bbox_local` is provided (e.g. for full `catch_DaAn`), preserves up to Level 9 inside
+    - If `focal_bbox_local` is provided, preserves up to Level 9 inside
       `focal_bbox_local` and caps outer park foliage at `outer_max_level` (e.g. Level 5).
     """
     t0 = time.time()
@@ -660,22 +792,8 @@ def build_tileset_from_pix4d_native_octree(
     if not content_glbs:
         raise FileNotFoundError(f"No native Pix4Dmatic octree .glb cells found under {src_proj_dir}")
 
-    # Resolve 64-bit TWD97 offset.xyz
-    ox, oy, oz = 0.0, 0.0, 0.0
-    for off_cand in (
-        os.path.join(src_proj_dir, "exports", "obj_mesh", "offset.xyz"),
-        os.path.join(src_proj_dir, "tileset", "offset.xyz"),
-        os.path.join(target_proj_dir, "tileset", "offset.xyz"),
-    ):
-        if os.path.isfile(off_cand):
-            try:
-                with open(off_cand, "r", encoding="utf-8") as f:
-                    parts = [float(x) for x in f.read().strip().split()]
-                if len(parts) >= 3:
-                    ox, oy, oz = parts[0], parts[1], parts[2]
-                    break
-            except Exception:
-                pass
+    # Resolve 64-bit TWD97 offset.xyz + optional UTM->TWD97 XY Jacobian from root.p4m
+    (ox, oy, oz), xy_jacobian = _resolve_pix4d_origin_and_xy_jacobian(src_proj_dir, target_proj_dir)
 
     # 1. Scan & filter all native octree cells across Levels 2..9
     all_files: Dict[Tuple[int, int, int, int], str] = {}
@@ -704,6 +822,18 @@ def build_tileset_from_pix4d_native_octree(
         acc_pos = j["accessors"][1]
         bmin = np.array(acc_pos["min"], dtype=np.float64)
         bmax = np.array(acc_pos["max"], dtype=np.float64)
+        if xy_jacobian is not None:
+            corners_xy = np.array(
+                [
+                    [bmin[0], bmin[1]],
+                    [bmin[0], bmax[1]],
+                    [bmax[0], bmin[1]],
+                    [bmax[0], bmax[1]],
+                ],
+                dtype=np.float64,
+            ) @ xy_jacobian.T
+            bmin = np.array([corners_xy[:, 0].min(), corners_xy[:, 1].min(), bmin[2]], dtype=np.float64)
+            bmax = np.array([corners_xy[:, 0].max(), corners_xy[:, 1].max(), bmax[2]], dtype=np.float64)
 
         if vmin_occ is not None and vmax_occ is not None:
             if not (np.all(bmax >= vmin_occ) and np.all(bmin <= vmax_occ)):
@@ -720,6 +850,11 @@ def build_tileset_from_pix4d_native_octree(
         v_cnt = int(acc_pos["count"])
         bv_pos = bvs[int(acc_pos["bufferView"])]
         pos = np.frombuffer(b, dtype=np.float32, count=v_cnt * 3, offset=int(bv_pos.get("byteOffset", 0))).reshape(v_cnt, 3)
+        if xy_jacobian is not None and len(pos) > 0:
+            xy64 = pos[:, :2].astype(np.float64) @ xy_jacobian.T
+            pos = np.column_stack([xy64.astype(np.float32), pos[:, 2]]).astype(np.float32)
+            bmin = pos.min(axis=0).astype(np.float64)
+            bmax = pos.max(axis=0).astype(np.float64)
 
         acc_uv = j["accessors"][2]
         bv_uv = bvs[int(acc_uv["bufferView"])]
@@ -1217,6 +1352,7 @@ def build_native_octree_from_scalable_tileset(
     proj_dir: str,
     progress_callback: Optional[Callable[[float, str], None]] = None,
     preserve_existing_crop: bool = False,
+    target_proj_dir: Optional[str] = None,
 ) -> Dict[str, Any]:
     """
     Build a 9-level native octree 3D Tileset (`tileset/tileset.json`) directly from PIX4Dmatic's
@@ -1225,6 +1361,7 @@ def build_native_octree_from_scalable_tileset(
       builds the full uncropped scan from the raw octree so all previously deleted/cropped tiles are restored.
     - When `preserve_existing_crop=True`, preserves any existing 3D crop mask (`occ_mask`) from `tileset/`.
     """
+    dst_proj_dir = target_proj_dir or proj_dir
     content_glbs = glob.glob(
         os.path.join(proj_dir, "**", "processing", "meshes", "*", "content", "*_*_*_*.glb"),
         recursive=True,
@@ -1232,25 +1369,11 @@ def build_native_octree_from_scalable_tileset(
     if not content_glbs:
         raise FileNotFoundError(f"No native Pix4Dmatic octree .glb cells found under {proj_dir}")
 
-    # Resolve 64-bit TWD97 offset.xyz
-    ox, oy, oz = 0.0, 0.0, 0.0
-    for off_cand in (
-        os.path.join(proj_dir, "exports", "obj_mesh", "offset.xyz"),
-        os.path.join(proj_dir, "tileset", "offset.xyz"),
-        os.path.join(proj_dir, "tileset_backup", "offset.xyz"),
-    ):
-        if os.path.isfile(off_cand):
-            try:
-                with open(off_cand, "r", encoding="utf-8") as f:
-                    parts = [float(x) for x in f.read().strip().split()]
-                if len(parts) >= 3:
-                    ox, oy, oz = parts[0], parts[1], parts[2]
-                    break
-            except Exception:
-                pass
+    # Resolve 64-bit TWD97 offset.xyz (including root.p4m refFrame fallback)
+    (ox, oy, oz), _ = _resolve_pix4d_origin_and_xy_jacobian(proj_dir, dst_proj_dir)
 
     occ_mask: Optional[Dict[str, Any]] = None
-    existing_ts_dir = os.path.join(proj_dir, "tileset")
+    existing_ts_dir = os.path.join(dst_proj_dir, "tileset")
     existing_ts_json = os.path.join(existing_ts_dir, "tileset.json")
     if preserve_existing_crop and os.path.isfile(existing_ts_json):
         try:
@@ -1282,21 +1405,12 @@ def build_native_octree_from_scalable_tileset(
         except Exception as mask_err:
             print(f"[NativeOctreeBuilder] Warning checking crop occupancy mask for {scan_id}: {mask_err}")
 
-    focal_bbox_local: Optional[Tuple[np.ndarray, np.ndarray]] = None
-    if occ_mask is None and len(content_glbs) > 5000:
-        # For massive multi-thousand-cell park octrees (e.g. DaAn with 7,800-9,500 cells),
-        # preserve full L2..L5 across the entire park and keep L6..L9 inside the central focal region.
-        focal_bbox_local = (
-            np.array([-16.5, -12.0, -10.0], dtype=np.float64),
-            np.array([16.5, 12.0, 10.0], dtype=np.float64),
-        )
-
     return build_tileset_from_pix4d_native_octree(
         src_proj_dir=proj_dir,
-        target_proj_dir=proj_dir,
+        target_proj_dir=dst_proj_dir,
         occ_mask=occ_mask,
-        focal_bbox_local=focal_bbox_local,
-        outer_max_level=5,
+        focal_bbox_local=None,
+        outer_max_level=9,
         progress_callback=progress_callback,
     )
 

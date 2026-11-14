@@ -55,8 +55,13 @@ if sys.path[:1] != [BASE_DIR]:
         sys.path.remove(BASE_DIR)
     sys.path.insert(0, BASE_DIR)
 if sys.stdout is None or sys.stderr is None:
-    os.makedirs(os.path.join(BASE_DIR, "data"), exist_ok=True)
-    _log_fh = open(os.path.join(BASE_DIR, "data", "daemon_stdout.log"), "a", encoding="utf-8", buffering=1, errors="replace")
+    _rt_log_dir = os.path.join(
+        os.environ.get("LOCALAPPDATA") or os.path.expanduser("~"),
+        "GatheringScans",
+        "logs",
+    )
+    os.makedirs(_rt_log_dir, exist_ok=True)
+    _log_fh = open(os.path.join(_rt_log_dir, "daemon_stdout.log"), "a", encoding="utf-8", buffering=1, errors="replace")
     if sys.stdout is None:
         sys.stdout = _log_fh
     if sys.stderr is None:
@@ -100,6 +105,10 @@ from pc_worker.pix4d_runner import (
     postprocess_obj_to_tileset,
     _detect_scalable_mesh_max_lod,
     run_export_obj_recovery,
+    are_syncthing_inputs_ready,
+    is_global_pix4d_seat_busy,
+    acquire_global_pix4d_seat_lock,
+    release_global_pix4d_seat_lock,
 )
 
 
@@ -111,40 +120,51 @@ _WIN_NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000) if os.name 
 
 def _detect_running_pix4dmatic() -> Tuple[bool, str, str]:
     """
-    Checks if PIX4Dmatic.exe is currently running on the workstation.
+    Checks if a headless daemon PIX4Dmatic.exe (`--gst`) is currently running on the workstation.
+    Ignores interactive GUI PIX4Dmatic windows opened manually by the user.
     Returns (is_running, inferred_scan_id, latest_log_path).
     """
     if os.name != "nt":
         return False, "", ""
     running_p4d_pids = set()
-    tasklist_stdout = ""
+    gst_paths = []
     try:
         import psutil
-        for p in psutil.process_iter(["pid", "name"]):
+        for p in psutil.process_iter(["pid", "name", "cmdline"]):
             pname = (p.info.get("name") or "").lower()
             if "pix4dmatic" in pname:
-                running_p4d_pids.add(int(p.info.get("pid") or 0))
+                cmd_list = list(p.info.get("cmdline") or [])
+                cmdline_str = " ".join(cmd_list).lower()
+                if "--gst" in cmdline_str:
+                    running_p4d_pids.add(int(p.info.get("pid") or 0))
+                    for idx_c, tok_c in enumerate(cmd_list):
+                        if str(tok_c).strip().lower() == "--gst" and idx_c + 1 < len(cmd_list):
+                            gst_paths.append(os.path.abspath(str(cmd_list[idx_c + 1]).strip('"')))
         if not running_p4d_pids:
             return False, "", ""
     except Exception:
-        try:
-            r = subprocess.run(
-                ["tasklist", "/FI", "IMAGENAME eq PIX4Dmatic.exe", "/NH"],
-                capture_output=True,
-                text=True,
-                timeout=5,
-                creationflags=_WIN_NO_WINDOW,
-            )
-            tasklist_stdout = r.stdout or ""
-            if "PIX4Dmatic.exe" not in tasklist_stdout:
-                return False, "", ""
-        except Exception:
-            return False, "", ""
+        return False, "", ""
 
-    # Find the active PIX4Dmatic scan_id (prefer rerun_settings.json with matching running PID, then recent logs)
+    # Find the active PIX4Dmatic scan_id (prefer exact --gst path match, then rerun_settings.json PID, then recent logs)
     all_scans = DB.list_scans()
     active_proc_ids = {s["scan_id"] for s in all_scans if s.get("status") == "processing"}
     pid_matched_sid = ""
+    unregistered_external_gst = False
+    for gp in gst_paths:
+        gp_norm = os.path.normcase(gp)
+        matched_any = False
+        for s in all_scans:
+            sid = s["scan_id"]
+            pdir = os.path.abspath(s.get("project_dir") or os.path.join(LOCAL_SCANS_ROOT, sid))
+            pdir_norm = os.path.normcase(pdir)
+            if gp_norm.startswith(pdir_norm + os.sep):
+                pid_matched_sid = sid
+                matched_any = True
+                break
+        if not matched_any:
+            unregistered_external_gst = True
+    if unregistered_external_gst and not pid_matched_sid:
+        return True, "", ""
     for s in all_scans:
         sid = s["scan_id"]
         pdir = s.get("project_dir") or os.path.join(LOCAL_SCANS_ROOT, sid)
@@ -155,7 +175,7 @@ def _detect_running_pix4dmatic() -> Tuple[bool, str, str]:
                 with open(rcfg, "r", encoding="utf-8") as rf:
                     rd = _json.load(rf)
                 rpid = int(rd.get("pid") or 0)
-                if rpid > 0 and (rpid in running_p4d_pids or f" {rpid} " in f" {tasklist_stdout} "):
+                if rpid > 0 and rpid in running_p4d_pids:
                     pid_matched_sid = sid
                     break
             except Exception:
@@ -235,6 +255,10 @@ def inbox_discovery_loop():
             finally:
                 _INITIAL_DISCOVERY_DONE.set()
         else:
+            try:
+                register_workstation_heartbeat(WORKSTATION_ID, {"daemon_running": False})
+            except Exception:
+                pass
             _INITIAL_DISCOVERY_DONE.set()
         _DAEMON_WAKE_EVENT.wait(timeout=10.0)
 
@@ -257,14 +281,15 @@ def pix4d_worker_loop():
             continue
         try:
             is_running, running_sid, latest_log = _detect_running_pix4dmatic()
-            if is_running and running_sid:
-                adopted_sid = running_sid
-                info = parse_pix4dmatic_log_progress(latest_log)
-                pct = min(90.0, max(8.0, float(info.get("progress_pct", 15.0))))
-                stg = info.get("stage", "Processing")
-                cpu_ram = info.get("cpu_ram", "")
-                label = f"PIX4Dmatic: {stg} · {cpu_ram}" if cpu_ram else f"PIX4Dmatic: {stg}"
-                DB.update_job_progress(running_sid, "processing", pct, label)
+            if is_running:
+                if running_sid:
+                    adopted_sid = running_sid
+                    info = parse_pix4dmatic_log_progress(latest_log)
+                    pct = min(90.0, max(8.0, float(info.get("progress_pct", 15.0))))
+                    stg = info.get("stage", "Processing")
+                    cpu_ram = info.get("cpu_ram", "")
+                    label = f"PIX4Dmatic: {stg} · {cpu_ram}" if cpu_ram else f"PIX4Dmatic: {stg}"
+                    DB.update_job_progress(running_sid, "processing", pct, label)
                 _PIX4D_WAKE_EVENT.wait(timeout=4.0)
                 continue
 
@@ -446,11 +471,28 @@ def pix4d_worker_loop():
                     else:
                         DB.update_job_progress(fin_sid, "failed", 0.0, "PIX4Dmatic exited without producing 3D mesh")
 
+            # Enforce 1-seat PIX4Dmatic license lock across workstations before popping a job
+            seat_busy, seat_holder = is_global_pix4d_seat_busy(ignore_workstation=WORKSTATION_ID)
+            if seat_busy:
+                _PIX4D_WAKE_EVENT.wait(timeout=8.0)
+                continue
+
             next_job = DB.pop_next_job()
             if next_job:
                 sid = next_job["scan_id"]
                 src_zip = next_job.get("source_zip_path") or ""
                 out_dir = next_job.get("project_dir") or os.path.join(LOCAL_SCANS_ROOT, sid)
+                sync_ready, sync_reason = are_syncthing_inputs_ready(sid, src_zip, out_dir)
+                if not sync_ready:
+                    DB.update_job_progress(
+                        sid,
+                        "queued",
+                        0.0,
+                        sync_reason or "Waiting for Syncthing input sync to complete...",
+                        pending_pass=str(next_job.get("pending_pass") or ""),
+                    )
+                    _PIX4D_WAKE_EVENT.wait(timeout=10.0)
+                    continue
                 has_rerun_cfg = os.path.isfile(os.path.join(out_dir, "rerun_settings.json"))
                 raw_pending_pass = str(next_job.get("pending_pass") or "").strip().lower()
                 if has_rerun_cfg:
@@ -480,6 +522,7 @@ def pix4d_worker_loop():
                 def _on_progress(pct: float, stage: str):
                     DB.update_job_progress(sid, "processing", pct, stage, pending_pass=job_pass)
 
+                acquire_global_pix4d_seat_lock(sid)
                 try:
                     res = run_pix4dmatic_pipeline(
                         scan_id=sid,
@@ -499,6 +542,8 @@ def pix4d_worker_loop():
                         f"Pipeline exception ({job_exc})",
                     )
                     continue
+                finally:
+                    release_global_pix4d_seat_lock(sid)
 
                 if res.get("success") and res.get("tileset_path"):
                     if job_pass == "preview":
@@ -679,20 +724,25 @@ def prestage_queued_inputs_loop():
     """
     Background pre-staging worker: while PIX4Dmatic is busy processing the current job,
     pre-extracts `.zip` archives or fast-copies uncompressed Google Drive folders for
-    any `queued` jobs onto local SSD (`C:\\GatheringScans\\<scan_id>\\inputs\\`) so the
-    next job starts PIX4Dmatic with zero Google Drive staging delay.
+    any `queued` jobs onto local SSD (`<LOCAL_SCANS_ROOT>\\<scan_id>\\inputs\\`) so the
+    next job starts PIX4Dmatic with zero Google Drive staging delay (and syncs via Syncthing).
     """
     _INITIAL_DISCOVERY_DONE.wait(timeout=60)
     from pc_worker.pix4d_runner import prestage_input_to_local_ssd
+    import json as _json
 
     while True:
-        if not is_pc_daemon_running():
+        if not (is_pc_daemon_running() and is_workstation_daemon_active(WORKSTATION_ID)):
             time.sleep(5)
             continue
         try:
             scans = DB.list_scans()
             for row in scans:
                 if row.get("status") != "queued":
+                    continue
+                ex_raw = row.get("extra_json") or "{}"
+                ex_d = _json.loads(ex_raw) if isinstance(ex_raw, str) else (ex_raw or {})
+                if isinstance(ex_d, dict) and (ex_d.get("awaiting_preset") or ex_d.get("awaiting_import_decision")):
                     continue
                 sid = row.get("scan_id") or ""
                 src = row.get("source_zip_path") or ""
@@ -705,12 +755,52 @@ def prestage_queued_inputs_loop():
         time.sleep(10)
 
 
-if __name__ == "__main__":
-    # Safeguard: Always ensure the workstation daemon starts in active running mode on launcher startup
-    if not is_pc_daemon_running():
-        set_pc_daemon_running(True, actor_email="workstation_startup")
-        print("[GatheringScans] Auto-resumed paused daemon state on workstation launcher startup.")
+def _collect_app_py_mtimes() -> dict:
+    mtimes = {}
+    for root_p in (
+        os.path.join(BASE_DIR, "server.py"),
+        os.path.join(BASE_DIR, "start_gathering_scans.py"),
+    ):
+        if os.path.isfile(root_p):
+            try:
+                mtimes[root_p] = round(os.path.getmtime(root_p), 2)
+            except OSError:
+                pass
+    for p in glob.glob(os.path.join(BASE_DIR, "pc_worker", "**", "*.py"), recursive=True):
+        try:
+            mtimes[p] = round(os.path.getmtime(p), 2)
+        except OSError:
+            pass
+    return mtimes
 
+
+def _app_code_autoreload_loop():
+    """
+    Watches `_app` Python module mtimes on Syncthing-synced workstations (`BASE_DIR` named `_app`).
+    When updated `.py` files finish syncing (settled for >=6s) and headless PIX4Dmatic is idle,
+    exits cleanly so the Windows watchdog / Scheduled Task restarts with fresh code.
+    """
+    if os.path.basename(BASE_DIR).lower() != "_app":
+        return
+    baseline = _collect_app_py_mtimes()
+    while True:
+        time.sleep(8)
+        try:
+            cur = _collect_app_py_mtimes()
+            if cur and cur != baseline:
+                newest_mt = max(cur.values())
+                if (time.time() - newest_mt) < 6.0:
+                    continue
+                p4d_busy, _, _ = _detect_running_pix4dmatic()
+                if p4d_busy:
+                    continue
+                print("[AutoReload] Detected Syncthing update to _app Python modules; exiting cleanly for watchdog restart.")
+                os._exit(0)
+        except Exception:
+            pass
+
+
+if __name__ == "__main__":
     t_discovery = threading.Thread(target=inbox_discovery_loop, daemon=True)
     t_discovery.start()
 
@@ -719,6 +809,9 @@ if __name__ == "__main__":
 
     t_prestager = threading.Thread(target=prestage_queued_inputs_loop, daemon=True)
     t_prestager.start()
+
+    t_autoreload = threading.Thread(target=_app_code_autoreload_loop, daemon=True)
+    t_autoreload.start()
 
     start_pc_reverse_tunnel_pool(local_port=SERVER_PORT)
 

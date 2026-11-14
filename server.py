@@ -102,6 +102,7 @@ from pc_worker.auth_and_sharing import (
     ROLE_LABELS,
     normalize_role,
     get_role_permissions,
+    issue_session_token,
     verify_session_token,
     is_link_preview_bot,
     parse_user_agent,
@@ -220,6 +221,7 @@ class GatheringScansHandler(CloudAndTunnelHandlerMixin, ServerWriteRoutesMixin, 
             ):
                 allowed_origin = origin
         self.send_header("Access-Control-Allow-Origin", allowed_origin)
+        self.send_header("Access-Control-Allow-Credentials", "true")
         self.send_header("Vary", "Origin")
         self.send_header("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS")
         self.send_header(
@@ -266,12 +268,24 @@ class GatheringScansHandler(CloudAndTunnelHandlerMixin, ServerWriteRoutesMixin, 
             return
         super().do_HEAD()
 
-    def send_json(self, data: Dict[str, Any], status: int = 200):
+    def _build_session_cookie_header(self, token: str, clear: bool = False) -> str:
+        fwd_proto = (self.headers.get("X-Forwarded-Proto") or "").split(",")[0].strip().lower()
+        is_https = fwd_proto == "https" or os.name != "nt"
+        sec_flag = "; Secure" if is_https else ""
+        if clear or not token:
+            return f"gs_session_token=; Max-Age=0; Path=/; SameSite=Lax; HttpOnly{sec_flag}"
+        safe_tok = urllib.parse.quote(token, safe=".-_")
+        return f"gs_session_token={safe_tok}; Max-Age=7776000; Path=/; SameSite=Lax; HttpOnly{sec_flag}"
+
+    def send_json(self, data: Dict[str, Any], status: int = 200, extra_headers: Optional[Dict[str, str]] = None):
         raw = json.dumps(data, ensure_ascii=False).encode("utf-8")
         self.send_response(status)
         self.send_header("Content-Type", "application/json; charset=utf-8")
         self.send_header("Content-Length", str(len(raw)))
         self.send_header("Cache-Control", "no-store")
+        if extra_headers:
+            for hk, hv in extra_headers.items():
+                self.send_header(hk, hv)
         self.end_headers()
         self.wfile.write(raw)
 
@@ -1034,7 +1048,7 @@ class GatheringScansHandler(CloudAndTunnelHandlerMixin, ServerWriteRoutesMixin, 
             ver_hint = str(abs(hash(f"{sid}:{s.get('updated_at') or s.get('capture_date') or ''}:{s.get('twd97_h') or 0}")) % 1000000000)
         ts_ver = f"opt6_{ver_hint}"
         prev_ver = f"low5_{ver_hint}"
-        if ts_path and ts_path[:2].upper() == "C:" and os.path.isfile(ts_path):
+        if ts_path and os.name == "nt" and os.path.isfile(ts_path):
             try:
                 bdir = os.path.dirname(ts_path)
                 proj_dir = s.get("project_dir") or os.path.dirname(bdir)
@@ -1803,6 +1817,34 @@ class GatheringScansHandler(CloudAndTunnelHandlerMixin, ServerWriteRoutesMixin, 
             )
             return
 
+        # 2.5. Strict Authentication & Scoped Share-Link Gate for all protected GET/Stream/Camera endpoints
+        is_public_get = (
+            path in (
+                "/api/auth/session",
+                "/api/auth/roster",
+                "/api/auth/config",
+                "/api/share/verify",
+                "/api/gchat/preset-decision",
+                "/api/gchat/island-decision",
+            )
+            or (path.startswith("/api/queue/") and path.endswith("/preview-photo.jpg"))
+            or (path.startswith("/api/scans/") and (path.endswith("/thumbnail") or path.endswith("/thumbnail.png")))
+        )
+        if not is_public_get and (
+            path.startswith("/api/")
+            or path.startswith("/stream/")
+            or path.startswith("/cameras/")
+            or path.startswith("/exports/")
+        ):
+            if not share_token:
+                _, gate_role_g, _ = self._resolve_request_role(None, query, "")
+                if gate_role_g == "guest":
+                    self.send_json(
+                        {"error": "Authentication required. Please sign in with Google.", "auth_required": True},
+                        status=401,
+                    )
+                    return
+
         # 2b. Primary Scan Lookup Endpoint
         if path in PRIMARY_SCAN_API_PATHS:
             req_grp = str((query.get("project_group") or query.get("site") or [""])[0] or "").strip()
@@ -2047,28 +2089,18 @@ class GatheringScansHandler(CloudAndTunnelHandlerMixin, ServerWriteRoutesMixin, 
                 self.send_json({"error": "Queue status restricted to internal company users."}, status=403)
                 return
 
-            # Check if PIX4Dmatic.exe is actively running on Windows PC (in-process via psutil, no console window)
+            # Check if automated headless PIX4Dmatic.exe (--gst) is actively running on Windows PC
             p4d_running = False
             if os.name == "nt":
                 try:
                     import psutil
                     p4d_running = any(
                         "pix4dmatic" in (p.info.get("name") or "").lower()
-                        for p in psutil.process_iter(["pid", "name"])
+                        and "--gst" in " ".join(p.info.get("cmdline") or []).lower()
+                        for p in psutil.process_iter(["pid", "name", "cmdline"])
                     )
                 except Exception:
-                    try:
-                        import subprocess as _sp
-                        tr = _sp.run(
-                            ["tasklist", "/FI", "IMAGENAME eq PIX4Dmatic.exe", "/NH"],
-                            capture_output=True,
-                            text=True,
-                            timeout=3,
-                            creationflags=0x08000000,
-                        )
-                        p4d_running = "PIX4Dmatic.exe" in (tr.stdout or "")
-                    except Exception:
-                        p4d_running = False
+                    p4d_running = False
 
             all_scans = DB.list_scans()
             active_proc_ids = {s["scan_id"] for s in all_scans if s.get("status") == "processing"}
@@ -2213,6 +2245,9 @@ class GatheringScansHandler(CloudAndTunnelHandlerMixin, ServerWriteRoutesMixin, 
             p4d_cfg = load_pix4d_settings()
             _, _, q_perms = self._resolve_request_role(None, query, share_token)
             is_q_admin = bool(q_perms.get("can_manage_users"))
+            public_live_log = dict(live_log_info) if live_log_info else {}
+            if not is_q_admin and public_live_log:
+                public_live_log.pop("log_path", None)
             self.send_json(
                 {
                     "status": "ok",
@@ -2222,12 +2257,12 @@ class GatheringScansHandler(CloudAndTunnelHandlerMixin, ServerWriteRoutesMixin, 
                     "inbox_dir": GDRIVE_INPUTS_DIR if is_q_admin else "",
                     "crs_enforced": TWD97_TWVD2001_LABEL,
                     "texture_size_enforced": p4d_cfg.get("texture_size", PIX4DMATIC_TEXTURE_SIZE),
-                    "pix4d_settings": p4d_cfg,
+                    "pix4d_settings": p4d_cfg if is_q_admin else {},
                     "processing": processing,
                     "queued": queued,
                     "waiting_parts_count": len(waiting_parts_list),
                     "all_scans": all_scans,
-                    "live_pix4d": live_log_info,
+                    "live_pix4d": public_live_log,
                     "completed_count": len(completed),
                     "gchat_webhook_url": GCHAT.get_webhook_url() if is_q_admin else "",
                 }
@@ -2528,12 +2563,54 @@ class GatheringScansHandler(CloudAndTunnelHandlerMixin, ServerWriteRoutesMixin, 
             active_lang = str((matched_prof and matched_prof.get("language")) or u_settings.get("language") or "zh-TW")
             if active_lang not in ("zh-TW", "en"):
                 active_lang = "zh-TW"
+            is_auth_ok = bool(matched_prof or (actor_em and actor_r != "guest"))
+            eff_sess_role = str((matched_prof and matched_prof.get("role")) or actor_r)
+            is_owner_sess = bool(eff_sess_role == "owner") if is_auth_ok else False
+            is_admin_role_sess = bool(eff_sess_role in ("owner", "admin")) if is_auth_ok else False
+            refreshed_tok = ""
+            sess_hdrs = None
+            if is_auth_ok and req_em:
+                refreshed_tok = issue_session_token(req_em, role=eff_sess_role)
+                if not isinstance(safe_matched, dict):
+                    safe_matched = {
+                        "email": req_em,
+                        "name": req_em.split("@")[0],
+                        "role": eff_sess_role,
+                        "role_level": ROLE_LEVELS.get(eff_sess_role, 2),
+                        "role_label": ROLE_LABELS.get(eff_sess_role, "Viewer"),
+                        "permissions": get_role_permissions(eff_sess_role),
+                        "language": active_lang,
+                        "isGoogleAuthenticated": True,
+                    }
+                safe_matched["session_token"] = refreshed_tok
+                safe_matched["isOwner"] = is_owner_sess
+                safe_matched["isAdmin"] = is_admin_role_sess
+                sess_hdrs = {"Set-Cookie": self._build_session_cookie_header(refreshed_tok)}
+            elif path == "/api/auth/session":
+                had_presented_tok = bool(
+                    (self.headers.get("X-Session-Token") or "").strip()
+                    or "gs_session_token=" in (self.headers.get("Cookie") or "")
+                )
+                if had_presented_tok:
+                    self.send_json(
+                        {
+                            "status": "unauthorized",
+                            "authenticated": False,
+                            "error": "Session expired or invalidated by administrator.",
+                        },
+                        status=401,
+                        extra_headers={"Set-Cookie": self._build_session_cookie_header("", clear=True)},
+                    )
+                    return
             self.send_json(
                 {
                     "status": "ok",
-                    "authenticated": bool(matched_prof or (actor_em and actor_r != "guest")),
+                    "authenticated": is_auth_ok,
+                    "isOwner": is_owner_sess,
+                    "isAdmin": is_admin_role_sess,
+                    "session_token": refreshed_tok,
                     "email": req_em,
-                    "role": (matched_prof and matched_prof.get("role")) or actor_r,
+                    "role": eff_sess_role,
                     "permissions": (matched_prof and matched_prof.get("permissions")) or actor_p,
                     "language": active_lang,
                     "user": safe_matched,
@@ -2541,7 +2618,8 @@ class GatheringScansHandler(CloudAndTunnelHandlerMixin, ServerWriteRoutesMixin, 
                     "roster": visible_profiles,
                     "profiles": visible_profiles,
                     "google_client_id": GOOGLE_OAUTH_CLIENT_ID,
-                }
+                },
+                extra_headers=sess_hdrs,
             )
             return
 
@@ -2558,9 +2636,49 @@ class GatheringScansHandler(CloudAndTunnelHandlerMixin, ServerWriteRoutesMixin, 
             if share_token or not ws_perms.get("can_manage_users"):
                 self.send_json({"error": "Owner or Admin session required to inspect workstation settings."}, status=403)
                 return
-            from pc_worker.config import load_workstation_settings, WORKSTATION_ID
+            from pc_worker.config import load_workstation_settings, save_workstation_settings, WORKSTATION_ID
+            import http.client as _hc
+
             cfg = load_workstation_settings()
-            cfg["local_workstation_id"] = WORKSTATION_ID
+            if os.name == "nt" and self.headers.get("X-From-Vps", "") != "1":
+                # Fetch authoritative multi-workstation coordinator state from VPS so local port 8095 & scans.gatheren.cloud always match
+                try:
+                    c_ws = _hc.HTTPConnection(VPS_HOST, 8095, timeout=1.8)
+                    c_ws.request(
+                        "GET",
+                        "/api/admin/workstations",
+                        headers={"X-Tunnel-Key": TUNNEL_SHARED_KEY, "X-From-Vps": "1"},
+                    )
+                    r_ws = c_ws.getresponse()
+                    raw_ws = r_ws.read()
+                    c_ws.close()
+                    if r_ws.status == 200 and raw_ws:
+                        vps_cfg = json.loads(raw_ws.decode("utf-8"))
+                        if isinstance(vps_cfg, dict) and isinstance(vps_cfg.get("workstations"), dict):
+                            cfg = save_workstation_settings(vps_cfg)
+                except Exception:
+                    pass
+            now_ws = time.time()
+            ws_out: Dict[str, Any] = {}
+            for wid, winfo in (cfg.get("workstations") or {}).items():
+                if not isinstance(winfo, dict):
+                    continue
+                item = dict(winfo)
+                if os.name == "nt" and str(wid).strip().lower() == WORKSTATION_ID.lower():
+                    item["last_seen"] = now_ws
+                    item["root_dir"] = LOCAL_SCANS_ROOT
+                    item["daemon_enabled"] = is_pc_daemon_running()
+                ls = float(item.get("last_seen") or 0.0)
+                age_s = round(max(0.0, now_ws - ls), 1) if ls > 0 else 999999.0
+                online = ls > 0 and age_s <= 45.0
+                d_en = bool(item.get("daemon_enabled", True))
+                busy = bool(item.get("pix4d_busy", False)) and online
+                item["online"] = online
+                item["age_sec"] = age_s if ls > 0 else None
+                item["status"] = "processing" if busy else ("online" if (online and d_en) else ("paused" if online else "offline"))
+                ws_out[wid] = item
+            cfg["workstations"] = ws_out
+            cfg["coordinator_source"] = "vps" if os.name != "nt" else "synced_vps_coordinator"
             self.send_json(cfg)
             return
 
@@ -3280,6 +3398,11 @@ class GatheringScansHandler(CloudAndTunnelHandlerMixin, ServerWriteRoutesMixin, 
         # 13. Serve RTK Raw Camera Photo & Calibrated Camera Catalog
         if path in ("/api/survey/cameras", "/api/surveying/cameras"):
             sid_c, fmt_c = query.get("scan_id", [""])[0], query.get("format", ["json"])[0].lower()
+            if share_token:
+                ok_cam, reason_cam, _, _ = AUTH_SHARE.validate_share_access(share_token, requested_scan_id=sid_c or None)
+                if not ok_cam:
+                    self.send_json({"error": reason_cam, "revoked": True}, status=403)
+                    return
             res_c = SURVEY.get_scan_cameras_response(sid_c, limit=int(query.get("limit", ["10000"])[0] or 10000), fmt=fmt_c)
             if fmt_c == "csv" and isinstance(res_c, str):
                 raw_csv = res_c.encode("utf-8-sig")
@@ -3294,6 +3417,11 @@ class GatheringScansHandler(CloudAndTunnelHandlerMixin, ServerWriteRoutesMixin, 
         if path in ("/api/camera-photo", "/api/photo-file") or path.startswith("/cameras/"):
             parts_cam = path[len("/cameras/") :].strip("/").split("/", 1) if path.startswith("/cameras/") else []
             scan_id = (parts_cam[0] if parts_cam else "") if path.startswith("/cameras/") else query.get("scan_id", [""])[0]
+            if share_token:
+                ok_cp, reason_cp, _, _ = AUTH_SHARE.validate_share_access(share_token, requested_scan_id=scan_id or None)
+                if not ok_cp:
+                    self.send_json({"error": reason_cp, "revoked": True}, status=403)
+                    return
             fname = (parts_cam[1] if len(parts_cam) >= 2 else "") if path.startswith("/cameras/") else query.get("file", [""])[0]
             fpath = SURVEY.resolve_camera_photo_path(scan_id, fname) if fname else None
             if fpath and os.path.isfile(fpath):

@@ -33,6 +33,7 @@ from pc_worker.surveying_engine import SurveyingEngine
 from pc_worker.surveying.public_utilities_gis import UTILITY_LAYERS, PublicUtilitiesGISMixin
 from pc_worker.priority_queue import ScanQueueDB
 from pc_worker.config import DATA_DIR, REPORTS_DIR
+from pc_worker.auth_and_sharing import issue_session_token
 
 LIVE_API_BASE = "http://127.0.0.1:8095"
 
@@ -41,10 +42,11 @@ def http_post_json(path: str, payload: dict, timeout: float = 10.0) -> tuple[int
     """Helper to issue HTTP POST requests against the running GatheringScans server."""
     url = f"{LIVE_API_BASE}{path}"
     data = json.dumps(payload).encode("utf-8")
+    tok = issue_session_token("glibivanov@gatheren.com.tw", role="owner")
     req = urllib.request.Request(
         url,
         data=data,
-        headers={"Content-Type": "application/json", "Accept": "application/json"}
+        headers={"Content-Type": "application/json", "Accept": "application/json", "X-Session-Token": tok}
     )
     try:
         with urllib.request.urlopen(req, timeout=timeout) as resp:

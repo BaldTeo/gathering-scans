@@ -294,9 +294,13 @@ class TestRustCoreParityAndPrecision(unittest.TestCase):
         from pc_worker.priority_queue import ScanQueueDB
 
         engine = SurveyingEngine(ScanQueueDB())
-        scans = engine.db.list_scans()
+        scans = [
+            s
+            for s in engine.db.list_scans()
+            if s.get("status") == "completed" and s.get("tileset_path") and os.path.isfile(s["tileset_path"])
+        ]
         if not scans:
-            self.skipTest("No scans in DB")
+            self.skipTest("No completed scans with tileset in DB")
         scan_id = scans[0]["scan_id"]
 
         res_rust = engine.calculate_cut_fill_volume({"scan_id": scan_id, "base_mode": "triangulated_boundary"})

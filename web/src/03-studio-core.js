@@ -393,21 +393,31 @@
         }
         surfDist = hit0 ? hit0.distance : NaN;
 
-        if (!Number.isFinite(surfDist)) {
-          if (!cachedRect || now - cachedRectMs > 400) { cachedRect = domEl.getBoundingClientRect(); cachedRectMs = now; }
-          const rect = cachedRect;
-          if (rect.width > 0 && rect.height > 0) {
-            ndc.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
-            ndc.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
-            if (Number.isFinite(ndc.x) && Math.abs(ndc.x) <= 1.05 && Math.abs(ndc.y) <= 1.05) {
-              ray.setFromCamera(ndc, cam);
-              const cHit = filterValidHit(ray.intersectObjects(targets, true), sbEval);
-              if (cHit) {
+        let cursorHitPt = null;
+        if (!cachedRect || now - cachedRectMs > 400) { cachedRect = domEl.getBoundingClientRect(); cachedRectMs = now; }
+        const rect = cachedRect;
+        if (rect && rect.width > 0 && rect.height > 0) {
+          ndc.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
+          ndc.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
+          if (Number.isFinite(ndc.x) && Math.abs(ndc.x) <= 1.05 && Math.abs(ndc.y) <= 1.05) {
+            ray.setFromCamera(ndc, cam);
+            const cHit = filterValidHit(ray.intersectObjects(targets, true), sbEval);
+            if (cHit) {
+              cursorHitPt = cHit.point;
+              if (!Number.isFinite(surfDist)) {
                 const proj = tmpDelta.subVectors(cHit.point, cam.position).dot(viewDir);
                 if (proj > 0.15) surfDist = proj;
               }
             }
           }
+        }
+        if (cursorHitPt && curTargetDist > 0.8) {
+          const savedQuat = cam.quaternion.clone();
+          ctrls.target.lerp(cursorHitPt, 0.12);
+          viewDir.subVectors(ctrls.target, cam.position);
+          const newLen = viewDir.length();
+          if (newLen > 1e-6) viewDir.divideScalar(newLen);
+          cam.quaternion.copy(savedQuat);
         }
         if (Number.isFinite(surfDist)) {
           lastRayMs = now;
@@ -1825,6 +1835,20 @@
       const ts = nowMs || performance.now();
       if (STATE.fpMode.active) updateFirstPersonCamera(ts);
       else controls.update();
+      if (!STATE.fpMode.active) {
+        const tDist = Math.max(0.1, camera.position.distanceTo(controls.target));
+        const bRad = Math.max(80, Number(studioThree.boundingSphere?.radius) || 250);
+        const wantNear = Math.min(1.5, Math.max(0.02, tDist * 0.008));
+        const wantFar = Math.min(25000, Math.max(800, tDist * 18, bRad * 16));
+        if (Math.abs(wantNear - camera.near) / camera.near > 0.14 || Math.abs(wantFar - camera.far) / camera.far > 0.18) {
+          camera.near = wantNear;
+          camera.far = wantFar;
+          camera.updateProjectionMatrix();
+        }
+      } else if (camera.near > 0.05) {
+        camera.near = 0.03;
+        camera.updateProjectionMatrix();
+      }
       camera.updateMatrixWorld();
       if (studioThree.tilesRenderer && !STATE.multiAlign?.active) {
         studioThree.modelPivot.visible = true;

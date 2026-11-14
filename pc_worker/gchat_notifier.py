@@ -1046,6 +1046,107 @@ class GoogleChatNotifier:
             thread_suffix="preset_prompt",
         )
 
+    def notify_manual_project_import_question(
+        self,
+        scan_id: str,
+        scan: Dict[str, Any],
+        preview_img_url: str = "",
+        decision_token: str = "",
+    ) -> Dict[str, Any]:
+        """
+        Interactive Google Chat notification when an already-processed PIX4Dmatic project folder
+        (`root.p4m` + `processing/meshes` or `.obj`/`tileset.json`) is discovered in INPUTS.
+        Tags 雲在天 (<users/107639887113416939995>) with 1 preview image and 4 interactive buttons:
+        1. Import & Replace Existing
+        2. Import as Separate Scan
+        3. Re-run from Photos
+        4. Cancel
+        """
+        self._sync_user_ids_from_db()
+        glib_email = "glibivanov@gatheren.com.tw"
+        gchat_uid = self.user_gchat_ids.get(glib_email, "107639887113416939995")
+        mention_tag = f"<users/{gchat_uid}>" if gchat_uid else "*雲在天*"
+
+        scan_name = scan.get("name") or scan_id
+        project_group = scan.get("project_group_zh") or scan.get("project_name_zh") or scan.get("project_group") or "未分類工區"
+        img_count = int(scan.get("image_count") or 0)
+        img_tag = f"{img_count:,} 張照片" if img_count > 0 else "已完成 PIX4Dmatic 專案"
+
+        base_api = f"{PUBLIC_BASE_URL}/api/gchat/preset-decision"
+        url_replace = f"{base_api}?{urllib.parse.urlencode({'scan_id': scan_id, 'decision': 'replace_existing', 'token': decision_token})}"
+        url_separate = f"{base_api}?{urllib.parse.urlencode({'scan_id': scan_id, 'decision': 'import_separate', 'token': decision_token})}"
+        url_rerun = f"{base_api}?{urllib.parse.urlencode({'scan_id': scan_id, 'decision': 'rerun_photos', 'token': decision_token})}"
+        url_cancel = f"{base_api}?{urllib.parse.urlencode({'scan_id': scan_id, 'decision': 'cancel', 'token': decision_token})}"
+        img_url = preview_img_url or f"{PUBLIC_BASE_URL}/api/queue/{urllib.parse.quote(scan_id)}/preview-photo.jpg"
+
+        card_payload: Dict[str, Any] = {
+            "text": f"📦 {mention_tag} 在 INPUTS 偵測到已完成的 PIX4Dmatic 專案：*{scan_name}*（{project_group} · {img_tag}）。\n請選擇匯入方式：",
+            "cardsV2": [
+                {
+                    "cardId": f"manual_import_prompt_{scan_id}",
+                    "card": {
+                        "header": {
+                            "title": f"手動專案待確認：{scan_name}",
+                            "subtitle": f"{project_group} • {img_tag} • 請選擇匯入模式",
+                        },
+                        "sections": [
+                            {
+                                "widgets": [
+                                    {
+                                        "image": {
+                                            "imageUrl": img_url,
+                                            "altText": f"專案預覽：{scan_name}",
+                                            "onClick": {"openLink": {"url": url_separate}},
+                                        }
+                                    },
+                                    {
+                                        "textParagraph": {
+                                            "text": (
+                                                "<b>偵測到已完成建模的 PIX4Dmatic 專案資料夾，請選擇處理方式：</b><br>"
+                                                "• <b>匯入並取代現有掃描</b>：轉為 9 階層 Web Tileset 並取代同工區舊掃描<br>"
+                                                "• <b>匯入為新獨立掃描</b>：保留同工區現有掃描，新增為獨立時間軸紀錄<br>"
+                                                "• <b>從原始照片重新建模</b>：忽略現有網格，使用 PIX4Dmatic 重新運算<br>"
+                                                "• <b>取消</b>：略過此資料夾且不再重複詢問"
+                                            )
+                                        }
+                                    },
+                                    {
+                                        "buttonList": {
+                                            "buttons": [
+                                                {
+                                                    "text": "🔄 匯入並取代現有掃描",
+                                                    "onClick": {"openLink": {"url": url_replace}},
+                                                },
+                                                {
+                                                    "text": "➕ 匯入為新獨立掃描",
+                                                    "onClick": {"openLink": {"url": url_separate}},
+                                                },
+                                                {
+                                                    "text": "🔁 從原始照片重新建模",
+                                                    "onClick": {"openLink": {"url": url_rerun}},
+                                                },
+                                                {
+                                                    "text": "❌ 取消",
+                                                    "onClick": {"openLink": {"url": url_cancel}},
+                                                },
+                                            ]
+                                        }
+                                    },
+                                ]
+                            }
+                        ],
+                    },
+                }
+            ],
+        }
+        return self._dispatch_card_to_uploader(
+            scan_id=scan_id,
+            uploader_email=glib_email,
+            uploader_name="雲在天",
+            card_payload=card_payload,
+            thread_suffix="manual_import_prompt",
+        )
+
     def list_notifications(self, limit: int = 20) -> List[Dict[str, Any]]:
         with DB_LOCK, self.db._connect() as conn:
             rows = conn.execute(

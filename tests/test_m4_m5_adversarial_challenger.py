@@ -24,22 +24,29 @@ import unittest
 import urllib.request
 import urllib.error
 
+REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+if REPO_ROOT not in sys.path:
+    sys.path.insert(0, REPO_ROOT)
+
+from pc_worker.config import DB_PATH
+from pc_worker.auth_and_sharing import issue_session_token
+
 BASE_URL = "http://127.0.0.1:8095"
 LOCAL_SCANS_DIR = r"C:\GatheringScans"
-DB_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data", "gathering_scans.db")
 
 
 def post_json(path: str, data: any, timeout: int = 10):
     url = f"{BASE_URL}{path}"
+    tok = issue_session_token("glibivanov@gatheren.com.tw", role="owner")
     if isinstance(data, (dict, list)):
         payload_bytes = json.dumps(data).encode("utf-8")
-        headers = {"Content-Type": "application/json"}
+        headers = {"Content-Type": "application/json", "X-Session-Token": tok}
     elif isinstance(data, (bytes, str)):
         payload_bytes = data.encode("utf-8") if isinstance(data, str) else data
-        headers = {"Content-Type": "application/json"}
+        headers = {"Content-Type": "application/json", "X-Session-Token": tok}
     else:
         payload_bytes = str(data).encode("utf-8")
-        headers = {"Content-Type": "text/plain"}
+        headers = {"Content-Type": "text/plain", "X-Session-Token": tok}
 
     req = urllib.request.Request(url, data=payload_bytes, headers=headers, method="POST")
     try:
@@ -69,7 +76,8 @@ class AdversarialMilestone4And5LiveChallenge(unittest.TestCase):
     @staticmethod
     def _get(path: str):
         url = f"{BASE_URL}{path}"
-        req = urllib.request.Request(url, method="GET")
+        tok = issue_session_token("glibivanov@gatheren.com.tw", role="owner")
+        req = urllib.request.Request(url, headers={"X-Session-Token": tok}, method="GET")
         try:
             with urllib.request.urlopen(req, timeout=5) as resp:
                 body = resp.read().decode("utf-8")
@@ -397,7 +405,7 @@ class AdversarialMilestone4And5LiveChallenge(unittest.TestCase):
         
         # Verify key baseline project directories exist
         required_dirs = [
-            "catch_QihuPark_20261028",
+            "catch_QihuPark_20261028_HQ",
             "RosePark_Merged2",
             "NTU_Dorm_260915",
             "QuChi261016_Trees",

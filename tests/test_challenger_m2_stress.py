@@ -8,12 +8,20 @@ import urllib.request
 import json
 import sqlite3
 import os
+import sys
+
+REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+if REPO_ROOT not in sys.path:
+    sys.path.insert(0, REPO_ROOT)
+
+from pc_worker.config import DB_PATH as _CFG_DB_PATH
+from pc_worker.auth_and_sharing import issue_session_token
 
 
 class TestGcpQaLiveApiEmpiricalStress(unittest.TestCase):
     BASE_URL = "http://127.0.0.1:8095"
     SCAN_ID = "quchi_20261005_merged"
-    DB_PATH = "data/gathering_scans.db"
+    DB_PATH = _CFG_DB_PATH
 
     @classmethod
     def setUpClass(cls):
@@ -25,10 +33,11 @@ class TestGcpQaLiveApiEmpiricalStress(unittest.TestCase):
                 raise RuntimeError(f"Server is not online: {data}")
 
     def post_json(self, path, payload):
+        tok = issue_session_token("glibivanov@gatheren.com.tw", role="owner")
         req = urllib.request.Request(
             f"{self.BASE_URL}{path}",
             data=json.dumps(payload).encode("utf-8"),
-            headers={"Content-Type": "application/json"},
+            headers={"Content-Type": "application/json", "X-Session-Token": tok},
         )
         with urllib.request.urlopen(req, timeout=10) as resp:
             return resp.status, json.loads(resp.read().decode("utf-8"))

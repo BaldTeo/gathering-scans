@@ -523,6 +523,9 @@ class TestMilestone3AdversarialChallenger(unittest.TestCase):
         except Exception as e:
             self.skipTest(f"Local server 127.0.0.1:8095 not running: {e}")
 
+        from pc_worker.auth_and_sharing import issue_session_token
+        owner_tok = issue_session_token("glibivanov@gatheren.com.tw", role="owner")
+
         # Test live stationing endpoint
         req_st = urllib.request.Request(
             "http://127.0.0.1:8095/api/survey/stationing",
@@ -531,7 +534,7 @@ class TestMilestone3AdversarialChallenger(unittest.TestCase):
                 "interval": 10.0,
                 "swath_width": 16.0,
             }).encode("utf-8"),
-            headers={"Content-Type": "application/json"},
+            headers={"Content-Type": "application/json", "X-Session-Token": owner_tok},
         )
         with urllib.request.urlopen(req_st, timeout=10) as resp:
             self.assertEqual(resp.status, 200)
@@ -547,7 +550,7 @@ class TestMilestone3AdversarialChallenger(unittest.TestCase):
                 "scan_id": "quchi_20261005_merged",
                 "min_ponding_depth_m": 0.10,
             }).encode("utf-8"),
-            headers={"Content-Type": "application/json"},
+            headers={"Content-Type": "application/json", "X-Session-Token": owner_tok},
         )
         with urllib.request.urlopen(req_dr, timeout=10) as resp:
             self.assertEqual(resp.status, 200)

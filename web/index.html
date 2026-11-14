@@ -18,8 +18,8 @@
   <meta name="twitter:image" content="https://scans.gatheren.cloud/assets/gathering_cloud_logo.png" />
   <!-- GS_SHARE_OG_END -->
   <link rel="icon" type="image/png" href="/assets/gathering_cloud_logo.png" />
-  <link rel="stylesheet" href="/app.css?v=20261113_v321" />
-  <link rel="stylesheet" href="/survey-bim.css?v=20261113_v321" />
+  <link rel="stylesheet" href="/app.css?v=20261114_v322" />
+  <link rel="stylesheet" href="/survey-bim.css?v=20261114_v322" />
   <script src="https://accounts.google.com/gsi/client" async defer></script>
 
 </head>
@@ -127,13 +127,21 @@
         <span id="lblToggleLanguage">EN</span>
       </button>
 
-      <button type="button" class="gs-top-btn" id="btnGoogleUser" title="Google Workspace 帳號登入與切換" data-i18n-title-zh="Google Workspace 帳號登入與切換" data-i18n-title-en="Google Workspace Account Sign-In">
-        <img id="imgCurrentUserAvatar" src="" alt="" style="width:18px;height:18px;border-radius:50%;object-fit:cover;display:none;" />
-        <svg id="svgCurrentUserIcon" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8">
-          <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>
-        </svg>
-        <span id="lblCurrentUser" style="display:inline;font-size:11.5px;max-width:130px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">登入</span>
-      </button>
+      <div class="gs-user-menu-wrap" id="topUserMenuWrap" style="position:relative;display:inline-flex;align-items:center;">
+        <button type="button" class="gs-top-btn" id="btnGoogleUser" title="Google 帳號選單" data-i18n-title-zh="Google 帳號選單" data-i18n-title-en="Google Account Menu">
+          <img id="imgCurrentUserAvatar" src="" alt="" style="width:18px;height:18px;border-radius:50%;object-fit:cover;display:none;" />
+          <svg id="svgCurrentUserIcon" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8">
+            <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>
+          </svg>
+          <span id="lblCurrentUser" style="display:inline;font-size:11.5px;max-width:130px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">登入</span>
+        </button>
+        <div id="userTopDropdownMenu" style="display:none;position:absolute;top:calc(100% + 6px);right:0;min-width:225px;background:var(--ui-bg-surface);border:1px solid var(--ui-border-strong);border-radius:10px;padding:10px 12px;box-shadow:var(--ui-shadow-window);z-index:4500;">
+          <div id="userTopMenuName" style="font-size:12.5px;font-weight:700;color:var(--ui-text-primary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"></div>
+          <div id="userTopMenuEmail" style="font-size:11px;color:var(--ui-accent);font-family:var(--mono);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:2px;"></div>
+          <div id="userTopMenuRole" style="font-size:10.5px;color:var(--ui-text-muted);margin-top:3px;padding-bottom:8px;border-bottom:1px solid var(--ui-border);"></div>
+          <button type="button" class="btn-xs" id="btnTopMenuLogout" style="width:100%;justify-content:center;margin-top:8px;height:28px;color:#ef4444;border-color:rgba(239,68,68,0.4);font-weight:700;" data-i18n-zh="登出帳號" data-i18n-en="Log out">登出帳號</button>
+        </div>
+      </div>
     </div>
   </header>
 
@@ -1578,7 +1586,7 @@
           <div class="lbl" data-i18n-zh="強制輸出座標系統 (CRS)" data-i18n-en="Mandatory PIX4Dmatic Output CRS">強制輸出座標系統 (CRS)</div>
           <div class="val" style="font-size:12.5px;color:var(--ui-accent);">TWD97 (121) + TWVD2001</div>
         </div>
-        <div class="gs-metric-box" style="display:flex;justify-content:space-between;align-items:center;gap:8px;">
+        <div class="gs-metric-box" id="queuePipelineDefaultsBox" style="display:flex;justify-content:space-between;align-items:center;gap:8px;">
           <div>
             <div class="lbl" data-i18n-zh="目前建模流程預設值" data-i18n-en="Active Pipeline Defaults">目前建模流程預設值</div>
             <div class="val" style="font-size:12px;" id="lblQueuePipelineSummary">FixedSize · 4K · SkyMask OFF · 0B VPS</div>
@@ -1664,7 +1672,7 @@
       </div>
 
       <!-- admin-only: Workstation Coordination Panel -->
-      <div id="adminWorkstationsSection" style="display:none;margin-top:14px;border:1px solid var(--ui-accent);border-radius:8px;padding:12px 14px;background:var(--ui-bg-subtle);">
+      <div id="adminWorkstationsSection" data-ws-coordinator-panel="queue" style="display:none;margin-top:14px;border:1px solid var(--ui-accent);border-radius:8px;padding:12px 14px;background:var(--ui-bg-subtle);">
         <div style="font-size:12px;font-weight:700;color:var(--ui-accent);margin-bottom:10px;display:flex;align-items:center;gap:6px;">
           <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
           <span data-i18n-zh="工作站協調設定（僅限管理員）" data-i18n-en="Workstation Coordination Settings (Admin Only)">工作站協調設定（僅限管理員）</span>
@@ -1672,25 +1680,25 @@
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px;">
           <div>
             <label style="font-size:11px;color:var(--ui-text-secondary);display:block;margin-bottom:4px;" data-i18n-zh="查詢服務工作站（回應前端請求）" data-i18n-en="Query-Serving Workstation (responds to web requests)">查詢服務工作站</label>
-            <select id="selQueryServingWorkstation" style="width:100%;padding:4px 8px;font-size:12px;border:1px solid var(--ui-border-strong);border-radius:5px;background:var(--ui-bg-surface);color:var(--ui-text-primary);">
+            <select id="selQueryServingWorkstation" class="js-sel-query-ws" style="width:100%;padding:4px 8px;font-size:12px;border:1px solid var(--ui-border-strong);border-radius:5px;background:var(--ui-bg-surface);color:var(--ui-text-primary);">
               <option value="auto" data-i18n-zh="自動（任何上線工作站）" data-i18n-en="Auto (any online workstation)">自動（任何上線工作站）</option>
             </select>
           </div>
           <div>
             <label style="font-size:11px;color:var(--ui-text-secondary);display:block;margin-bottom:4px;" data-i18n-zh="建模處理工作站（執行 PIX4Dmatic）" data-i18n-en="Processing Workstation (runs PIX4Dmatic)">建模處理工作站</label>
-            <select id="selProcessingWorkstation" style="width:100%;padding:4px 8px;font-size:12px;border:1px solid var(--ui-border-strong);border-radius:5px;background:var(--ui-bg-surface);color:var(--ui-text-primary);">
+            <select id="selProcessingWorkstation" class="js-sel-proc-ws" style="width:100%;padding:4px 8px;font-size:12px;border:1px solid var(--ui-border-strong);border-radius:5px;background:var(--ui-bg-surface);color:var(--ui-text-primary);">
               <option value="auto" data-i18n-zh="自動（任何上線工作站）" data-i18n-en="Auto (any online workstation)">自動（任何上線工作站）</option>
               <option value="both" data-i18n-zh="全部工作站" data-i18n-en="Both / All Workstations">全部工作站</option>
               <option value="none" data-i18n-zh="暫停全部建模" data-i18n-en="None (Pause Processing)">暫停全部建模</option>
             </select>
           </div>
         </div>
-        <div id="workstationDaemonToggles" style="margin-bottom:10px;font-size:11.5px;color:var(--ui-text-secondary);">
+        <div id="workstationDaemonToggles" class="js-ws-daemon-toggles" style="margin-bottom:10px;font-size:11.5px;color:var(--ui-text-secondary);">
           <!-- Populated dynamically by JS per registered workstation -->
         </div>
         <div style="display:flex;justify-content:flex-end;gap:8px;align-items:center;">
-          <span id="workstationSaveStatus" style="font-size:11px;color:var(--ui-text-muted);"></span>
-          <button type="button" class="btn-xs primary" id="btnSaveWorkstationSettings" data-i18n-zh="儲存工作站設定" data-i18n-en="Save Workstation Settings">儲存工作站設定</button>
+          <span id="workstationSaveStatus" class="js-ws-save-status" style="font-size:11px;color:var(--ui-text-muted);"></span>
+          <button type="button" class="btn-xs primary js-btn-save-ws" id="btnSaveWorkstationSettings" data-i18n-zh="儲存工作站設定" data-i18n-en="Save Workstation Settings">儲存工作站設定</button>
         </div>
       </div>
     </div>
@@ -2046,9 +2054,43 @@
             <button type="button" class="btn-xs" id="btnAdminSyncPcInboxNow" title="立即掃描 Google Drive 收件匣、切塊新模型並推送 .3tz 清單至 VPS" data-i18n-zh="同步雲端" data-i18n-en="Sync Inbox" data-i18n-title-zh="立即掃描 Google Drive 收件匣、切塊新模型並推送 .3tz 清單至 VPS" data-i18n-title-en="Immediately scan Google Drive Inbox, tile new meshes, and push .3tz manifest to VPS" style="height:28px;padding:0 10px;">
               同步雲端
             </button>
-            <button type="button" class="btn-xs primary" id="btnAdminTogglePcDaemon" title="啟動或停止 Windows 工作站背景守護程式" data-i18n-zh="停止" data-i18n-en="Stop" data-i18n-title-zh="啟動或停止 Windows 工作站背景守護程式" data-i18n-title-en="Start or Stop the background daemon on the Windows Workstation" style="height:28px;padding:0 12px;font-weight:700;">
+            <button type="button" class="btn-xs primary" id="btnAdminTogglePcDaemon" title="啟動或停止目前工作站背景守護程式" data-i18n-zh="停止" data-i18n-en="Stop" data-i18n-title-zh="啟動或停止目前工作站背景守護程式" data-i18n-title-en="Start or Stop the background daemon on the active Windows Workstation" style="height:28px;padding:0 12px;font-weight:700;">
               停止
             </button>
+            <button type="button" class="btn-xs" id="btnAdminLogoutEveryone" title="立即撤銷所有瀏覽器與裝置的登入憑證，要求所有使用者重新登入" data-i18n-zh="登出所有裝置" data-i18n-en="Log out everyone" data-i18n-title-zh="立即撤銷所有瀏覽器與裝置的登入憑證，要求所有使用者重新登入" data-i18n-title-en="Immediately invalidate all active sessions across every browser and device" style="height:28px;padding:0 10px;color:#ef4444;border-color:rgba(239,68,68,0.45);font-weight:700;">
+              登出所有裝置
+            </button>
+          </div>
+        </div>
+
+        <!-- Multi-Workstation Coordinator Card in Admin Settings (Synced with Queue Modal) -->
+        <div id="adminSettingsWorkstationsCard" data-ws-coordinator-panel="settings" style="background:var(--ui-bg-surface);border:1px solid var(--ui-accent);border-radius:8px;padding:10px 12px;margin-bottom:10px;">
+          <div style="font-size:12px;font-weight:700;color:var(--ui-accent);margin-bottom:8px;display:flex;align-items:center;justify-content:space-between;gap:6px;flex-wrap:wrap;">
+            <span style="display:inline-flex;align-items:center;gap:6px;">
+              <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
+              <span data-i18n-zh="多工作站協調與角色指派（Syncthing 雙機同步 · 僅限管理員）" data-i18n-en="Multi-Workstation Coordinator (Syncthing Dual-PC · Admin Only)">多工作站協調與角色指派（Syncthing 雙機同步 · 僅限管理員）</span>
+            </span>
+          </div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:8px;">
+            <div>
+              <label style="font-size:11px;color:var(--ui-text-secondary);display:block;margin-bottom:4px;" data-i18n-zh="查詢服務工作站（提供照片、掃描與測量）" data-i18n-en="Query-Serving Workstation (photos, scans &amp; queries)">查詢服務工作站（提供照片、掃描與測量）</label>
+              <select class="js-sel-query-ws" style="width:100%;padding:4px 8px;font-size:12px;border:1px solid var(--ui-border-strong);border-radius:5px;background:var(--ui-bg-subtle);color:var(--ui-text-primary);">
+                <option value="auto" data-i18n-zh="自動（任何上線工作站）" data-i18n-en="Auto (any online workstation)">自動（任何上線工作站）</option>
+              </select>
+            </div>
+            <div>
+              <label style="font-size:11px;color:var(--ui-text-secondary);display:block;margin-bottom:4px;" data-i18n-zh="建模處理工作站（執行 PIX4Dmatic）" data-i18n-en="Processing Workstation (runs PIX4Dmatic)">建模處理工作站（執行 PIX4Dmatic）</label>
+              <select class="js-sel-proc-ws" style="width:100%;padding:4px 8px;font-size:12px;border:1px solid var(--ui-border-strong);border-radius:5px;background:var(--ui-bg-subtle);color:var(--ui-text-primary);">
+                <option value="auto" data-i18n-zh="自動（任何上線工作站）" data-i18n-en="Auto (any online workstation)">自動（任何上線工作站）</option>
+                <option value="both" data-i18n-zh="全部工作站" data-i18n-en="Both / All Workstations">全部工作站</option>
+                <option value="none" data-i18n-zh="暫停全部建模" data-i18n-en="None (Pause Processing)">暫停全部建模</option>
+              </select>
+            </div>
+          </div>
+          <div class="js-ws-daemon-toggles" style="margin-bottom:8px;font-size:11.5px;color:var(--ui-text-secondary);"></div>
+          <div style="display:flex;justify-content:flex-end;gap:8px;align-items:center;">
+            <span class="js-ws-save-status" style="font-size:11px;color:var(--ui-text-muted);"></span>
+            <button type="button" class="btn-xs primary js-btn-save-ws" data-i18n-zh="儲存工作站設定" data-i18n-en="Save Workstation Settings">儲存工作站設定</button>
           </div>
         </div>
 
@@ -2208,10 +2250,10 @@
           <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
           <polyline points="9 12 11 14 15 10"/>
         </svg>
-        <span data-i18n-zh="Google OAuth 單一簽入 · 角色權限控管 · 訪客唯讀預覽" data-i18n-en="Google OAuth SSO · Role-Based Access · Read-Only Guest Mode">Google OAuth 單一簽入 · 角色權限控管 · 訪客唯讀預覽</span>
+        <span data-i18n-zh="Google OAuth 單一簽入 · 僅限授權帳號存取" data-i18n-en="Google OAuth SSO · Authorized Accounts Only">Google OAuth 單一簽入 · 僅限授權帳號存取</span>
       </div>
 
-      <!-- Google Identity Services Sign-In Mount (Exact same Client ID as GatheringCloud) -->
+      <!-- Google Identity Services Sign-In Mount (Single Clean OAuth Action) -->
       <div id="googleAuthGateCard" class="gs-oauth-card oauth-google-mount">
         <div
           id="g_id_onload"
@@ -2232,76 +2274,12 @@
             data-logo_alignment="left">
           </div>
         </div>
-
-        <!-- Secondary Account Switcher Action -->
-        <button
-          type="button"
-          id="btnChooseGoogleAccountOAuth"
-          class="oauth-account-chooser-btn"
-          title="開啟 Google 帳號選擇視窗以指定登入帳號"
-          data-i18n-title-zh="開啟 Google 帳號選擇視窗以指定登入帳號"
-          data-i18n-title-en="Open Google's Account Chooser popup to pick which Google account to sign in with">
-          <svg width="14" height="14" viewBox="0 0 24 24" style="flex-shrink:0;">
-            <path fill="#4285F4" d="M23.745 12.27c0-.7-.06-1.4-.19-2.07H12v4.51h6.6c-.29 1.52-1.14 2.82-2.4 3.68v3.05h3.88c2.27-2.09 3.665-5.17 3.665-9.17z"/>
-            <path fill="#34A853" d="M12 24c3.24 0 5.95-1.08 7.93-2.91l-3.88-3.05c-1.08.72-2.45 1.16-4.05 1.16-3.12 0-5.77-2.11-6.72-4.96H1.29v3.14C3.26 21.3 7.31 24 12 24z"/>
-            <path fill="#FBBC05" d="M5.28 14.24c-.24-.72-.38-1.49-.38-2.24s.14-1.52.38-2.24V6.62H1.29C.47 8.24 0 10.06 0 12s.47 3.76 1.29 5.38l3.99-3.14z"/>
-            <path fill="#EA4335" d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.42-3.42C17.95 1.19 15.24 0 12 0 7.31 0 3.26 2.7 1.29 6.62l3.99 3.14c.95-2.85 3.6-4.96 6.72-4.96z"/>
-          </svg>
-          <span data-i18n-zh="切換其他 Google 帳號" data-i18n-en="Choose another Google account">切換其他 Google 帳號</span>
-        </button>
       </div>
-
-      <!-- Persistent 30-Day Session Checkbox (Matching files.gatheren.cloud) -->
-      <label class="oauth-remember-row" for="chkOauthRememberMe">
-        <input type="checkbox" id="chkOauthRememberMe" checked />
-        <span data-i18n-zh="保持登入狀態 30 天（與 gatheren.cloud · files 同步）" data-i18n-en="Keep me signed in for 30 days (synced with gatheren.cloud · files)">保持登入狀態 30 天（與 gatheren.cloud · files 同步）</span>
-      </label>
 
       <!-- Auth Error Banner & Status Feedback -->
       <div id="oauthErrorBanner" class="oauth-error-banner hidden" role="alert"></div>
-      <div id="googleAuthMessage" class="oauth-status-message" data-i18n-zh="請使用 Google 帳號登入，或點選下方「訪客唯讀瀏覽」預覽。" data-i18n-en="Sign in with Google or choose Read-Only Guest Mode below.">
-        請使用 Google 帳號登入，或點選下方「訪客唯讀瀏覽」預覽。
-      </div>
-
-      <!-- Unregistered Local Origin Warning (shown automatically when opened via http://127.0.0.1:8095) -->
-      <div id="localOriginOAuthWarning" class="oauth-local-origin-warning" style="display:none;">
-        <b data-i18n-zh="提示：" data-i18n-en="Note:">提示：</b> <code id="unregisteredOriginLabel">http://127.0.0.1:8095</code> <span data-i18n-zh="為本機工作站位址，可直接從下方團隊成員名單點選帳號登入，或前往 " data-i18n-en="is a local workstation address. Select your profile from the Team Roster below, or open ">為本機工作站位址，可直接從下方團隊成員名單點選帳號登入，或前往 </span><a href="https://scans.gatheren.cloud">https://scans.gatheren.cloud</a><span data-i18n-zh=" 使用 Google OAuth 視窗登入。" data-i18n-en=" for Google OAuth popup sign-in."> 使用 Google OAuth 視窗登入。</span>
-      </div>
-
-      <!-- Origin Helper Notice (Hidden on production origin, expandable/visible on custom origins) -->
-      <div id="googleAuthOriginNotice" class="oauth-origin-notice">
-        <div class="oauth-origin-notice-inner">
-          <span style="min-width:0;word-break:break-all;"><span data-i18n-zh="目前網域：" data-i18n-en="Current Origin:">目前網域：</span> <code id="currentOriginCode">https://scans.gatheren.cloud</code></span>
-          <button type="button" id="btnCopyCurrentOriginGate" class="btn-xs" style="height:22px;font-size:10.5px;" data-i18n-zh="複製" data-i18n-en="Copy">複製</button>
-        </div>
-      </div>
-
-      <!-- GatheringCloud Team Roster (Admin-Only Account & Role Inspector) -->
-      <div id="gateExistingUsersSection" class="oauth-roster-section" style="display:none;">
-        <div class="oauth-roster-header">
-          <div style="display:flex;align-items:center;gap:6px;">
-            <span class="oauth-roster-title" data-i18n-zh="已驗證團隊成員帳號" data-i18n-en="Verified Team Accounts">已驗證團隊成員帳號</span>
-            <span id="gateRosterCountBadge" class="gs-crs-pill" style="font-size:10px;padding:1px 7px;" data-i18n-zh="18 位成員" data-i18n-en="18 Members">18 位成員</span>
-          </div>
-          <input
-            type="search"
-            id="gateUserSearchInput"
-            class="input-sm oauth-roster-search"
-            placeholder="搜尋姓名或信箱..."
-            data-i18n-placeholder-zh="搜尋姓名或信箱..."
-            data-i18n-placeholder-en="Search name or email..." />
-        </div>
-        <div id="gateExistingUsersGrid" class="oauth-roster-grid"></div>
-      </div>
-
-      <!-- Footer Action Bar (Guest Mode / Active Session Actions) -->
-      <div class="oauth-card-footer">
-        <span id="gateActiveUserStatusText" class="oauth-active-status" data-i18n-zh="尚未登入 · 可使用唯讀訪客模式瀏覽" data-i18n-en="Not signed in · Read-Only Guest Mode available">尚未登入 · 可使用唯讀訪客模式瀏覽</span>
-        <div class="oauth-footer-actions">
-          <button type="button" id="btnUserLogout" class="btn-xs oauth-footer-btn" style="display:none;" title="登出目前帳號" data-i18n-zh="登出" data-i18n-en="Logout" data-i18n-title-zh="登出目前帳號" data-i18n-title-en="Sign out of current profile">登出</button>
-          <button type="button" id="btnGateGuestEnter" class="btn-xs oauth-footer-btn oauth-guest-btn" title="以唯讀訪客模式瀏覽所有專案與掃描" data-i18n-zh="訪客唯讀瀏覽" data-i18n-en="Continue as Guest" data-i18n-title-zh="以唯讀訪客模式瀏覽所有專案與掃描" data-i18n-title-en="Browse all projects &amp; scans in Read-Only Guest Mode">訪客唯讀瀏覽</button>
-          <button type="button" id="btnGateConfirmEnter" class="btn-xs primary oauth-footer-btn oauth-confirm-btn" style="display:none;" title="進入 GatheringScans 3D 工作坊" data-i18n-zh="進入系統" data-i18n-en="Continue" data-i18n-title-zh="進入 GatheringScans 3D 工作坊" data-i18n-title-en="Continue to GatheringScans Studio">進入系統</button>
-        </div>
+      <div id="googleAuthMessage" class="oauth-status-message" data-i18n-zh="請點擊上方 Google 按鈕以授權帳號登入。" data-i18n-en="Click the Google button above to sign in with your authorized account.">
+        請點擊上方 Google 按鈕以授權帳號登入。
       </div>
     </div>
   </div>
@@ -2721,25 +2699,25 @@
   <!-- Three.js + 3D Tileset / KTX2 / Meshopt Libraries -->
   <script src="/lib/three.min.js"></script>
   <script src="/lib/OrbitControls.js?v=20261029_v48"></script>
-  <script src="/lib/GLTFLoader.js?v=20261113_v321"></script>
+  <script src="/lib/GLTFLoader.js?v=20261114_v322"></script>
   <script src="/lib/KTX2Loader.js"></script>
   <script src="/lib/meshopt_decoder.js"></script>
-  <script src="/lib/3d-tiles-renderer.bundle.js?v=20261113_v321"></script>
+  <script src="/lib/3d-tiles-renderer.bundle.js?v=20261114_v322"></script>
 
   <!-- Main GatheringScans Bilingual Translation & Modular Application Logic (< 5,000 lines per module) -->
-  <script src="/i18n.js?v=20261113_v321"></script>
-  <script src="/src/gatheren-loading-animation.js?v=20261113_v321"></script>
-  <script src="/src/01-core-state.js?v=20261113_v321"></script>
-  <script src="/src/02-map-and-timeline.js?v=20261113_v321"></script>
-  <script src="/src/03-studio-core.js?v=20261113_v321"></script>
-  <script src="/src/04-studio-lasso-and-edits.js?v=20261113_v321"></script>
-  <script src="/src/05-studio-civil-inspectors.js?v=20261113_v321"></script>
-  <script src="/src/06-studio-align-and-optimizer.js?v=20261113_v321"></script>
-  <script src="/src/07-compare-and-queue.js?v=20261113_v321"></script>
-  <script src="/src/08-advanced-surveying-and-qa.js?v=20261113_v321"></script>
-  <script src="/src/09-construction-survey-and-bim.js?v=20261113_v321"></script>
-  <script src="/src/10-construction-qa-and-stakeout.js?v=20261113_v321"></script>
-  <script src="/src/12-public-utilities-gis.js?v=20261113_v321"></script>
-  <script src="/app.js?v=20261113_v321"></script>
+  <script src="/i18n.js?v=20261114_v322"></script>
+  <script src="/src/gatheren-loading-animation.js?v=20261114_v322"></script>
+  <script src="/src/01-core-state.js?v=20261114_v322"></script>
+  <script src="/src/02-map-and-timeline.js?v=20261114_v322"></script>
+  <script src="/src/03-studio-core.js?v=20261114_v322"></script>
+  <script src="/src/04-studio-lasso-and-edits.js?v=20261114_v322"></script>
+  <script src="/src/05-studio-civil-inspectors.js?v=20261114_v322"></script>
+  <script src="/src/06-studio-align-and-optimizer.js?v=20261114_v322"></script>
+  <script src="/src/07-compare-and-queue.js?v=20261114_v322"></script>
+  <script src="/src/08-advanced-surveying-and-qa.js?v=20261114_v322"></script>
+  <script src="/src/09-construction-survey-and-bim.js?v=20261114_v322"></script>
+  <script src="/src/10-construction-qa-and-stakeout.js?v=20261114_v322"></script>
+  <script src="/src/12-public-utilities-gis.js?v=20261114_v322"></script>
+  <script src="/app.js?v=20261114_v322"></script>
 </body>
 </html>

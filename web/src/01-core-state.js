@@ -24,6 +24,16 @@
       const urlStr = typeof input === "string" ? input : (input && input.url ? String(input.url) : "");
       const methodStr = (init && init.method) || (input && input.method) || "GET";
       if (String(methodStr).toUpperCase() === "GET" && urlStr.includes("/stream/")) {
+        let streamInit = init ? Object.assign({}, init) : {};
+        if (!streamInit.credentials) streamInit.credentials = "include";
+        try {
+          const hdrs = new Headers(streamInit.headers || (typeof Request !== "undefined" && input instanceof Request ? input.headers : undefined) || {});
+          const sessTok = window.STATE?.currentUser?.session_token || window.STATE?.currentUser?.sessionToken || "";
+          const shareTok = window.STATE?.shareToken || "";
+          if (sessTok && !hdrs.has("X-Session-Token")) hdrs.set("X-Session-Token", sessTok);
+          if (shareTok && !hdrs.has("X-Share-Token")) hdrs.set("X-Share-Token", shareTok);
+          streamInit.headers = hdrs;
+        } catch (_) {}
         const delays = [0, 350, 900, 1800];
         let lastResp = null;
         for (let i = 0; i < delays.length; i++) {
@@ -31,10 +41,14 @@
             await new Promise((r) => setTimeout(r, delays[i]));
           }
           try {
-            lastResp = await _origFetch(input, init);
+            lastResp = await _origFetch(input, streamInit);
           } catch (err) {
             if (i === delays.length - 1) throw err;
             continue;
+          }
+          if (lastResp && lastResp.status === 401 && !window.STATE?.shareToken) {
+            window.handleUnauthorizedSession?.();
+            return lastResp;
           }
           if (
             !lastResp ||
@@ -73,7 +87,7 @@
     window.GOOGLE_OAUTH_CLIENT_ID ||
     "753778992341-hpe65ilnti31j0m7etmq5rn7a1q802da.apps.googleusercontent.com";
 
-  // Load persisted user profile only if explicitly authorized with a cryptographic session_token (or Guest mode)
+  // Load persisted user profile only if explicitly authorized with a cryptographic session_token (zero unauthorized guest access)
   function getInitialCurrentUser() {
     try {
       const verified = localStorage.getItem("gs_auth_verified_v1") === "1";
@@ -84,10 +98,15 @@
       if (saved) {
         const parsed = JSON.parse(saved);
         if (parsed && parsed.email) {
-          const isGuest = String(parsed.role || "").toLowerCase() === "guest" || String(parsed.email).startsWith("guest@");
+          const isGuest =
+            String(parsed.role || "").toLowerCase() === "guest" ||
+            String(parsed.email).toLowerCase().startsWith("guest@") ||
+            String(parsed.auth_provider || "").toLowerCase() === "guest";
           const hasToken = Boolean(parsed.session_token || parsed.sessionToken);
-          if (!isGuest && !hasToken) {
+          if (isGuest || !hasToken) {
             localStorage.removeItem("gs_auth_verified_v1");
+            localStorage.removeItem("gathering_user_profile");
+            localStorage.removeItem("gs_current_user");
             return null;
           }
           if (
@@ -1063,7 +1082,7 @@
     try {
       const sessTok = userObj?.session_token || userObj?.sessionToken || "";
       if (sessTok) {
-        document.cookie = `gs_session_token=${encodeURIComponent(sessTok)}; path=/; max-age=2592000; SameSite=Lax`;
+        document.cookie = `gs_session_token=${encodeURIComponent(sessTok)}; path=/; max-age=7776000; SameSite=Lax`;
       } else {
         document.cookie = "gs_session_token=; path=/; max-age=0; SameSite=Lax";
       }
@@ -1443,12 +1462,16 @@
     setDisp("adminControlPanelSection", info.canManageUsers, "block");
     setDisp("settingsServiceAccountCard", info.canManageUsers, "block");
     setDisp("settingsPix4dPipelineSection", info.canManageUsers, "block");
-    setDisp("gateExistingUsersSection", info.canManageUsers, "block");
+    setDisp("gateExistingUsersSection", false, "none");
+    setDisp("queuePipelineDefaultsBox", info.canManageUsers, "flex");
     setDisp("btnJumpQueueToSettings", info.canManageUsers, "inline-flex");
     setDisp("btnRescanGDriveInbox", info.canManageUsers, "inline-flex");
     setDisp("btnPreviewGstScript", info.canManageUsers, "inline-flex");
     setDisp("btnResumeDaemonFromQueue", info.canManageUsers, "inline-flex");
     setDisp("adminWorkstationsSection", info.canManageUsers, "block");
+    setDisp("adminSettingsWorkstationsCard", info.canManageUsers, "block");
+    setDisp("livePix4dLogPath", info.canManageUsers, "block");
+    setDisp("livePix4dLogTail", info.canManageUsers, "block");
 
     // Role badge in Settings Admin Control Panel
     const badgeRole = document.getElementById("badgeCurrentUserRoleLevel") || document.getElementById("adminCurrentUserRolePill");
@@ -1464,10 +1487,36 @@
     }
   }
 
+  let _handlingUnauth = false;
+  window.handleUnauthorizedSession = function () {
+    if (_handlingUnauth || STATE.shareToken || STATE.isEmbedded) return;
+    _handlingUnauth = true;
+    try {
+      localStorage.removeItem("gs_auth_verified_v1");
+      localStorage.removeItem("gathering_user_profile");
+      localStorage.removeItem("gs_current_user");
+      localStorage.removeItem("gs_last_catalog_v1");
+    } catch (_) {}
+    syncSessionTokenCookie(null);
+    STATE.currentUser = null;
+    STATE.isAuthorized = false;
+    STATE.scans = [];
+    document.body?.classList.add("gs-auth-locked");
+    document.getElementById("userTopDropdownMenu")?.setAttribute("style", "display:none;");
+    if (typeof window.openUserProfileGateModal === "function") {
+      window.openUserProfileGateModal();
+    } else {
+      document.getElementById("userProfileGateModal")?.classList.add("active");
+    }
+    setTimeout(() => {
+      _handlingUnauth = false;
+    }, 600);
+  };
+
   async function apiGet(url) {
     const sep = url.includes("?") ? "&" : "?";
     const fullUrl = STATE.shareToken ? `${url}${sep}share=${encodeURIComponent(STATE.shareToken)}` : url;
-    const res = await fetch(fullUrl, { headers: apiHeaders() });
+    const res = await fetch(fullUrl, { credentials: "include", headers: apiHeaders() });
     const rawTxt = await res.text();
     let data = {};
     if (rawTxt && rawTxt.trim()) {
@@ -1476,6 +1525,9 @@
       } catch (_) {
         if (res.ok) throw new Error(`Invalid JSON response (HTTP ${res.status})`);
       }
+    }
+    if (res.status === 401 && !STATE.shareToken && !url.startsWith("/api/auth/")) {
+      window.handleUnauthorizedSession?.();
     }
     if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
     return data;
@@ -1500,6 +1552,7 @@
       try {
         res = await fetch(fullUrl, {
           method: "POST",
+          credentials: "include",
           headers: apiHeaders(),
           body: JSON.stringify(body),
         });
@@ -1522,6 +1575,9 @@
         lastErr = new Error("Empty server response");
         if (attempt + 1 < maxAttempts) continue;
         break;
+      }
+      if (res.status === 401 && !STATE.shareToken && !url.startsWith("/api/auth/")) {
+        window.handleUnauthorizedSession?.();
       }
       if (!res.ok) {
         lastErr = new Error(data.error || `HTTP ${res.status}`);

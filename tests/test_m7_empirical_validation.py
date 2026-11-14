@@ -14,6 +14,13 @@ import urllib.request
 import urllib.error
 import ezdxf
 
+REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+if REPO_ROOT not in sys.path:
+    sys.path.insert(0, REPO_ROOT)
+
+from pc_worker.config import REPORTS_DIR
+from pc_worker.auth_and_sharing import issue_session_token
+
 LOCAL_SERVER = "http://127.0.0.1:8095"
 
 class TestMilestone7EmpiricalAdversarial(unittest.TestCase):
@@ -21,10 +28,11 @@ class TestMilestone7EmpiricalAdversarial(unittest.TestCase):
     def _post(self, path, payload):
         url = f"{LOCAL_SERVER}{path}"
         data = json.dumps(payload).encode("utf-8")
+        tok = issue_session_token("glibivanov@gatheren.com.tw", role="owner")
         req = urllib.request.Request(
             url,
             data=data,
-            headers={"Content-Type": "application/json"}
+            headers={"Content-Type": "application/json", "X-Session-Token": tok}
         )
         with urllib.request.urlopen(req, timeout=15) as res:
             self.assertEqual(res.status, 200)
@@ -121,7 +129,7 @@ class TestMilestone7EmpiricalAdversarial(unittest.TestCase):
         self.assertEqual(res_exp.get("status"), "ok")
         fname = res_exp.get("filename")
         self.assertTrue(fname)
-        dxf_path = os.path.join(r"c:\Antigravity\GatheringScans\data\reports", fname)
+        dxf_path = os.path.join(REPORTS_DIR, fname)
         self.assertTrue(os.path.isfile(dxf_path), f"DXF file must exist on disk: {dxf_path}")
 
         # Deep inspection of DXF syntax
@@ -181,7 +189,7 @@ class TestMilestone7EmpiricalAdversarial(unittest.TestCase):
             self.fail(f"ezdxf failed to parse generated DXF file: {ex}")
 
     def test_06_verify_raw_scans_zero_destruction(self):
-        """Verify C:\GatheringScans\ raw projects have zero data destruction."""
+        r"""Verify C:\GatheringScans\ raw projects have zero data destruction."""
         scans_root = r"C:\GatheringScans"
         self.assertTrue(os.path.isdir(scans_root), "C:\\GatheringScans must exist")
         

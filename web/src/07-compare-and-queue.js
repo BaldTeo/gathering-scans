@@ -1400,7 +1400,7 @@
   }
   function closeModal(id) {
     if (id === "userProfileGateModal" && !STATE.isAuthorized && !STATE.shareToken) {
-      showToast("Please sign in with Google or choose Guest Mode to continue");
+      showToast(tr("請使用授權的 Google 帳號登入以繼續", "Please sign in with your authorized Google account to continue"));
       return;
     }
     const el = document.getElementById(id);
@@ -1826,19 +1826,58 @@
   }
 
   // ---------------------------------------------------------------------------
-  // Admin Workstation Panel helpers
+  // Admin Workstation Panel helpers (Synced across Queue Modal & Admin Settings)
   // ---------------------------------------------------------------------------
   let _workstationPanelDirty = false;
-  function _populateWorkstationPanel(wsData) {
-    if (!wsData || _workstationPanelDirty) return;
-    const wsSec = document.getElementById("adminWorkstationsSection");
-    if (wsSec && wsSec.contains(document.activeElement)) return;
-    const selQuery = document.getElementById("selQueryServingWorkstation");
-    const selProc = document.getElementById("selProcessingWorkstation");
-    const togglesDiv = document.getElementById("workstationDaemonToggles");
+  function _populateWorkstationPanel(wsData, forceRender = false) {
+    if (!wsData || (_workstationPanelDirty && !forceRender)) return;
+    const panels = Array.from(document.querySelectorAll("[data-ws-coordinator-panel]"));
+    if (!panels.length) return;
+    if (!forceRender && panels.some((p) => p.contains(document.activeElement))) return;
+
     const workstations = wsData.workstations || {};
     const qChosen = String(wsData.query_serving_workstation || "auto");
     const pChosen = String(wsData.processing_workstation || "auto");
+    const wids = Object.keys(workstations);
+
+    function wsStateSummary(wInfo) {
+      const online =
+        typeof wInfo.online === "boolean"
+          ? wInfo.online
+          : Boolean(wInfo.last_seen && Date.now() / 1000 - wInfo.last_seen < 45);
+      const dOn = wInfo.daemon_enabled !== false && wInfo.daemon_running !== false;
+      const activeScan = wInfo.active_scan_name || wInfo.active_scan_id || "";
+      if (!online) {
+        return {
+          online: false,
+          tag: tr("離線", "Offline"),
+          pillBg: "rgba(148,163,184,0.16)",
+          pillCol: "var(--ui-text-muted)",
+        };
+      }
+      if (!dOn) {
+        return {
+          online: true,
+          tag: tr("待命（已暫停）", "Paused"),
+          pillBg: "rgba(245,158,11,0.16)",
+          pillCol: "#f59e0b",
+        };
+      }
+      if (activeScan) {
+        return {
+          online: true,
+          tag: tr(`處理中：${activeScan}`, `Processing: ${activeScan}`),
+          pillBg: "rgba(14,165,233,0.18)",
+          pillCol: "#0284c7",
+        };
+      }
+      return {
+        online: true,
+        tag: tr("在線", "Online"),
+        pillBg: "rgba(16,185,129,0.16)",
+        pillCol: "#10b981",
+      };
+    }
 
     function rebuildSelect(el, chosen, includeExtraModes) {
       if (!el) return;
@@ -1847,77 +1886,125 @@
         el.innerHTML += `<option value="both">${tr("全部工作站", "Both / All Workstations")}</option>`;
         el.innerHTML += `<option value="none">${tr("暫停全部建模", "None (Pause Processing)")}</option>`;
       }
-      Object.keys(workstations).forEach((wid) => {
+      wids.forEach((wid) => {
         const w = workstations[wid] || {};
-        const lastSeenStr = w.last_seen ? ` · ${new Date(w.last_seen * 1000).toLocaleTimeString()}` : "";
+        const st = wsStateSummary(w);
+        const nick = String(w.nickname || "").trim();
+        const label = nick && nick !== wid ? `${nick} (${wid})` : wid;
         const opt = document.createElement("option");
         opt.value = wid;
-        opt.textContent = `${wid}${lastSeenStr}`;
+        opt.textContent = `${label} · ${st.tag}`;
         el.appendChild(opt);
       });
+      if (!Array.from(el.options).some((o) => o.value === chosen) && chosen) {
+        const extraOpt = document.createElement("option");
+        extraOpt.value = chosen;
+        extraOpt.textContent = chosen;
+        el.appendChild(extraOpt);
+      }
       el.value = chosen;
     }
-    rebuildSelect(selQuery, qChosen, false);
-    rebuildSelect(selProc, pChosen, true);
 
-    if (togglesDiv) {
-      const wids = Object.keys(workstations);
-      if (!wids.length) {
-        togglesDiv.innerHTML = `<span style="color:var(--ui-text-muted);font-size:11px;">${tr("尚未偵測到工作站", "No workstations detected yet")}</span>`;
-      } else {
-        togglesDiv.innerHTML = wids.map((wid) => {
-          const wInfo = workstations[wid] || {};
-          const dOn = wInfo.daemon_enabled !== false;
-          const isLocal = wid === wsData.local_workstation_id;
-          const onlineAgoSec = wInfo.last_seen ? Math.max(0, Math.round(Date.now() / 1000 - wInfo.last_seen)) : null;
-          const statusTxt = onlineAgoSec === null ? "" : onlineAgoSec < 90 ? tr("在線", "Online") : tr(`${Math.round(onlineAgoSec / 60)} 分鐘前`, `${Math.round(onlineAgoSec / 60)}m ago`);
-          return `<div style="display:flex;align-items:center;gap:10px;padding:5px 0;border-bottom:1px solid var(--ui-border);flex-wrap:wrap;">
-            <code style="font-size:11px;color:var(--ui-text-primary);min-width:130px;">${escapeHtml(wid)}${isLocal ? " (this PC)" : ""}</code>
-            ${statusTxt ? `<span style="font-size:10.5px;color:var(--ui-text-muted);">${escapeHtml(statusTxt)}</span>` : ""}
-            <label style="display:flex;align-items:center;gap:4px;font-size:11px;margin-left:auto;cursor:pointer;">
-              <input type="checkbox" data-ws-id="${escapeHtml(wid)}" data-ws-perm="daemon_enabled" ${dOn ? "checked" : ""}>
-              ${tr("啟用守護程式 (Daemon)", "Daemon Enabled")}
-            </label>
-          </div>`;
-        }).join("");
-      }
-    }
+    const rowsHtml = !wids.length
+      ? `<span style="color:var(--ui-text-muted);font-size:11px;">${tr("尚未偵測到工作站", "No workstations registered yet")}</span>`
+      : wids
+          .map((wid) => {
+            const wInfo = workstations[wid] || {};
+            const dOn = wInfo.daemon_enabled !== false;
+            const nick = String(wInfo.nickname || "").trim();
+            const rootDir = String(wInfo.root_dir || "").trim();
+            const st = wsStateSummary(wInfo);
+            return `<div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--ui-border);flex-wrap:wrap;">
+              <code style="font-size:11px;font-weight:700;color:var(--ui-text-primary);min-width:128px;">${escapeHtml(wid)}</code>
+              <input type="text" class="gs-input" data-ws-nick="${escapeHtml(wid)}" value="${escapeHtml(nick)}" placeholder="${escapeHtml(tr("別名（選填）", "Nickname"))}" style="width:135px;height:24px;font-size:11px;padding:2px 7px;" />
+              ${rootDir ? `<code style="font-size:10.5px;color:var(--ui-text-muted);">${escapeHtml(rootDir)}</code>` : ""}
+              <span class="gs-crs-pill" style="background:${st.pillBg};color:${st.pillCol};font-weight:700;font-size:10px;">${escapeHtml(st.tag)}</span>
+              <label style="display:flex;align-items:center;gap:5px;font-size:11px;margin-left:auto;cursor:pointer;font-weight:600;color:var(--ui-text-primary);">
+                <input type="checkbox" data-ws-id="${escapeHtml(wid)}" data-ws-perm="daemon_enabled" ${dOn ? "checked" : ""}>
+                ${tr("啟用守護程式 (Daemon)", "Daemon On")}
+              </label>
+            </div>`;
+          })
+          .join("");
+
+    panels.forEach((panel) => {
+      rebuildSelect(panel.querySelector(".js-sel-query-ws"), qChosen, false);
+      rebuildSelect(panel.querySelector(".js-sel-proc-ws"), pChosen, true);
+      const togglesDiv = panel.querySelector(".js-ws-daemon-toggles");
+      if (togglesDiv) togglesDiv.innerHTML = rowsHtml;
+    });
   }
 
-  // One-time attach dirty + save listeners for workstation panel
+  window.refreshWorkstationCoordinatorPanels = async function (forceRender = false) {
+    if (!Boolean(getCurrentUserRoleInfo?.()?.canManageUsers)) return null;
+    try {
+      const wsData = await apiGet("/api/admin/workstations");
+      _populateWorkstationPanel(wsData, forceRender);
+      return wsData;
+    } catch (_) {
+      return null;
+    }
+  };
+
+  // One-time attach dirty + save listeners for workstation panels
   (function _attachWorkstationSaveListener() {
-    document.addEventListener("change", (e) => {
+    const markDirtyIfWsControl = (e) => {
       const t = e.target;
-      if (!t) return;
-      if (t.id === "selQueryServingWorkstation" || t.id === "selProcessingWorkstation" || t.hasAttribute?.("data-ws-id")) {
+      if (!t || !t.closest?.("[data-ws-coordinator-panel]")) return;
+      if (
+        t.classList?.contains("js-sel-query-ws") ||
+        t.classList?.contains("js-sel-proc-ws") ||
+        t.hasAttribute?.("data-ws-id") ||
+        t.hasAttribute?.("data-ws-nick")
+      ) {
         _workstationPanelDirty = true;
       }
-    });
+    };
+    document.addEventListener("change", markDirtyIfWsControl);
+    document.addEventListener("input", markDirtyIfWsControl);
     document.addEventListener("click", async (e) => {
-      if (!e.target || e.target.id !== "btnSaveWorkstationSettings") return;
-      const statusEl = document.getElementById("workstationSaveStatus");
+      const saveBtn = e.target?.closest?.(".js-btn-save-ws");
+      if (!saveBtn) return;
+      const panel = saveBtn.closest("[data-ws-coordinator-panel]") || document;
+      const statusEls = document.querySelectorAll(".js-ws-save-status");
       try {
-        const selQuery = document.getElementById("selQueryServingWorkstation");
-        const selProc = document.getElementById("selProcessingWorkstation");
-        const togglesDiv = document.getElementById("workstationDaemonToggles");
+        const selQuery = panel.querySelector(".js-sel-query-ws");
+        const selProc = panel.querySelector(".js-sel-proc-ws");
         const workstationsPayload = {};
-        if (togglesDiv) {
-          togglesDiv.querySelectorAll("input[data-ws-id]").forEach((inp) => {
-            const wid = inp.getAttribute("data-ws-id");
-            if (!wid) return;
-            workstationsPayload[wid] = { daemon_enabled: Boolean(inp.checked) };
+        panel.querySelectorAll("input[data-ws-id]").forEach((inp) => {
+          const wid = inp.getAttribute("data-ws-id");
+          if (!wid) return;
+          workstationsPayload[wid] = Object.assign(workstationsPayload[wid] || {}, {
+            daemon_enabled: Boolean(inp.checked),
           });
-        }
-        await apiPost("/api/admin/workstations", {
+        });
+        panel.querySelectorAll("input[data-ws-nick]").forEach((inp) => {
+          const wid = inp.getAttribute("data-ws-nick");
+          if (!wid) return;
+          workstationsPayload[wid] = Object.assign(workstationsPayload[wid] || {}, {
+            nickname: String(inp.value || "").trim(),
+          });
+        });
+        const savedData = await apiPost("/api/admin/workstations", {
           query_serving_workstation: selQuery?.value || "auto",
           processing_workstation: selProc?.value || "auto",
           workstations: workstationsPayload,
         });
         _workstationPanelDirty = false;
-        if (statusEl) { statusEl.textContent = tr("已儲存", "Saved"); setTimeout(() => { if (statusEl) statusEl.textContent = ""; }, 2500); }
+        _populateWorkstationPanel(savedData, true);
+        statusEls.forEach((el) => {
+          el.textContent = tr("已儲存", "Saved");
+        });
+        setTimeout(() => {
+          statusEls.forEach((el) => {
+            el.textContent = "";
+          });
+        }, 2500);
         showToast(tr("工作站設定已儲存", "Workstation settings saved"));
       } catch (err) {
-        if (statusEl) statusEl.textContent = `Error: ${err.message}`;
+        statusEls.forEach((el) => {
+          el.textContent = `Error: ${err.message}`;
+        });
         showToast(`Save failed: ${err.message}`);
       }
     });
@@ -1930,9 +2017,19 @@
       const qData = await apiGet("/api/queue/status");
       const isAdmin = Boolean(getCurrentUserRoleInfo?.()?.canManageUsers);
 
-      // Show/hide admin workstation panel and load settings
+      // Show/hide admin-only workstation & processing controls; non-admins see queue progress only
       const wsSection = document.getElementById("adminWorkstationsSection");
       if (wsSection) wsSection.style.display = isAdmin ? "block" : "none";
+      const pipeDefaultsBox = document.getElementById("queuePipelineDefaultsBox");
+      if (pipeDefaultsBox) pipeDefaultsBox.style.display = isAdmin ? "flex" : "none";
+      const btnRescan = document.getElementById("btnRescanGDriveInbox");
+      if (btnRescan) btnRescan.style.display = isAdmin ? "inline-flex" : "none";
+      const btnGst = document.getElementById("btnPreviewGstScript");
+      if (btnGst) btnGst.style.display = isAdmin ? "inline-flex" : "none";
+      if (!isAdmin) {
+        const gstBox = document.getElementById("gstScriptPreviewBox");
+        if (gstBox) gstBox.style.display = "none";
+      }
       if (isAdmin) {
         try {
           const wsData = await apiGet("/api/admin/workstations");
@@ -1945,13 +2042,13 @@
       if (gchatInput && typeof qData.gchat_webhook_url === "string" && document.activeElement !== gchatInput) {
         gchatInput.value = qData.gchat_webhook_url;
       }
-      if (qData.pix4d_settings) {
+      if (qData.pix4d_settings && isAdmin) {
         applyPix4dSettingsToUI(qData.pix4d_settings, false);
       }
 
       const pausedBanner = document.getElementById("queueDaemonPausedBanner");
       if (pausedBanner) {
-        pausedBanner.style.display = qData.daemon_running === false ? "flex" : "none";
+        pausedBanner.style.display = isAdmin && qData.daemon_running === false ? "flex" : "none";
       }
       if (typeof qData.daemon_running === "boolean") {
         STATE.pcOnline = Boolean(qData.pc_online ?? qData.daemon_running);
@@ -2001,9 +2098,15 @@
             gridEl.innerHTML = renderPipelineSubitemsGridHtml(bd, { scan: lp });
           }
           const pathEl = document.getElementById("livePix4dLogPath");
-          if (pathEl) pathEl.textContent = `${tr("日誌：", "Log: ")}${lp.log_path || ""}`;
+          if (pathEl) {
+            pathEl.style.display = isAdmin ? "block" : "none";
+            pathEl.textContent = isAdmin ? `${tr("日誌：", "Log: ")}${lp.log_path || ""}` : "";
+          }
           const tailEl = document.getElementById("livePix4dLogTail");
-          if (tailEl) tailEl.textContent = (lp.tail_lines || []).join("\n");
+          if (tailEl) {
+            tailEl.style.display = isAdmin ? "block" : "none";
+            tailEl.textContent = isAdmin ? (lp.tail_lines || []).join("\n") : "";
+          }
         } else {
           monBox.style.display = "none";
         }

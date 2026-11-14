@@ -9,18 +9,45 @@ Enforces:
 """
 
 import os
+import shutil
+import socket
+import time
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-_DEFAULT_SCANS_ROOT = r"D:\GatheringScans" if os.path.isdir(r"D:\GatheringScans") else r"C:\GatheringScans"
+WORKSTATION_ID = str(os.environ.get("WORKSTATION_ID") or socket.gethostname() or "workstation_1").strip()
+
+# Derive default scans root dynamically from _app parent (e.g. D:\GatheringScans\_app -> D:\GatheringScans)
+if os.path.basename(BASE_DIR).lower() == "_app":
+    _DEFAULT_SCANS_ROOT = os.path.dirname(BASE_DIR)
+elif WORKSTATION_ID.upper() == "WORKPC1" and os.path.isdir(r"D:\GatheringScans"):
+    _DEFAULT_SCANS_ROOT = r"D:\GatheringScans"
+elif os.path.isdir(r"C:\GatheringScans"):
+    _DEFAULT_SCANS_ROOT = r"C:\GatheringScans"
+elif os.path.isdir(r"D:\GatheringScans"):
+    _DEFAULT_SCANS_ROOT = r"D:\GatheringScans"
+else:
+    _DEFAULT_SCANS_ROOT = r"C:\GatheringScans"
+
 LOCAL_SCANS_ROOT = os.environ.get("LOCAL_SCANS_ROOT", _DEFAULT_SCANS_ROOT)
 
-# Automatically load .env from D:\GatheringScans\_app\.env, C:\GatheringScans\_app\.env, or BASE_DIR\.env into os.environ
+# Automatically load .env from <LOCAL_SCANS_ROOT>\_app\.env, <LOCAL_SCANS_ROOT>\.env, or BASE_DIR\.env into os.environ
+# Ignore per-machine path keys inside synced _app\.env so C:\ vs D:\ never collide across workstations.
+_IGNORED_SYNCED_ENV_KEYS = {
+    "LOCAL_SCANS_ROOT",
+    "LEGACY_SCANS_ROOT",
+    "GATHERING_SCANS_DATA_DIR",
+    "GC_SCAN_OPTIMIZER_DIR",
+    "WORKSTATION_ID",
+}
 for _env_cand in (
     os.path.join(LOCAL_SCANS_ROOT, "_app", ".env"),
     os.path.join(LOCAL_SCANS_ROOT, ".env"),
     os.path.join(BASE_DIR, ".env"),
 ):
     if os.path.isfile(_env_cand):
+        _is_synced_env = os.path.normcase(os.path.abspath(_env_cand)).startswith(
+            os.path.normcase(os.path.abspath(LOCAL_SCANS_ROOT)) + os.sep
+        )
         try:
             with open(_env_cand, "r", encoding="utf-8", errors="ignore") as _ef:
                 for _line in _ef:
@@ -30,6 +57,8 @@ for _env_cand in (
                     _k, _v = _ls.split("=", 1)
                     _k = _k.strip()
                     _v = _v.strip().strip('"').strip("'")
+                    if _is_synced_env and _k in _IGNORED_SYNCED_ENV_KEYS:
+                        continue
                     if _k and _v and _k not in os.environ:
                         os.environ[_k] = _v
         except Exception:
@@ -42,6 +71,40 @@ DATA_DIR = os.environ.get(
     _MASTER_DATA_DIR if (os.name == "nt" and os.path.isdir(_MASTER_DATA_DIR)) else os.path.join(BASE_DIR, "data"),
 )
 os.makedirs(DATA_DIR, exist_ok=True)
+
+# Per-workstation local runtime directory (outside Syncthing) for SQLite WAL/SHM, daemon_state, PIDs, and logs
+if os.name == "nt" and "GATHERING_SCANS_RUNTIME_DIR" not in os.environ:
+    _LOCAL_APPDATA = os.environ.get("LOCALAPPDATA") or os.path.expanduser(r"~\AppData\Local")
+    RUNTIME_DATA_DIR = os.path.join(_LOCAL_APPDATA, "GatheringScans", WORKSTATION_ID, "data")
+else:
+    RUNTIME_DATA_DIR = os.environ.get("GATHERING_SCANS_RUNTIME_DIR", DATA_DIR)
+os.makedirs(RUNTIME_DATA_DIR, exist_ok=True)
+SHARED_STATE_DIR = os.path.join(DATA_DIR, "_shared_state")
+os.makedirs(SHARED_STATE_DIR, exist_ok=True)
+
+
+def rebase_scan_path(path_str: str) -> str:
+    """
+    Rebases any scan path rooted at C:\\GatheringScans or D:\\GatheringScans onto this
+    workstation's LOCAL_SCANS_ROOT so Syncthing-mirrored scans resolve on both PCs.
+    Supports ';'-delimited multi-part paths.
+    """
+    if not path_str or os.name != "nt":
+        return path_str
+    s = str(path_str)
+    if ";" in s:
+        return ";".join(rebase_scan_path(p.strip()) for p in s.split(";") if p.strip())
+    norm = s.replace("/", "\\")
+    low = norm.lower()
+    for prefix in ("c:\\gatheringscans", "d:\\gatheringscans"):
+        if low == prefix:
+            return LOCAL_SCANS_ROOT
+        if low.startswith(prefix + "\\"):
+            rel = norm[len(prefix) + 1 :]
+            cand = os.path.join(LOCAL_SCANS_ROOT, rel)
+            if os.path.exists(cand) or not os.path.exists(norm):
+                return cand
+    return s
 
 # 1. Google Drive Inbox & Local Scan Vault Paths (Strictly Jailed to 3. GatheringScans & C:\GatheringScans)
 _GDRIVE_ROOT = os.environ.get("GDRIVE_ROOT", r"G:\\").strip()
@@ -88,7 +151,20 @@ TWD97_TWVD2001_WKT = (
 )
 
 # 3. Database & Server Configuration
-DB_PATH = os.path.join(DATA_DIR, "gathering_scans.db")
+_LEGACY_SHARED_DB_PATH = os.path.join(DATA_DIR, "gathering_scans.db")
+DB_PATH = os.path.join(RUNTIME_DATA_DIR, "gathering_scans.db")
+if (
+    DB_PATH != _LEGACY_SHARED_DB_PATH
+    and (not os.path.isfile(DB_PATH) or os.path.getsize(DB_PATH) == 0)
+    and os.path.isfile(_LEGACY_SHARED_DB_PATH)
+    and os.path.getsize(_LEGACY_SHARED_DB_PATH) > 0
+):
+    try:
+        shutil.copy2(_LEGACY_SHARED_DB_PATH, DB_PATH)
+    except Exception:
+        pass
+DAEMON_STATE_PATH = os.path.join(RUNTIME_DATA_DIR, "daemon_state.json")
+AUTH_GLOBAL_STATE_PATH = os.path.join(DATA_DIR, "auth_global_state.json")
 REPORTS_DIR = os.path.join(DATA_DIR, "reports")
 CONTOURS_DIR = os.path.join(DATA_DIR, "contours")
 CATEGORIZATION_CACHE_DIR = os.path.join(DATA_DIR, "categorization_cache")
@@ -290,33 +366,64 @@ OPTIMAL_PRESET_WITH_SKYMASK = {
 }
 
 
-# 9. Dual-Workstation Coordination (Syncthing P2P Scan Folder Architecture)
-import socket
-WORKSTATION_ID = str(os.environ.get("WORKSTATION_ID") or socket.gethostname() or "workstation_1").strip()
+# 9. Dual-Workstation Coordination (Syncthing P2P Scan Folder + VPS Authoritative Coordinator)
 WORKSTATION_SETTINGS_PATH = os.path.join(DATA_DIR, "workstation_settings.json")
+GLOBAL_PIX4D_LOCK_PATH = os.path.join(SHARED_STATE_DIR, "pix4d_seat_lock.json")
+
+PREDEFINED_WORKSTATIONS = {
+    "DESKTOP-OEBISC7": {
+        "workstation_id": "DESKTOP-OEBISC7",
+        "name": "Stronger Processing PC (DESKTOP-OEBISC7)",
+        "daemon_enabled": True,
+        "root_dir": r"C:\GatheringScans",
+        "last_seen": 0.0,
+    },
+    "WorkPC1": {
+        "workstation_id": "WorkPC1",
+        "name": "Office Always-On PC (WorkPC1)",
+        "daemon_enabled": True,
+        "root_dir": r"D:\GatheringScans",
+        "last_seen": 0.0,
+    },
+}
 
 DEFAULT_WORKSTATION_SETTINGS = {
-    "query_serving_workstation": "auto",     # "auto" (any online), or specific workstation_id
-    "processing_workstation": "auto",        # "auto", specific workstation_id, "both", or "none"
-    "workstations": {},                      # {workstation_id: {name, daemon_enabled, processing_enabled, last_seen, root_dir}}
+    "query_serving_workstation": "auto",            # "auto" (prefer online), or specific workstation_id with failover
+    "processing_workstation": "DESKTOP-OEBISC7",    # Strict pinning by default ("DESKTOP-OEBISC7", "WorkPC1", "auto", "none")
+    "workstations": {k: dict(v) for k, v in PREDEFINED_WORKSTATIONS.items()},
 }
 
 
 def load_workstation_settings() -> dict:
     import json
-    cfg = dict(DEFAULT_WORKSTATION_SETTINGS)
-    cfg["workstations"] = dict(DEFAULT_WORKSTATION_SETTINGS["workstations"])
+    cfg = {
+        "query_serving_workstation": DEFAULT_WORKSTATION_SETTINGS["query_serving_workstation"],
+        "processing_workstation": DEFAULT_WORKSTATION_SETTINGS["processing_workstation"],
+        "workstations": {k: dict(v) for k, v in PREDEFINED_WORKSTATIONS.items()},
+    }
     if os.path.isfile(WORKSTATION_SETTINGS_PATH):
         try:
             with open(WORKSTATION_SETTINGS_PATH, "r", encoding="utf-8") as f:
                 saved = json.load(f)
             if isinstance(saved, dict):
-                if "query_serving_workstation" in saved:
-                    cfg["query_serving_workstation"] = str(saved["query_serving_workstation"])
-                if "processing_workstation" in saved:
-                    cfg["processing_workstation"] = str(saved["processing_workstation"])
+                if "query_serving_workstation" in saved and saved["query_serving_workstation"]:
+                    cfg["query_serving_workstation"] = str(saved["query_serving_workstation"]).strip()
+                if "processing_workstation" in saved and saved["processing_workstation"]:
+                    p_val = str(saved["processing_workstation"]).strip()
+                    # Migrate legacy "auto" default to "DESKTOP-OEBISC7" unless user explicitly saved `explicit_processing_choice`
+                    if p_val == "auto" and not saved.get("explicit_processing_choice"):
+                        p_val = "DESKTOP-OEBISC7"
+                    cfg["processing_workstation"] = p_val
+                if saved.get("explicit_processing_choice"):
+                    cfg["explicit_processing_choice"] = True
                 if isinstance(saved.get("workstations"), dict):
-                    cfg["workstations"] = saved["workstations"]
+                    for wid, winfo in saved["workstations"].items():
+                        if not wid or not isinstance(winfo, dict):
+                            continue
+                        merged = dict(cfg["workstations"].get(wid, {"workstation_id": wid, "daemon_enabled": True, "last_seen": 0.0}))
+                        merged.update(winfo)
+                        merged["workstation_id"] = wid
+                        cfg["workstations"][wid] = merged
         except Exception:
             pass
     return cfg
@@ -327,18 +434,21 @@ def save_workstation_settings(updates: dict) -> dict:
     cfg = load_workstation_settings()
     if isinstance(updates, dict):
         if "query_serving_workstation" in updates:
-            cfg["query_serving_workstation"] = str(updates["query_serving_workstation"]).strip()
+            cfg["query_serving_workstation"] = str(updates["query_serving_workstation"]).strip() or "auto"
         if "processing_workstation" in updates:
-            cfg["processing_workstation"] = str(updates["processing_workstation"]).strip()
+            cfg["processing_workstation"] = str(updates["processing_workstation"]).strip() or "DESKTOP-OEBISC7"
+            cfg["explicit_processing_choice"] = True
         if isinstance(updates.get("workstations"), dict):
             for wid, winfo in updates["workstations"].items():
+                if not wid or not isinstance(winfo, dict):
+                    continue
                 if wid not in cfg["workstations"]:
-                    cfg["workstations"][wid] = {}
-                if isinstance(winfo, dict):
-                    cfg["workstations"][wid].update(winfo)
+                    cfg["workstations"][wid] = {"workstation_id": wid, "daemon_enabled": True, "last_seen": 0.0}
+                cfg["workstations"][wid].update(winfo)
+                cfg["workstations"][wid]["workstation_id"] = wid
     try:
         os.makedirs(os.path.dirname(WORKSTATION_SETTINGS_PATH), exist_ok=True)
-        tmp = WORKSTATION_SETTINGS_PATH + ".part"
+        tmp = WORKSTATION_SETTINGS_PATH + f".{os.getpid()}.part"
         with open(tmp, "w", encoding="utf-8") as f:
             json.dump(cfg, f, indent=2, ensure_ascii=False)
         os.replace(tmp, WORKSTATION_SETTINGS_PATH)
@@ -348,18 +458,30 @@ def save_workstation_settings(updates: dict) -> dict:
 
 
 def register_workstation_heartbeat(workstation_id: str = None, info: dict = None) -> dict:
-    import time
     wid = str(workstation_id or WORKSTATION_ID).strip()
     cfg = load_workstation_settings()
-    cur = cfg["workstations"].get(wid, {})
+    cur = dict(cfg["workstations"].get(wid) or {})
     cur["workstation_id"] = wid
-    cur["name"] = cur.get("name") or (f"Workstation ({wid})" if wid else "Workstation")
-    cur["root_dir"] = LOCAL_SCANS_ROOT
+    if not cur.get("name"):
+        cur["name"] = PREDEFINED_WORKSTATIONS.get(wid, {}).get("name") or f"Workstation ({wid})"
+    if wid == WORKSTATION_ID and os.name == "nt":
+        cur["root_dir"] = LOCAL_SCANS_ROOT
+    elif not cur.get("root_dir"):
+        cur["root_dir"] = PREDEFINED_WORKSTATIONS.get(wid, {}).get("root_dir") or LOCAL_SCANS_ROOT
     cur["last_seen"] = time.time()
     if "daemon_enabled" not in cur:
         cur["daemon_enabled"] = True
     if isinstance(info, dict):
+        # Preserve admin-configured `name` and `daemon_enabled` unless explicitly supplied as admin update
+        preserve_name = cur.get("name")
+        preserve_daemon = cur.get("daemon_enabled", True)
         cur.update(info)
+        if preserve_name and not info.get("_override_name"):
+            cur["name"] = preserve_name
+        if not info.get("_override_daemon"):
+            cur["daemon_enabled"] = preserve_daemon
+        cur.pop("_override_name", None)
+        cur.pop("_override_daemon", None)
     cfg["workstations"][wid] = cur
     return save_workstation_settings(cfg)
 
@@ -370,13 +492,27 @@ def is_workstation_query_serving_active(workstation_id: str = None) -> bool:
     q_ws = str(cfg.get("query_serving_workstation") or "auto").strip().lower()
     if q_ws in ("auto", "both", "*", ""):
         return True
-    return q_ws == wid
+    if q_ws == wid:
+        return True
+    # Automatic failover: if preferred query workstation has been offline > 45s, serve queries seamlessly
+    for k, winfo in (cfg.get("workstations") or {}).items():
+        if str(k).strip().lower() == q_ws and isinstance(winfo, dict):
+            last_s = float(winfo.get("last_seen") or 0.0)
+            if time.time() - last_s <= 45.0:
+                return False
+            return True
+    return True
 
 
 def is_workstation_processing_active(workstation_id: str = None) -> bool:
+    """
+    Strict processing workstation check:
+    When `processing_workstation` is pinned to a specific workstation (e.g. 'DESKTOP-OEBISC7'),
+    NEVER fall back to the weaker PC even if the pinned workstation is currently offline.
+    """
     wid = str(workstation_id or WORKSTATION_ID).strip().lower()
     cfg = load_workstation_settings()
-    p_ws = str(cfg.get("processing_workstation") or "auto").strip().lower()
+    p_ws = str(cfg.get("processing_workstation") or "DESKTOP-OEBISC7").strip().lower()
     if p_ws in ("auto", "both", "*"):
         return True
     if p_ws == "none":
@@ -387,9 +523,41 @@ def is_workstation_processing_active(workstation_id: str = None) -> bool:
 def is_workstation_daemon_active(workstation_id: str = None) -> bool:
     wid = str(workstation_id or WORKSTATION_ID).strip()
     cfg = load_workstation_settings()
-    ws_info = cfg.get("workstations", {}).get(wid)
-    if isinstance(ws_info, dict) and "daemon_enabled" in ws_info:
-        return bool(ws_info["daemon_enabled"])
+    for k, ws_info in (cfg.get("workstations") or {}).items():
+        if str(k).strip().lower() == wid.lower() and isinstance(ws_info, dict):
+            if "daemon_enabled" in ws_info:
+                return bool(ws_info["daemon_enabled"])
     return True
+
+
+def get_min_valid_session_iat() -> int:
+    """Returns global minimum valid session issued-at epoch timestamp (set by 'Log out everyone')."""
+    import json
+    if os.path.isfile(AUTH_GLOBAL_STATE_PATH):
+        try:
+            with open(AUTH_GLOBAL_STATE_PATH, "r", encoding="utf-8") as f:
+                data = json.load(f)
+            if isinstance(data, dict):
+                return int(data.get("min_valid_iat") or 0)
+        except Exception:
+            pass
+    return 0
+
+
+def set_min_valid_session_iat(min_iat: int, updated_by: str = "") -> int:
+    """Persists global minimum valid session issued-at epoch timestamp atomically."""
+    import json
+    cur = get_min_valid_session_iat()
+    val = max(cur, int(min_iat or 0))
+    payload = {"min_valid_iat": val, "updated_by": str(updated_by or "")}
+    try:
+        os.makedirs(os.path.dirname(AUTH_GLOBAL_STATE_PATH), exist_ok=True)
+        tmp = AUTH_GLOBAL_STATE_PATH + f".{os.getpid()}.part"
+        with open(tmp, "w", encoding="utf-8") as f:
+            json.dump(payload, f, indent=2, ensure_ascii=False)
+        os.replace(tmp, AUTH_GLOBAL_STATE_PATH)
+    except Exception as e:
+        print(f"[AuthGlobal] Warning saving auth_global_state.json: {e}")
+    return val
 
 

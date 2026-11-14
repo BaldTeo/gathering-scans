@@ -29,9 +29,219 @@ from pc_worker.config import (
     LOCAL_SCANS_ROOT,
     GC_SCAN_OPTIMIZER_DIR,
     FAST_PREVIEW_PIX4D_SETTINGS,
+    WORKSTATION_ID,
+    GLOBAL_PIX4D_LOCK_PATH,
     load_pix4d_settings,
     load_pix4d_settings_from_dict,
 )
+
+
+_CAPTURE_UUID_RE = re.compile(rb'CaptureUUID="([^"]+)"')
+
+
+def _read_xmp_capture_uuid(fp: str) -> Optional[bytes]:
+    try:
+        with open(fp, "rb") as f:
+            head = f.read(24576)
+            m = _CAPTURE_UUID_RE.search(head)
+            if m:
+                return m.group(1)
+            sz = os.path.getsize(fp)
+            if sz > 24576:
+                f.seek(max(0, sz - 12288))
+                m2 = _CAPTURE_UUID_RE.search(f.read())
+                if m2:
+                    return m2.group(1)
+    except Exception:
+        pass
+    return None
+
+
+def filter_matched_part_images(file_list: List[str]) -> List[str]:
+    """
+    Filters a Pix4DCatch image/depth/confidence list so orphan DepthMap_*.tiff / Confidence_*.tiff
+    files (whose XMP CaptureUUID has no matching RGB Image_*.jpg in the same directory) are excluded.
+    Prevents PIX4Dmatic AddImagesFromPaths 'Unable to match confidence map file' warnings/failures.
+    """
+    if not file_list:
+        return []
+    by_dir: Dict[str, List[str]] = {}
+    for fp in file_list:
+        by_dir.setdefault(os.path.dirname(fp), []).append(fp)
+    out: List[str] = []
+    for _, dir_files in by_dir.items():
+        rgb_files = []
+        rgb_uuids = set()
+        depth_by_u: Dict[bytes, str] = {}
+        conf_by_u: Dict[bytes, str] = {}
+        other_tiffs: List[str] = []
+        for fp in sorted(dir_files):
+            bn = os.path.basename(fp)
+            low = bn.lower()
+            if low.endswith((".jpg", ".jpeg", ".png")):
+                rgb_files.append(fp)
+                u = _read_xmp_capture_uuid(fp)
+                if u:
+                    rgb_uuids.add(u)
+            elif low.endswith((".tiff", ".tif")):
+                if bn.startswith("DepthMap_"):
+                    u = _read_xmp_capture_uuid(fp)
+                    if u:
+                        depth_by_u[u] = fp
+                    else:
+                        other_tiffs.append(fp)
+                elif bn.startswith("Confidence_"):
+                    u = _read_xmp_capture_uuid(fp)
+                    if u:
+                        conf_by_u[u] = fp
+                    else:
+                        other_tiffs.append(fp)
+                else:
+                    other_tiffs.append(fp)
+        out.extend(rgb_files)
+        if rgb_uuids and (depth_by_u or conf_by_u):
+            for u in sorted(rgb_uuids):
+                if u in depth_by_u and u in conf_by_u:
+                    out.append(depth_by_u[u])
+                    out.append(conf_by_u[u])
+        else:
+            out.extend(other_tiffs)
+    return sorted(out)
+
+
+def _opf_has_valid_roi(primary_opf_path: Optional[str]) -> bool:
+    """
+    Returns False if `primary_opf_path` points to a real OPF folder on disk whose
+    `region_of_interest/ext_pix4d_region_of_interest.json` is missing or contains zero polygons/boxes
+    (passing `,RoiSet{ }` to GenerateScalableMesh when OPF has an empty ROI fails CommandGraph validation).
+    """
+    if not primary_opf_path or not os.path.isfile(primary_opf_path):
+        return True
+    opf_dir = os.path.dirname(primary_opf_path)
+    roi_fp = os.path.join(opf_dir, "region_of_interest", "ext_pix4d_region_of_interest.json")
+    if not os.path.isfile(roi_fp):
+        return False
+    try:
+        with open(roi_fp, "r", encoding="utf-8") as rf:
+            data = json.load(rf)
+        if isinstance(data, dict):
+            for k in ("polygons", "rois", "regions", "boxes", "features", "items"):
+                if isinstance(data.get(k), list) and len(data[k]) == 0:
+                    return False
+                if isinstance(data.get(k), list) and len(data[k]) > 0:
+                    return True
+            # Non-empty geometry dict (e.g. bounding box / vertices)
+            if any(k in data for k in ("min", "max", "vertices", "polygon", "bounds")) and data:
+                return True
+            if len(data) <= 2 and not any(bool(v) for k, v in data.items() if k not in ("version", "schema", "crs")):
+                return False
+    except Exception:
+        return False
+    return True
+
+
+def are_syncthing_inputs_ready(scan_id: str, input_path: str, proj_dir: Optional[str] = None) -> Tuple[bool, str]:
+    """
+    Verifies that a queued scan's input files have completely finished transferring via Syncthing
+    before PIX4Dmatic is allowed to start on this workstation:
+    1. Zero `.syncthing.*.tmp` or `~syncthing~*` partial files in `proj_dir/inputs` or `input_path`.
+    2. If `_staged_manifest.json` exists in `proj_dir/inputs`, local RGB count >= `expected_image_count`.
+    """
+    p_dir = proj_dir or os.path.join(LOCAL_SCANS_ROOT, scan_id)
+    inputs_dir = os.path.join(p_dir, "inputs")
+    check_dirs = []
+    if os.path.isdir(inputs_dir):
+        check_dirs.append(inputs_dir)
+    for part in str(input_path or "").split(";"):
+        pt = part.strip()
+        if pt and os.path.isdir(pt):
+            check_dirs.append(pt)
+
+    rgb_cnt = 0
+    for cdir in check_dirs:
+        for _, _, files in os.walk(cdir):
+            for fn in files:
+                low = fn.lower()
+                if (low.startswith(".syncthing.") and low.endswith(".tmp")) or low.startswith("~syncthing~"):
+                    return False, f"Waiting for Syncthing file transfer ({fn})..."
+                if low.endswith((".jpg", ".jpeg", ".png")):
+                    rgb_cnt += 1
+
+    manifest_fp = os.path.join(inputs_dir, "_staged_manifest.json")
+    if os.path.isfile(manifest_fp):
+        try:
+            with open(manifest_fp, "r", encoding="utf-8") as mf:
+                m = json.load(mf)
+            exp_cnt = int(m.get("expected_image_count") or 0)
+            if exp_cnt > 0 and rgb_cnt < exp_cnt:
+                return False, f"Waiting for Syncthing input sync ({rgb_cnt}/{exp_cnt} photos synced)..."
+        except Exception:
+            pass
+
+    # If neither source_zip_path exists on this PC nor staged inputs exist yet, wait for Syncthing staging
+    has_source = any(os.path.exists(p.strip()) for p in str(input_path or "").split(";") if p.strip())
+    if not has_source and rgb_cnt == 0:
+        recon_dir = os.path.join(p_dir, scan_id, "processing", "reconstructions")
+        if not (os.path.isdir(recon_dir) and os.listdir(recon_dir)):
+            return False, "Waiting for staged scan inputs to sync to this workstation..."
+    return True, "ready"
+
+
+def is_global_pix4d_seat_busy(ignore_workstation: Optional[str] = None, ttl_sec: float = 240.0) -> Tuple[bool, str]:
+    """Checks whether another workstation (or local headless `--gst` run) currently holds the 1-seat PIX4Dmatic lock."""
+    # 1. Check shared lock file (synced across workstations & updated by heartbeat)
+    if os.path.isfile(GLOBAL_PIX4D_LOCK_PATH):
+        try:
+            with open(GLOBAL_PIX4D_LOCK_PATH, "r", encoding="utf-8") as lf:
+                lk = json.load(lf)
+            if isinstance(lk, dict) and lk.get("active"):
+                holder = str(lk.get("workstation_id") or "")
+                ts = float(lk.get("updated_at") or 0.0)
+                if time.time() - ts <= ttl_sec and (not ignore_workstation or holder.lower() != ignore_workstation.lower()):
+                    return True, f"{holder}:{lk.get('scan_id') or 'busy'}"
+        except Exception:
+            pass
+    return False, ""
+
+
+def acquire_global_pix4d_seat_lock(scan_id: str, pid: int = 0) -> bool:
+    busy, holder = is_global_pix4d_seat_busy(ignore_workstation=WORKSTATION_ID)
+    if busy:
+        print(f"[PIX4DSeatLock] Seat currently held by {holder}; deferring {scan_id}.")
+        return False
+    payload = {
+        "active": True,
+        "workstation_id": WORKSTATION_ID,
+        "scan_id": scan_id,
+        "pid": int(pid or os.getpid()),
+        "updated_at": time.time(),
+    }
+    try:
+        os.makedirs(os.path.dirname(GLOBAL_PIX4D_LOCK_PATH), exist_ok=True)
+        tmp = GLOBAL_PIX4D_LOCK_PATH + f".{os.getpid()}.part"
+        with open(tmp, "w", encoding="utf-8") as wf:
+            json.dump(payload, wf, indent=2)
+        os.replace(tmp, GLOBAL_PIX4D_LOCK_PATH)
+    except Exception:
+        pass
+    return True
+
+
+def release_global_pix4d_seat_lock(scan_id: str = "") -> None:
+    if not os.path.isfile(GLOBAL_PIX4D_LOCK_PATH):
+        return
+    try:
+        with open(GLOBAL_PIX4D_LOCK_PATH, "r", encoding="utf-8") as lf:
+            lk = json.load(lf)
+        if isinstance(lk, dict):
+            holder = str(lk.get("workstation_id") or "")
+            if holder and holder.lower() != WORKSTATION_ID.lower():
+                return
+            if scan_id and lk.get("scan_id") and str(lk.get("scan_id")) != str(scan_id):
+                return
+        os.remove(GLOBAL_PIX4D_LOCK_PATH)
+    except Exception:
+        pass
 
 _PSUTIL_CACHE = {"ts": 0.0, "cpu": 0, "ram": 0, "label": ""}
 _LOG_PARSE_CACHE: Dict[str, Dict[str, Any]] = {}
@@ -1104,7 +1314,8 @@ def generate_pix4dmatic_gst_script(
     elif calib_image_scale not in ("Full", "Half", "Quarter"):
         calib_image_scale = "Full"
 
-    skip_dense_cloud = bool(cfg.get("skip_dense_cloud", False)) and bool(has_depth_inputs)
+    # MeshPipeline.Scalable requires FusedPointCloud/DensePointCloud; only FixedSize supports DepthPointCloud-only
+    skip_dense_cloud = bool(cfg.get("skip_dense_cloud", False)) and bool(has_depth_inputs) and (mesh_pipeline == "FixedSize")
 
     proj_folder_clean = os.path.dirname(project_p4m_path).replace("\\", "/")
     proj_name = os.path.splitext(os.path.basename(project_p4m_path))[0] or "p4m_project"
@@ -1112,7 +1323,8 @@ def generate_pix4dmatic_gst_script(
     report_pdf = f"{exp_clean}/quality_report.pdf"
     obj_mesh_folder = f"{exp_clean}/obj_mesh"
 
-    mesh_roi_token = ",RoiSet{ }" if use_roi else ""
+    has_mesh_roi = use_roi and _opf_has_valid_roi(primary_opf_path)
+    mesh_roi_token = ",RoiSet{ }" if has_mesh_roi else ""
     sky_token = ",SkyMasks{ }" if skyless else ""
 
     import_blocks = []
@@ -2679,6 +2891,32 @@ def run_pix4dmatic_pipeline(
                     primary_opf_path=primary_opf_path,
                     part_image_groups=part_image_groups,
                 )
+                if part_image_groups:
+                    part_image_groups = [filter_matched_part_images(g) for g in part_image_groups if g]
+                elif extracted_files and not primary_opf_path:
+                    extracted_files = filter_matched_part_images(extracted_files)
+                # Write _staged_manifest.json so Syncthing peer workstation can verify 100% input readiness
+                try:
+                    rgb_staged = sum(
+                        1
+                        for _, _, fns in os.walk(inputs_dir)
+                        for fn in fns
+                        if fn.lower().endswith((".jpg", ".jpeg", ".png"))
+                    )
+                    if rgb_staged > 0:
+                        with open(os.path.join(inputs_dir, "_staged_manifest.json"), "w", encoding="utf-8") as smf:
+                            json.dump(
+                                {
+                                    "scan_id": scan_id,
+                                    "expected_image_count": rgb_staged,
+                                    "staged_by": WORKSTATION_ID,
+                                    "staged_at": time.time(),
+                                },
+                                smf,
+                                indent=2,
+                            )
+                except Exception:
+                    pass
 
         has_depth_inputs = bool(primary_opf_path) or (
             os.path.isdir(inputs_dir)
@@ -2748,6 +2986,7 @@ def run_pix4dmatic_pipeline(
         startupinfo.wShowWindow = 7  # SW_SHOWMINNOACTIVE
         creation_flags = getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
 
+    acquire_global_pix4d_seat_lock(scan_id)
     cmd = [PIX4DMATIC_EXE, "--gst", gst_path]
     t0 = time.time()
     stdout_log_path = os.path.join(proj_dir, "pix4d_stdout.log")
@@ -2759,6 +2998,7 @@ def run_pix4dmatic_pipeline(
         startupinfo=startupinfo,
         creationflags=creation_flags,
     )
+    acquire_global_pix4d_seat_lock(scan_id, pid=proc.pid)
     if os.path.isfile(rerun_cfg_path) or r_data:
         try:
             r_state = dict(r_data) if isinstance(r_data, dict) else {}
@@ -2791,6 +3031,7 @@ def run_pix4dmatic_pipeline(
 
     while proc.poll() is None:
         time.sleep(2.5)
+        acquire_global_pix4d_seat_lock(scan_id, pid=proc.pid)
         newest_log = ""
         newest_mtime = t0 - 5.0
         for ldir in proj_log_dirs:
@@ -2834,6 +3075,7 @@ def run_pix4dmatic_pipeline(
             stdout_fh.close()
         except Exception:
             pass
+        release_global_pix4d_seat_lock(scan_id)
     duration_p4m = round(time.time() - t0, 2)
 
     prev_obj_dir = os.path.join(export_dir, "obj_mesh_prev")

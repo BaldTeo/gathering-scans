@@ -78,7 +78,15 @@ from pc_worker.auth_and_sharing import (
     is_link_preview_bot,
     parse_user_agent,
 )
-from pc_worker.config import DATA_DIR
+from pc_worker.config import (
+    DATA_DIR,
+    DAEMON_STATE_PATH,
+    get_min_valid_session_iat,
+    set_min_valid_session_iat,
+    load_workstation_settings,
+    save_workstation_settings,
+    register_workstation_heartbeat,
+)
 from pc_worker.gchat_notifier import GoogleChatNotifier
 
 WEB_DIR = os.path.join(BASE_DIR, "web")
@@ -94,7 +102,6 @@ _FS_SYNC_LOCK = threading.Lock()
 _LAST_FS_SYNC_TS = 0.0
 _LAST_FS_FINGERPRINT: Optional[Tuple[str, ...]] = None
 
-DAEMON_STATE_PATH = os.path.join(DATA_DIR, "daemon_state.json")
 _DAEMON_PROCESS_START_TS = time.time()
 _DAEMON_LAST_POLL_TS = 0.0
 _DAEMON_WAKE_EVENT = threading.Event()
@@ -854,8 +861,35 @@ def _recv_exact(sock: socket.socket, n: int) -> Optional[bytes]:
     return bytes(buf)
 
 
-def _acquire_vps_tunnel_socket(timeout: float = 6.0) -> Tuple[Optional[socket.socket], Optional[threading.Event], int]:
-    deadline = time.time() + timeout
+def _acquire_vps_tunnel_socket(
+    timeout: float = 6.0,
+    target_workstation: str = "",
+) -> Tuple[Optional[socket.socket], Optional[threading.Event], int]:
+    start_ts = time.time()
+    deadline = start_ts + timeout
+    explicit_target = str(target_workstation or "").strip().lower()
+    pref_ws = explicit_target
+    if not pref_ws:
+        try:
+            ws_cfg = load_workstation_settings()
+            cand_ws = str(ws_cfg.get("query_serving_workstation") or "auto").strip()
+            if cand_ws.lower() not in ("", "auto", "both", "*"):
+                ws_map = ws_cfg.get("workstations") or {}
+                matched_info = None
+                for k, v in ws_map.items():
+                    if str(k).strip().lower() == cand_ws.lower() and isinstance(v, dict):
+                        matched_info = v
+                        break
+                # Instant failover if preferred workstation is offline (>35s) or daemon paused
+                if (
+                    matched_info
+                    and (time.time() - float(matched_info.get("last_seen") or 0.0)) <= 35.0
+                    and bool(matched_info.get("daemon_enabled", True))
+                ):
+                    pref_ws = cand_ws.lower()
+        except Exception:
+            pref_ws = ""
+
     while True:
         rem = deadline - time.time()
         if rem <= 0:
@@ -889,23 +923,98 @@ def _acquire_vps_tunnel_socket(timeout: float = 6.0) -> Tuple[Optional[socket.so
             done_evt.set()
             continue
 
-        # If a specific workstation is designated for query serving, prioritize its sockets
-        pref_ws = ""
-        try:
-            from .config import load_workstation_settings
-            pref_ws = str(load_workstation_settings().get("query_serving_workstation") or "auto").strip().lower()
-        except Exception:
-            pass
         sock_ws = str(getattr(done_evt, "workstation_id", "")).strip().lower()
-        if pref_ws and pref_ws not in ("auto", "both", "*") and sock_ws and sock_ws != pref_ws:
-            if rem > 0.6:
+        if explicit_target and sock_ws != explicit_target:
+            VPS_TUNNEL_POOL.put(pool_item)
+            if rem <= 0.15:
+                return None, None, 0
+            time.sleep(0.02)
+            continue
+        if pref_ws and sock_ws and sock_ws != pref_ws:
+            # Wait up to 0.35s for preferred workstation socket, then seamlessly fail over
+            if (time.time() - start_ts) < 0.35 and rem > 0.25:
                 VPS_TUNNEL_POOL.put(pool_item)
-                time.sleep(0.02)
+                time.sleep(0.015)
                 continue
 
         done_evt.in_use = True
         done_evt.last_ts = time.time()
         return sock, done_evt, proto_ver
+
+
+def send_rpc_to_workstation_via_tunnel(
+    method: str,
+    path: str,
+    body_obj: Optional[Dict[str, Any]] = None,
+    target_workstation: str = "",
+    timeout: float = 3.0,
+) -> Optional[Dict[str, Any]]:
+    """Sends a lightweight internal JSON RPC over the reverse tunnel pool from VPS to a connected workstation."""
+    if os.name == "nt":
+        return None
+    tun_sock, done_evt, proto_ver = _acquire_vps_tunnel_socket(timeout=timeout, target_workstation=target_workstation)
+    if not tun_sock or not done_evt:
+        return None
+    try:
+        tun_sock.settimeout(max(5.0, timeout))
+        raw_body = json.dumps(body_obj or {}).encode("utf-8") if body_obj is not None else b""
+        hdrs = {"Content-Type": "application/json", "X-Tunnel-Key": TUNNEL_SHARED_KEY}
+        envelope = json.dumps(
+            {
+                "method": method,
+                "path": path,
+                "headers": hdrs,
+                "body_b64": base64.b64encode(raw_body).decode("ascii") if raw_body else "",
+            }
+        ).encode("utf-8")
+        tun_sock.sendall(struct.pack("!I", len(envelope)) + envelope)
+        len_bytes = _recv_exact(tun_sock, 4)
+        if not len_bytes:
+            done_evt.in_use = False
+            done_evt.set()
+            return None
+        (meta_len,) = struct.unpack("!I", len_bytes)
+        meta_raw = _recv_exact(tun_sock, meta_len)
+        if not meta_raw:
+            done_evt.in_use = False
+            done_evt.set()
+            return None
+        resp_meta = json.loads(meta_raw.decode("utf-8"))
+        chunked_v2 = bool(resp_meta.get("chunked_v2", False))
+        resp_buf = bytearray()
+        if chunked_v2:
+            while True:
+                clen_b = _recv_exact(tun_sock, 4)
+                if not clen_b:
+                    break
+                (clen,) = struct.unpack("!I", clen_b)
+                if clen == 0:
+                    break
+                ch = _recv_exact(tun_sock, clen)
+                if ch is None:
+                    break
+                resp_buf.extend(ch)
+            now_put = time.time()
+            done_evt.last_ts = now_put
+            done_evt.in_use = False
+            VPS_TUNNEL_POOL.put((tun_sock, done_evt, now_put, proto_ver))
+        else:
+            while True:
+                ch = tun_sock.recv(65536)
+                if not ch:
+                    break
+                resp_buf.extend(ch)
+            done_evt.in_use = False
+            done_evt.set()
+        resp_hdrs = {str(k).lower(): str(v) for k, v in (resp_meta.get("headers") or {}).items()}
+        raw_b = bytes(resp_buf)
+        if resp_hdrs.get("content-encoding", "").lower() == "gzip":
+            raw_b = gzip.decompress(raw_b)
+        return json.loads(raw_b.decode("utf-8")) if raw_b else {"status": resp_meta.get("status", 200)}
+    except Exception:
+        done_evt.in_use = False
+        done_evt.set()
+        return None
 
 
 def start_pc_reverse_tunnel_pool(local_port: int = SERVER_PORT, pool_size: int = 96):
@@ -1048,6 +1157,94 @@ def start_pc_reverse_tunnel_pool(local_port: int = SERVER_PORT, pool_size: int =
                 pass
             time.sleep(90.0)
 
+    def _workstation_heartbeat_loop():
+        time.sleep(1.0)
+        while True:
+            try:
+                if os.name == "nt":
+                    p4d_busy = False
+                    try:
+                        import psutil
+
+                        for p in psutil.process_iter(["name", "cmdline"]):
+                            nm = (p.info.get("name") or "").lower()
+                            if "pix4dmatic" in nm:
+                                cmd_s = " ".join(p.info.get("cmdline") or []).lower()
+                                if "--gst" in cmd_s:
+                                    p4d_busy = True
+                                    break
+                    except Exception:
+                        pass
+                    active_job = DB.get_active_job()
+                    active_sid = str(active_job.get("scan_id") or "") if isinstance(active_job, dict) else ""
+                    hb_payload = json.dumps(
+                        {
+                            "workstation_id": WORKSTATION_ID,
+                            "hostname": WORKSTATION_ID,
+                            "root_dir": LOCAL_SCANS_ROOT,
+                            "daemon_running": is_pc_daemon_running(),
+                            "daemon_updated_at": float(load_pc_daemon_state().get("updated_at") or 0.0),
+                            "pix4d_busy": bool(p4d_busy or active_sid),
+                            "active_scan_id": active_sid,
+                            "min_valid_iat": get_min_valid_session_iat(),
+                        }
+                    ).encode("utf-8")
+                    # Also update local heartbeat state
+                    register_workstation_heartbeat(
+                        WORKSTATION_ID,
+                        {
+                            "hostname": WORKSTATION_ID,
+                            "root_dir": LOCAL_SCANS_ROOT,
+                            "daemon_enabled": is_pc_daemon_running(),
+                            "pix4d_busy": bool(p4d_busy or active_sid),
+                            "active_scan_id": active_sid,
+                            "last_seen": time.time(),
+                        },
+                    )
+                    hb_conn = http.client.HTTPConnection(VPS_HOST, 8095, timeout=6.0)
+                    try:
+                        hb_conn.request(
+                            "POST",
+                            "/api/workstation/heartbeat",
+                            body=hb_payload,
+                            headers={
+                                "Content-Type": "application/json",
+                                "X-Tunnel-Key": TUNNEL_SHARED_KEY,
+                                "X-Workstation-Id": WORKSTATION_ID,
+                            },
+                        )
+                        hb_resp = hb_conn.getresponse()
+                        raw_hb = hb_resp.read()
+                        if hb_resp.status == 200 and raw_hb:
+                            hb_data = json.loads(raw_hb.decode("utf-8"))
+                            vps_iat = int(hb_data.get("min_valid_iat") or 0)
+                            if vps_iat > get_min_valid_session_iat():
+                                set_min_valid_session_iat(vps_iat)
+                            vps_ws = hb_data.get("workstation_settings")
+                            if isinstance(vps_ws, dict):
+                                save_workstation_settings(vps_ws)
+                                ws_dict = vps_ws.get("workstations") or {}
+                                my_entry = None
+                                for wk, wv in ws_dict.items():
+                                    if str(wk).strip().lower() == WORKSTATION_ID.lower() and isinstance(wv, dict):
+                                        my_entry = wv
+                                        break
+                                if my_entry is not None and "daemon_enabled" in my_entry:
+                                    vps_d_ts = float(my_entry.get("daemon_updated_at") or 0.0)
+                                    loc_d_ts = float(load_pc_daemon_state().get("updated_at") or 0.0)
+                                    desired_running = bool(my_entry.get("daemon_enabled", True))
+                                    if vps_d_ts > loc_d_ts + 0.5 and desired_running != is_pc_daemon_running():
+                                        set_pc_daemon_running(desired_running, actor_email="vps_coordinator")
+                    finally:
+                        try:
+                            hb_conn.close()
+                        except Exception:
+                            pass
+            except Exception:
+                pass
+            time.sleep(15.0)
+
+    threading.Thread(target=_workstation_heartbeat_loop, daemon=True).start()
     threading.Thread(target=_warm_all_scans_loop, daemon=True).start()
     print(f"[GatheringScans] Started {pool_size} persistent reverse tunnel sockets to {VPS_HOST}:8095 -> 127.0.0.1:{local_port} ({LOCAL_SCANS_ROOT})", flush=True)
 
@@ -1105,71 +1302,21 @@ class CloudAndTunnelHandlerMixin:
         links = manifest.get("share_links") or []
         scans = manifest.get("scans") or []
         clean_tok = (share_token or "").strip()
-        link = next((l for l in links if l.get("token") == clean_tok), None)
-        if not link:
-            placeholder_tokens = {
-                "YOUR_SHARE_TOKEN",
-                "<YOUR_SHARE_TOKEN>",
-                "{YOUR_SHARE_TOKEN}",
-                "SHARE_TOKEN",
-                "TOKEN",
-                "DEMO",
-                "DEFAULT",
-                "EMBED",
-            }
-            is_ph = clean_tok.upper() in placeholder_tokens
-            target_scan = None
-            target_grp = ""
-            if not is_ph:
-                target_scan = next((s for s in scans if str(s.get("scan_id")) == clean_tok), None)
-                if not target_scan and any(str(s.get("project_group")) == clean_tok for s in scans):
-                    target_grp = clean_tok
-            if not target_scan and not target_grp and requested_scan_id:
-                target_scan = next((s for s in scans if str(s.get("scan_id")) == requested_scan_id), None)
-            if is_ph and not target_scan and not target_grp and scans:
-                preferred_ids = (
-                    "edited_qihu_unified_merged_scan_4_scans__edited_372953",
-                    "merged_qihu_merged_2026_10_28_77753",
-                    "quchi_20261005_merged",
-                    "edited_daan_661536",
-                    "edited_1021_911189",
-                )
-                for pid in preferred_ids:
-                    cand = next((s for s in scans if str(s.get("scan_id")) == pid), None)
-                    if cand:
-                        target_scan = cand
-                        break
-                if not target_scan:
-                    target_scan = scans[0]
-            if target_scan:
-                sid_t = str(target_scan.get("scan_id") or "")
-                link = next(
-                    (l for l in links if l.get("scope_type") == "scan" and str(l.get("target_id")) == sid_t and not l.get("revoked")),
-                    None,
-                ) or {
-                    "token": sid_t,
-                    "scope_type": "scan",
-                    "target_id": sid_t,
-                    "label": f"Embed View — {target_scan.get('name') or sid_t}",
-                    "allow_download": False,
-                    "allow_measurements": True,
-                    "allow_comments": True,
-                    "revoked": False,
-                }
-            elif target_grp:
-                link = next(
-                    (l for l in links if l.get("scope_type") == "group" and str(l.get("target_id")) == target_grp and not l.get("revoked")),
-                    None,
-                ) or {
-                    "token": target_grp,
-                    "scope_type": "group",
-                    "target_id": target_grp,
-                    "label": f"Embed Site — {target_grp}",
-                    "allow_download": False,
-                    "allow_measurements": True,
-                    "allow_comments": True,
-                    "revoked": False,
-                }
+        if not clean_tok:
+            return False, "Missing share link token.", None, []
+        local_db_link = None
+        if "AUTH_SHARE" in globals():
+            try:
+                local_db_link = AUTH_SHARE.get_share_link(clean_tok)
+            except Exception:
+                local_db_link = None
+        manifest_link = next((l for l in links if isinstance(l, dict) and l.get("token") == clean_tok), None)
+        if local_db_link and manifest_link:
+            link = dict(manifest_link)
+            if local_db_link.get("revoked") or manifest_link.get("revoked"):
+                link["revoked"] = True
+        else:
+            link = local_db_link or manifest_link
         if not link:
             return False, "Invalid or unknown share link token.", None, []
         if link.get("revoked"):
@@ -1262,7 +1409,15 @@ class CloudAndTunnelHandlerMixin:
         if share_token:
             ok, reason, _, _ = self._validate_cloud_share_token(share_token, requested_scan_id=scan_id)
             if not ok:
-                self.send_json({"error": reason}, status=403)
+                # If not in cloud manifest yet, fall through so PC tunnel can validate newly minted share link
+                if reason == "Invalid or unknown share link token.":
+                    return False
+                self.send_json({"error": reason, "revoked": True}, status=403)
+                return True
+        elif path.startswith("/stream/"):
+            _, actor_role_g, _ = self._resolve_request_role(None, urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query), "")
+            if actor_role_g == "guest" and self.headers.get("X-Tunnel-Key", "").strip() != TUNNEL_SHARED_KEY:
+                self.send_json({"error": "Authentication required. Please sign in with Google.", "auth_required": True}, status=401)
                 return True
 
         pkg = pkgs.get(scan_id)
@@ -1405,8 +1560,64 @@ class CloudAndTunnelHandlerMixin:
         if os.name == "nt":
             return False
 
+        # Authoritative coordinator, session invalidation, and immediate share-revocation routes run directly on VPS
+        if path in (
+            "/api/admin/workstations",
+            "/api/workstation/heartbeat",
+            "/api/admin/logout-everyone",
+            "/api/auth/logout",
+            "/api/share/revoke",
+        ):
+            return False
+
         parsed_q = urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query)
         share_token = self._extract_share_token(parsed_q)
+        is_public_vps_route = (
+            path in (
+                "/api/status",
+                "/api/pc/health",
+                "/api/auth/config",
+                "/api/auth/google",
+                "/api/auth/session",
+                "/api/auth/logout",
+                "/api/auth/roster-login",
+                "/api/queue/gchat-preset",
+            )
+            or (path.startswith("/api/queue/") and path.endswith("/preview-photo.jpg"))
+            or (path.startswith("/api/scans/") and (path.endswith("/thumbnail") or path.endswith("/thumbnail.png")))
+        )
+        actor_em_v = ""
+        actor_role_v = "guest"
+        allow_vps_ram_cache = True
+        if not is_public_vps_route and (path.startswith("/api/") or path.startswith("/stream/") or path.startswith("/cameras/")):
+            if share_token:
+                req_sid_hint = ""
+                if path.startswith("/stream/"):
+                    req_sid_hint = path[len("/stream/") :].split("/", 1)[0].strip()
+                elif path.startswith("/cameras/"):
+                    req_sid_hint = path[len("/cameras/") :].split("/", 1)[0].strip()
+                elif path.startswith("/api/scans/"):
+                    cand_s = path[len("/api/scans/") :].split("/", 1)[0].strip()
+                    if cand_s not in ("bin", "rename", "move", "delete", "merge", "home-view", "primary"):
+                        req_sid_hint = cand_s
+                elif parsed_q.get("scan_id"):
+                    req_sid_hint = str(parsed_q["scan_id"][0] or "").strip()
+                ok_sh, reason_sh, _, _ = self._validate_cloud_share_token(
+                    share_token, requested_scan_id=req_sid_hint or None
+                )
+                if not ok_sh:
+                    if reason_sh != "Invalid or unknown share link token.":
+                        self.send_json({"error": reason_sh, "revoked": True}, status=403)
+                        return True
+                    allow_vps_ram_cache = False
+            else:
+                actor_em_v, actor_role_v, _ = self._resolve_request_role(None, parsed_q, "")
+                if actor_role_v == "guest" and self.headers.get("X-Tunnel-Key", "").strip() != TUNNEL_SHARED_KEY:
+                    self.send_json(
+                        {"error": "Authentication required. Please sign in with Google.", "auth_required": True},
+                        status=401,
+                    )
+                    return True
 
         cacheable = method == "GET" and (
             path in ("/api/scans", "/api/projects", "/api/library/folders", "/api/status", "/api/pc/health")
@@ -1422,6 +1633,7 @@ class CloudAndTunnelHandlerMixin:
             or path in ("/api/camera-photo", "/api/photo-file")
             or path.startswith("/cameras/")
         )
+        is_share_create = method == "POST" and path == "/api/share/create"
         is_comment_photo_upload = method == "POST" and path in ("/api/comments/upload-photo", "/api/comments/upload_photo")
         if method == "POST" and (path.endswith("/thumbnail") or path == "/api/scans/home-view" or path.endswith("/home-view")):
             if body:
@@ -1474,9 +1686,17 @@ class CloudAndTunnelHandlerMixin:
             _VPS_RAM_FALLBACK_CACHE.clear()
 
         # 1. Serve immutable binary .glb/.gsplat tiles, thumbnails, and tileset.json from volatile RAM if already cached
-        cache_hit_key = self.path if self.path in _VPS_RAM_FALLBACK_CACHE else (path if path in _VPS_RAM_FALLBACK_CACHE else None)
+        ram_cache_key = (
+            f"u:{actor_em_v or ('s:' + share_token)}:{self.path}"
+            if path in ("/api/scans", "/api/projects", "/api/library/folders")
+            else self.path
+        )
+        cache_hit_key = (
+            self.path if self.path in _VPS_RAM_FALLBACK_CACHE else (path if path in _VPS_RAM_FALLBACK_CACHE else None)
+        )
         if (
-            method == "GET"
+            allow_vps_ram_cache
+            and method == "GET"
             and (
                 path.endswith(".glb")
                 or path.endswith(".gsplat")
@@ -1691,7 +1911,7 @@ class CloudAndTunnelHandlerMixin:
                     self.end_headers()
                     headers_sent = True
 
-                buf_for_cache = bytearray() if ((cacheable or is_comment_photo_upload or is_categorize_req) and status_code == 200) else None
+                buf_for_cache = bytearray() if ((cacheable or is_comment_photo_upload or is_categorize_req or is_share_create) and status_code == 200) else None
                 client_Write_ok = True
                 stream_clean = True
 
@@ -1830,11 +2050,30 @@ class CloudAndTunnelHandlerMixin:
                                 SURVEY._persist_categorization_result(cat_sid, cat_obj)
                         except Exception:
                             pass
+                    if is_share_create and len(buf_for_cache) > 0:
+                        try:
+                            raw_sh = bytes(buf_for_cache)
+                            if filtered_hdrs.get("Content-Encoding", "").lower() == "gzip" or filtered_hdrs.get("content-encoding", "").lower() == "gzip":
+                                raw_sh = gzip.decompress(raw_sh)
+                            sh_obj = json.loads(raw_sh.decode("utf-8"))
+                            new_link = sh_obj.get("share_link") if isinstance(sh_obj, dict) else None
+                            if isinstance(new_link, dict) and new_link.get("token"):
+                                c_man_sh = _load_cloud_manifest()
+                                s_links = [
+                                    sl
+                                    for sl in (c_man_sh.get("share_links") or [])
+                                    if isinstance(sl, dict) and sl.get("token") != new_link["token"]
+                                ]
+                                s_links.insert(0, new_link)
+                                c_man_sh["share_links"] = s_links
+                                _save_cloud_manifest(c_man_sh)
+                        except Exception:
+                            pass
                     if cacheable:
                         if len(_VPS_RAM_FALLBACK_CACHE) > 2000:
                             _VPS_RAM_FALLBACK_CACHE.clear()
                         cache_entry = (status_code, filtered_hdrs, bytes(buf_for_cache))
-                        _VPS_RAM_FALLBACK_CACHE[self.path] = cache_entry
+                        _VPS_RAM_FALLBACK_CACHE[ram_cache_key] = cache_entry
                         if path.startswith("/stream/") or path.endswith("/thumbnail"):
                             _VPS_RAM_FALLBACK_CACHE[path] = cache_entry
                     if path == "/api/scans":
@@ -1875,8 +2114,8 @@ class CloudAndTunnelHandlerMixin:
             return False
 
         # 4. Serve from in-memory fallback cache if available during momentary tunnel reconnect
-        if self.path in _VPS_RAM_FALLBACK_CACHE:
-            c_status, c_hdrs, c_body = _VPS_RAM_FALLBACK_CACHE[self.path]
+        if allow_vps_ram_cache and ram_cache_key in _VPS_RAM_FALLBACK_CACHE:
+            c_status, c_hdrs, c_body = _VPS_RAM_FALLBACK_CACHE[ram_cache_key]
             if path == "/api/scans":
                 try:
                     c_json = json.loads(c_body.decode("utf-8"))
@@ -1993,7 +2232,14 @@ class CloudAndTunnelHandlerMixin:
             )
             return True
         if path == "/api/projects":
-            enriched = [self._enrich_scan_urls(s) for s in cloud_scans]
+            if share_token:
+                ok, reason, _, allowed_scans = self._validate_cloud_share_token(share_token)
+                if not ok:
+                    self.send_json({"error": reason, "revoked": True}, status=403)
+                    return True
+                enriched = [self._enrich_scan_urls(s, share_token) for s in allowed_scans]
+            else:
+                enriched = [self._enrich_scan_urls(s) for s in cloud_scans]
             for _es in enriched:
                 _es["is_primary"] = bool(prim_summary.get(str(_es.get("project_group") or "")) == _es.get("scan_id"))
             projects = self._build_projects_summary(enriched)

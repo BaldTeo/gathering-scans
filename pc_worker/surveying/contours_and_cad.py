@@ -1833,6 +1833,7 @@ class ContoursAndCadMixin:
             (r"C:\GatheringScans\catch_QihuPark_20261028\inputs", os.path.join(SCANS_ROOT_DIR, "catch_QihuPark_20261028_HQ", "inputs")),
             (r"D:\GatheringScans\catch_QihuPark_20261028\inputs", os.path.join(SCANS_ROOT_DIR, "catch_QihuPark_20261028_HQ", "inputs")),
             (r"C:\GatheringScans", SCANS_ROOT_DIR),
+            (r"D:\GatheringScans", SCANS_ROOT_DIR),
         )
 
         def _rewrite_legacy_cam_path(ap_raw: str) -> str:
@@ -1930,7 +1931,8 @@ class ContoursAndCadMixin:
                 from pc_worker.gdrive_watcher import utm51n_to_wgs84
 
                 lat_u, lon_u = utm51n_to_wgs84(c0, c1)
-                return wgs84_to_twd97(lat_u, lon_u)
+                twd_res = wgs84_to_twd97(lat_u, lon_u)
+                return float(twd_res[0]), float(twd_res[1])
             if abs(c0) > 180.0 or abs(c1) > 180.0:
                 return c0, c1
             lat_d, lon_d = (c0, c1) if (-90.0 <= c0 <= 90.0 and -180.0 <= c1 <= 180.0) else (c1, c0)
@@ -1939,7 +1941,8 @@ class ContoursAndCadMixin:
 
                 ue, un, _, _ = wgs84_to_utm(lat_d, lon_d)
                 return ue, un
-            return wgs84_to_twd97(lat_d, lon_d)
+            twd_res = wgs84_to_twd97(lat_d, lon_d)
+            return float(twd_res[0]), float(twd_res[1])
 
         def _apply_subscan_pose_transform(
             cam_e: float,
@@ -2141,24 +2144,38 @@ class ContoursAndCadMixin:
                                 pass
 
                     ref_frame = state.get("refFrame") or {}
-                    rf_wkt2 = str(ref_frame.get("wkt2") or "").upper()
-                    is_p4m_utm = "UTM" in rf_wkt2
+                    rf_sr = ref_frame.get("spatialReference") or ref_frame.get("horizontal") or {}
+                    rf_wkt2 = str((rf_sr.get("wkt2") if isinstance(rf_sr, dict) else "") or ref_frame.get("wkt2") or "").upper()
                     rf_shift = ref_frame.get("shift") or [0.0, 0.0, 0.0]
                     ox, oy, oz = -float(rf_shift[0]), -float(rf_shift[1]), -float(rf_shift[2])
-                    for off_cand in (
-                        os.path.join(p4m_proj_root, "tileset", "offset.xyz"),
-                        os.path.join(p4m_proj_root, "exports", "obj_mesh", "offset.xyz"),
-                    ):
-                        if os.path.isfile(off_cand):
-                            try:
-                                with open(off_cand, "r", encoding="utf-8") as _off_f:
-                                    parts_off = _off_f.read().strip().split()
-                                if len(parts_off) >= 3 and abs(float(parts_off[0])) > 100.0 and abs(float(parts_off[1])) > 100.0:
-                                    ox, oy, oz = float(parts_off[0]), float(parts_off[1]), float(parts_off[2])
-                                    is_p4m_utm = ox > 335000.0
-                                    break
-                            except Exception:
-                                pass
+                    is_p4m_utm = ("UTM" in rf_wkt2) or (ox > 345000.0)
+                    if abs(ox) <= 100.0 and abs(oy) <= 100.0:
+                        for off_cand in (
+                            os.path.join(p4m_proj_root, "tileset", "offset.xyz"),
+                            os.path.join(p4m_proj_root, "exports", "obj_mesh", "offset.xyz"),
+                        ):
+                            if os.path.isfile(off_cand):
+                                try:
+                                    with open(off_cand, "r", encoding="utf-8") as _off_f:
+                                        parts_off = _off_f.read().strip().split()
+                                    if len(parts_off) >= 3 and abs(float(parts_off[0])) > 100.0 and abs(float(parts_off[1])) > 100.0:
+                                        ox, oy, oz = float(parts_off[0]), float(parts_off[1]), float(parts_off[2])
+                                        is_p4m_utm = ox > 345000.0
+                                        break
+                                except Exception:
+                                    pass
+                    utm_rot_xy: Optional[Tuple[float, float, float, float]] = None
+                    if is_p4m_utm and "UTM" not in scan_crs_up and abs(ox) > 100.0:
+                        e0_c = _cam_xy_to_scan_en(ox, oy, force_utm51n=True)
+                        ex_c = _cam_xy_to_scan_en(ox + 100.0, oy, force_utm51n=True)
+                        ey_c = _cam_xy_to_scan_en(ox, oy + 100.0, force_utm51n=True)
+                        if e0_c and ex_c and ey_c:
+                            utm_rot_xy = (
+                                (ex_c[0] - e0_c[0]) / 100.0,
+                                (ey_c[0] - e0_c[0]) / 100.0,
+                                (ex_c[1] - e0_c[1]) / 100.0,
+                                (ey_c[1] - e0_c[1]) / 100.0,
+                            )
 
                     p4m_entries: List[Dict[str, Any]] = []
                     for c_rec in p4m_cams:
@@ -2180,13 +2197,13 @@ class ContoursAndCadMixin:
                         parent_2 = os.path.basename(os.path.dirname(os.path.dirname(norm_raw_img)))
                         has_multipart_sub = ("of" in parent_2.lower()) and (parent_2.lower() not in ("inputs", "images", "opf_files", src_tag.lower()))
                         rel_fname = f"{parent_2}/{fname}" if has_multipart_sub else fname
-                        abs_img = _rewrite_legacy_cam_path(raw_img_str)
-                        if not os.path.isfile(abs_img):
-                            p2_lookup = f"{parent_2}/{fname}"
-                            if p2_lookup in local_jpg_map:
-                                abs_img = local_jpg_map[p2_lookup]
-                            elif fname in local_jpg_map:
-                                abs_img = local_jpg_map[fname]
+                        p2_lookup = f"{parent_2}/{fname}"
+                        if p2_lookup in local_jpg_map:
+                            abs_img = local_jpg_map[p2_lookup]
+                        elif fname in local_jpg_map:
+                            abs_img = local_jpg_map[fname]
+                        else:
+                            abs_img = _rewrite_legacy_cam_path(raw_img_str)
                         dedup_key = f"{src_tag}:{rel_fname}" if src_tag else os.path.normcase(abs_img)
                         if dedup_key in seen_source_keys:
                             continue
@@ -2221,6 +2238,11 @@ class ContoursAndCadMixin:
                             if en_pair is None:
                                 continue
                             cam_e, cam_n = en_pair
+                            if utm_rot_xy is not None:
+                                j00, j01, j10, j11 = utm_rot_xy
+                                r0 = [j00 * r0[0] + j01 * r0[1], j10 * r0[0] + j11 * r0[1], r0[2]]
+                                r1 = [j00 * r1[0] + j01 * r1[1], j10 * r1[0] + j11 * r1[1], r1[2]]
+                                f_vec = [j00 * f_vec[0] + j01 * f_vec[1], j10 * f_vec[0] + j11 * f_vec[1], f_vec[2]]
 
                         u_right, v_down, f_n, fx_norm, fy_norm, aspect = _canonicalize_p4m_basis(r0, r1, f_vec, f_long, f_short)
                         cam_e, cam_n, cam_h, u_right, v_down, f_n = _apply_subscan_pose_transform(

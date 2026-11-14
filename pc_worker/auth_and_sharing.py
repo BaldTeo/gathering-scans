@@ -21,7 +21,13 @@ import urllib.request
 from datetime import datetime, timezone
 from typing import Dict, Any, List, Optional, Set, Tuple
 
-from pc_worker.config import PUBLIC_BASE_URL, ALLOWED_WORKSPACE_DOMAINS, GOOGLE_OAUTH_CLIENT_ID, TUNNEL_SHARED_KEY
+from pc_worker.config import (
+    PUBLIC_BASE_URL,
+    ALLOWED_WORKSPACE_DOMAINS,
+    GOOGLE_OAUTH_CLIENT_ID,
+    TUNNEL_SHARED_KEY,
+    get_min_valid_session_iat,
+)
 from pc_worker.priority_queue import ScanQueueDB, DB_LOCK
 
 _GEO_INFLIGHT_LOCK = threading.Lock()
@@ -181,14 +187,16 @@ def _get_session_hmac_key() -> bytes:
     return hashlib.sha256(f"gatheringscans-session-hmac-v1:{TUNNEL_SHARED_KEY}".encode("utf-8")).digest()
 
 
-def issue_session_token(email: str, role: str = "", ttl_sec: int = 86400 * 14) -> str:
+def issue_session_token(email: str, role: str = "", ttl_sec: int = 86400 * 90) -> str:
     clean_email = (email or "").strip().lower()
     if not clean_email:
         return ""
+    now_ts = int(time.time())
     payload = {
         "email": clean_email,
         "role": (role or "").strip().lower(),
-        "exp": int(time.time()) + int(ttl_sec),
+        "iat": now_ts,
+        "exp": now_ts + int(ttl_sec),
     }
     raw_b64 = base64.urlsafe_b64encode(json.dumps(payload, separators=(",", ":")).encode("utf-8")).decode("ascii").rstrip("=")
     sig = hmac.new(_get_session_hmac_key(), raw_b64.encode("ascii"), hashlib.sha256).digest()
@@ -209,6 +217,9 @@ def verify_session_token(token: str) -> Optional[str]:
         padded = raw_b64 + "=" * (-len(raw_b64) % 4)
         payload = json.loads(base64.urlsafe_b64decode(padded.encode("ascii")).decode("utf-8"))
         if int(payload.get("exp") or 0) <= int(time.time()):
+            return None
+        min_iat = get_min_valid_session_iat()
+        if min_iat > 0 and int(payload.get("iat") or 0) < min_iat:
             return None
         email = str(payload.get("email") or "").strip().lower()
         return email if email else None
@@ -680,6 +691,19 @@ class AuthAndSharingManager:
         name = str(claims.get("name") or (email.split("@")[0] if email else "Engineer")).strip()
         hd = str(claims.get("hd") or (email.split("@")[1] if "@" in email else "")).lower()
         is_owner = email in OWNER_EMAILS
+        is_allowed_domain = any(
+            email.endswith("@" + str(dom).strip().lower())
+            for dom in (ALLOWED_WORKSPACE_DOMAINS or [])
+            if str(dom).strip()
+        )
+        existing_prof = self.get_user_profile(email)
+        is_preapproved_staff = bool(
+            existing_prof and str(existing_prof.get("role") or "").strip().lower() not in ("guest", "revoked", "")
+        )
+        if not (is_owner or is_allowed_domain or is_preapproved_staff):
+            raise PermissionError(
+                f"Account '{email}' is not authorized to access GatheringScans. Please sign in with a company account or contact an administrator."
+            )
         prof = self.upsert_user_profile(
             {
                 "email": email,
@@ -1470,7 +1494,7 @@ class AuthAndSharingManager:
             return None
 
         # 1. Check gdrive_cloud_manifest.json (in case link was created on VPS or PC before DB sync)
-        manifest_scans: List[Dict[str, Any]] = []
+        manifest_share_links: List[Dict[str, Any]] = []
         try:
             import os as _os
             from pc_worker.config import DATA_DIR as _DATA_DIR
@@ -1483,118 +1507,45 @@ class AuthAndSharingManager:
                 if _os.path.isfile(m_path):
                     with open(m_path, "r", encoding="utf-8") as mf:
                         m_data = json.load(mf)
-                    if not manifest_scans and isinstance(m_data.get("scans"), list):
-                        manifest_scans = [s for s in m_data["scans"] if isinstance(s, dict)]
                     for sl in (m_data.get("share_links") or []):
-                        if isinstance(sl, dict) and str(sl.get("token") or "").strip() == clean_tok:
-                            return self._format_share_row(dict(sl))
+                        if isinstance(sl, dict):
+                            manifest_share_links.append(sl)
+                            if str(sl.get("token") or "").strip() == clean_tok:
+                                return self._format_share_row(dict(sl))
         except Exception:
             pass
 
-        # 2. Check if token is a placeholder (e.g. YOUR_SHARE_TOKEN / DEMO) or a direct scan_id / project_group
-        placeholder_tokens = {
-            "YOUR_SHARE_TOKEN",
-            "<YOUR_SHARE_TOKEN>",
-            "{YOUR_SHARE_TOKEN}",
-            "SHARE_TOKEN",
-            "TOKEN",
-            "DEMO",
-            "DEFAULT",
-            "EMBED",
-        }
-        target_scan: Optional[Dict[str, Any]] = None
-        target_group = ""
-        is_placeholder = clean_tok.upper() in placeholder_tokens
+        def _is_link_active(sl_dict: Dict[str, Any]) -> bool:
+            if bool(sl_dict.get("revoked", 0)):
+                return False
+            exp_s = str(sl_dict.get("expires_at") or "").strip()
+            if exp_s:
+                try:
+                    exp_dt = datetime.fromisoformat(exp_s.replace("Z", "+00:00"))
+                    if datetime.now(timezone.utc) > exp_dt:
+                        return False
+                except Exception:
+                    pass
+            return True
 
-        if not is_placeholder:
-            target_scan = self.db.get_scan(clean_tok)
-            if not target_scan and manifest_scans:
-                target_scan = next((s for s in manifest_scans if str(s.get("scan_id")) == clean_tok), None)
-            if not target_scan:
-                grp_scans = self.db.list_scans(project_group=clean_tok)
-                if not grp_scans and manifest_scans:
-                    grp_scans = [s for s in manifest_scans if str(s.get("project_group")) == clean_tok]
-                if grp_scans:
-                    target_group = clean_tok
+        active_links = [sl for sl in self.list_share_links() if _is_link_active(sl)]
+        if not active_links and manifest_share_links:
+            active_links = [self._format_share_row(dict(sl)) for sl in manifest_share_links if _is_link_active(sl)]
 
-        if not target_scan and not target_group and requested_scan_id:
-            # Do not fall back if the requested_scan_id only has explicitly revoked links and token was an old token
-            target_scan = self.db.get_scan(requested_scan_id)
-            if not target_scan and manifest_scans:
-                target_scan = next((s for s in manifest_scans if str(s.get("scan_id")) == requested_scan_id), None)
+        # 2. Hostinger embed placeholder ("YOUR_SHARE_TOKEN") or direct scan_id embed — ONLY resolves
+        # to an EXISTING active (non-revoked, non-expired) share link, never mints unauthorized access.
+        if clean_tok.upper() in ("YOUR_SHARE_TOKEN", "<SHARE_TOKEN>", "SHARE_TOKEN", "DEFAULT"):
+            if requested_scan_id:
+                for sl in active_links:
+                    if sl.get("scope_type") == "scan" and str(sl.get("target_id")) == requested_scan_id:
+                        return sl
+            return active_links[0] if active_links else None
 
-        if is_placeholder and not target_scan and not target_group:
-            all_scans = self.db.list_scans()
-            completed = [s for s in all_scans if s.get("status") == "completed"]
-            preferred_ids = (
-                "edited_qihu_unified_merged_scan_4_scans__edited_372953",
-                "merged_qihu_merged_2026_10_28_77753",
-                "quchi_20261005_merged",
-                "edited_daan_661536",
-                "edited_1021_911189",
-            )
-            for pid in preferred_ids:
-                cand = next((s for s in completed if s.get("scan_id") == pid), None)
-                if cand:
-                    target_scan = cand
-                    break
-            if not target_scan and completed:
-                target_scan = completed[0]
-            elif not target_scan and all_scans:
-                target_scan = all_scans[0]
-
-        if target_scan:
-            sid = str(target_scan["scan_id"])
-            with DB_LOCK, self.db._connect() as conn:
-                row = conn.execute(
-                    "SELECT * FROM share_links WHERE scope_type = 'scan' AND target_id = ? AND revoked = 0 ORDER BY created_at DESC LIMIT 1",
-                    (sid,),
-                ).fetchone()
-                if row:
-                    return self._format_share_row(dict(row))
-            return self._format_share_row(
-                {
-                    "token": sid,
-                    "scope_type": "scan",
-                    "target_id": sid,
-                    "label": f"Embed View — {target_scan.get('name') or sid}",
-                    "created_by": "system@gatheren.cloud",
-                    "created_at": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC"),
-                    "expires_at": None,
-                    "allow_download": 0,
-                    "allow_measurements": 1,
-                    "allow_comments": 1,
-                    "revoked": 0,
-                    "revoked_at": "",
-                    "view_count": 0,
-                }
-            )
-
-        if target_group:
-            with DB_LOCK, self.db._connect() as conn:
-                row = conn.execute(
-                    "SELECT * FROM share_links WHERE scope_type = 'group' AND target_id = ? AND revoked = 0 ORDER BY created_at DESC LIMIT 1",
-                    (target_group,),
-                ).fetchone()
-                if row:
-                    return self._format_share_row(dict(row))
-            return self._format_share_row(
-                {
-                    "token": target_group,
-                    "scope_type": "group",
-                    "target_id": target_group,
-                    "label": f"Embed Site — {target_group}",
-                    "created_by": "system@gatheren.cloud",
-                    "created_at": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC"),
-                    "expires_at": None,
-                    "allow_download": 0,
-                    "allow_measurements": 1,
-                    "allow_comments": 1,
-                    "revoked": 0,
-                    "revoked_at": "",
-                    "view_count": 0,
-                }
-            )
+        for sl in active_links:
+            if sl.get("scope_type") == "scan" and str(sl.get("target_id")) == clean_tok:
+                return sl
+            if sl.get("scope_type") == "group" and str(sl.get("target_id")).lower() == clean_tok.lower():
+                return sl
 
         return None
 

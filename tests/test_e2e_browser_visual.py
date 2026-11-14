@@ -16,6 +16,12 @@ import subprocess
 import urllib.request
 import urllib.error
 
+REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+if REPO_ROOT not in sys.path:
+    sys.path.insert(0, REPO_ROOT)
+
+from pc_worker.auth_and_sharing import issue_session_token
+
 BASE_URL = "http://127.0.0.1:8095"
 ARTIFACT_DIR = r"C:\Users\user\.gemini\antigravity\brain\a9a1ef66-7562-4e8a-9f4f-f2f841ffdeb5"
 os.makedirs(ARTIFACT_DIR, exist_ok=True)
@@ -24,6 +30,8 @@ os.makedirs(ARTIFACT_DIR, exist_ok=True)
 def http_json(method: str, path: str, body: dict = None, headers: dict = None):
     url = BASE_URL + path
     req_headers = {"Content-Type": "application/json"}
+    if "share=" not in path:
+        req_headers["X-Session-Token"] = issue_session_token("glibivanov@gatheren.com.tw", role="owner")
     if headers:
         req_headers.update(headers)
     data = json.dumps(body).encode("utf-8") if body is not None else None

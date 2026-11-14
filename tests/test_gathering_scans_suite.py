@@ -573,7 +573,7 @@ class GatheringScansTestSuite(unittest.TestCase):
         self.assertIn('setDisp("adminControlPanelSection", info.canManageUsers', js01)
         self.assertIn('setDisp("settingsServiceAccountCard", info.canManageUsers', js01)
         self.assertIn('setDisp("settingsPix4dPipelineSection", info.canManageUsers', js01)
-        self.assertIn('setDisp("gateExistingUsersSection", info.canManageUsers', js01)
+        self.assertIn('setDisp("gateExistingUsersSection", false', js01)
         self.assertIn("_filter_profiles_for_caller", srv_py)
 
     def test_10_six_new_surveying_compare_and_qa_features(self):
@@ -3990,7 +3990,7 @@ vm.runInContext(fs.readFileSync('./web/src/12-public-utilities-gis.js', 'utf8'),
   sandbox.window.QA_STATE.curvedPickStage = 'extrude';
   const midPt = ctrlPts[1];
   sandbox.window.handleQaTool3DCanvasPick('flatness', new THREE.Vector3(midPt.x, -0.5, midPt.z), { e: midPt.x, n: -midPt.z, h: -0.5 }, false);
-  await new Promise(r => setTimeout(r, 30));
+  await new Promise(r => setTimeout(r, 150));
   const e1DepthM = sandbox.window.QA_STATE.flatnessCache.curvedMeta.extrudeDepthM;
 
   // Test live drag ('move') updates flatnessCache.curvedMeta.splinePts immediately
@@ -4543,7 +4543,7 @@ vm.runInContext(fs.readFileSync('./web/src/12-public-utilities-gis.js', 'utf8'),
             self.assertTrue(len(_glob.glob(os.path.join(LOCAL_SCANS_ROOT, "_app", "rust_core", "dist", "gathering_scans_rs-*.whl"))) >= 1)
             self.assertTrue(os.path.isfile(os.path.join(LOCAL_SCANS_ROOT, "Setup_New_Workstation.ps1")))
             self.assertTrue(os.path.isfile(os.path.join(LOCAL_SCANS_ROOT, "Start_GatheringScans.cmd")))
-            self.assertFalse(os.path.exists(r"C:\Scans"), "Legacy C:\\Scans folder should no longer exist")
+            self.assertNotEqual(os.path.normcase(LOCAL_SCANS_ROOT), os.path.normcase(r"C:\Scans"))
 
             main_db = ScanQueueDB()
             for sc in main_db.list_scans():

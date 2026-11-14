@@ -18,8 +18,10 @@ from typing import Dict, Any, List, Optional
 
 from pc_worker.config import (
     DB_PATH,
+    DATA_DIR,
     TWD97_TWVD2001_SHORT,
     PIX4DMATIC_TEXTURE_SIZE,
+    rebase_scan_path,
 )
 
 DB_LOCK = threading.RLock()
@@ -682,7 +684,7 @@ class ScanQueueDB:
 
         # Persist in data/site_renames.json so gdrive_watcher maps old_grp -> (new_grp, final_zh)
         try:
-            ren_file = os.path.join(os.path.dirname(self.db_path), "site_renames.json")
+            ren_file = os.path.join(self._shared_json_dir(), "site_renames.json")
             ren_map: Dict[str, Dict[str, str]] = {}
             if os.path.isfile(ren_file):
                 with open(ren_file, "r", encoding="utf-8") as rf:
@@ -727,8 +729,16 @@ class ScanQueueDB:
     # 3D Model Library Folders & Scan Group Move (Sites <-> Library Folders)
     # ==========================================================================
 
+    def _shared_json_dir(self) -> str:
+        try:
+            if os.path.normcase(os.path.abspath(self.db_path)) == os.path.normcase(os.path.abspath(DB_PATH)):
+                return DATA_DIR
+        except Exception:
+            pass
+        return os.path.dirname(self.db_path)
+
     def get_library_registry_path(self) -> str:
-        return os.path.join(os.path.dirname(self.db_path), "library_folders.json")
+        return os.path.join(self._shared_json_dir(), "library_folders.json")
 
     @staticmethod
     def _normalize_library_folder_names(raw_name: str, raw_zh: str = "") -> tuple[str, str]:
@@ -1111,7 +1121,7 @@ class ScanQueueDB:
         return updated_scans
 
     def get_deleted_scans_registry_path(self) -> str:
-        return os.path.join(os.path.dirname(self.db_path), "deleted_scans.json")
+        return os.path.join(self._shared_json_dir(), "deleted_scans.json")
 
     def load_deleted_scans_registry(self) -> Dict[str, List[str]]:
         reg_path = self.get_deleted_scans_registry_path()
@@ -1795,18 +1805,17 @@ class ScanQueueDB:
             )
             conn.commit()
 
-        # If it was processing, terminate running PIX4Dmatic process
+        # If it was processing, terminate running headless (--gst) PIX4Dmatic process
         if old_st == "processing" and os.name == "nt":
             try:
                 import psutil
-                for p in psutil.process_iter(["pid", "name"]):
+                for p in psutil.process_iter(["pid", "name", "cmdline"]):
                     if "pix4dmatic" in (p.info.get("name") or "").lower():
-                        p.terminate()
+                        cmd = " ".join(p.info.get("cmdline") or [])
+                        if "--gst" in cmd or (sid and sid.lower() in cmd.lower()):
+                            p.terminate()
             except Exception:
-                try:
-                    subprocess.run(["taskkill", "/F", "/IM", "PIX4Dmatic.exe"], capture_output=True, timeout=5)
-                except Exception:
-                    pass
+                pass
         return {"status": "cancelled", "scan_id": sid, "previous_status": old_st}
 
     def delete_scan(self, scan_id: str) -> Optional[Dict[str, Any]]:
@@ -1882,7 +1891,7 @@ class ScanQueueDB:
                         ex_d = json.loads(ex_d)
                     except Exception:
                         ex_d = {}
-                if bool(ex_d.get("awaiting_preset")):
+                if bool(ex_d.get("awaiting_preset")) or bool(ex_d.get("awaiting_import_decision")):
                     continue
                 eligible.append(sc)
 
@@ -2014,6 +2023,9 @@ class ScanQueueDB:
 
     def _row_to_dict(self, row: sqlite3.Row) -> Dict[str, Any]:
         d = dict(row)
+        for p_key in ("project_dir", "tileset_path", "obj_path", "report_path", "cameras_dir", "source_zip_path"):
+            if d.get(p_key):
+                d[p_key] = rebase_scan_path(str(d[p_key]))
         try:
             d["bounding_box"] = json.loads(d.get("bounding_box_json") or "{}")
         except Exception:
@@ -2664,7 +2676,7 @@ class ScanQueueDB:
             return cur.rowcount > 0
 
     def _user_prefs_json_path(self) -> str:
-        return os.path.join(os.path.dirname(self.db_path), "user_preferences.json")
+        return os.path.join(self._shared_json_dir(), "user_preferences.json")
 
     def _load_user_prefs_json(self) -> Dict[str, Any]:
         p = self._user_prefs_json_path()

@@ -16,6 +16,8 @@ from datetime import datetime, timezone
 from typing import Dict, Any, Optional, Tuple, List
 
 from pc_worker.config import (
+    VPS_HOST,
+    WORKSTATION_ID,
     TUNNEL_SHARED_KEY,
     LOCAL_SCANS_ROOT,
     GDRIVE_INBOX_DIR,
@@ -27,6 +29,11 @@ from pc_worker.config import (
     load_pix4d_settings,
     save_pix4d_settings,
     load_pix4d_settings_from_dict,
+    load_workstation_settings,
+    save_workstation_settings,
+    register_workstation_heartbeat,
+    get_min_valid_session_iat,
+    set_min_valid_session_iat,
 )
 from pc_worker.gdrive_watcher import seed_and_discover_scans, extract_opf_zip_metadata
 from pc_worker.pix4d_runner import (
@@ -63,6 +70,7 @@ from pc_worker.server_cloud_and_tunnel import (
     _load_cloud_auth,
     _save_cloud_auth,
     _test_gdrive_service_account,
+    send_rpc_to_workstation_via_tunnel,
 )
 from pc_worker.surveying.rust_accel import (
     HAS_RUST_CORE,
@@ -293,8 +301,106 @@ def clear_primary_if_moved_scans(scan_ids: List[str], target_group: str) -> None
             save_primary_scans_map(mp, sync_manifest=True)
 
 
+def _execute_manual_pix4d_import_from_inputs(sid: str, mode: str) -> None:
+    """Background worker that imports an already-finished PIX4Dmatic project from INPUTS into GatheringScans."""
+    try:
+        from pc_worker.native_octree_builder import build_native_octree_from_scalable_tileset
+
+        scan_row = DB.get_scan(sid)
+        if not scan_row:
+            return
+        src_dir = str(scan_row.get("source_zip_path") or "").strip()
+        proj_dir = str(scan_row.get("project_dir") or os.path.join(LOCAL_SCANS_ROOT, sid)).strip()
+        os.makedirs(proj_dir, exist_ok=True)
+        DB.update_job_progress(sid, "processing", 25.0, f"Importing finished PIX4Dmatic project ({mode})...")
+
+        # 1. Stage RTK photos into inputs/ so Studio Photo Tool has instant local access
+        inputs_sub = os.path.join(proj_dir, "inputs", os.path.basename(src_dir.rstrip("\\/")) or sid)
+        if src_dir and os.path.isdir(src_dir):
+            os.makedirs(inputs_sub, exist_ok=True)
+            copied_jpg = 0
+            for r_root, r_dirs, r_files in os.walk(src_dir):
+                r_dirs[:] = [d for d in r_dirs if d.lower() not in ("processing", "temp", "tileset", "exports")]
+                for fn in r_files:
+                    if fn.lower().endswith((".jpg", ".jpeg", ".png", ".p4m", ".json", ".txt")):
+                        s_fp = os.path.join(r_root, fn)
+                        rel_p = os.path.relpath(s_fp, src_dir)
+                        d_fp = os.path.join(inputs_sub, rel_p)
+                        os.makedirs(os.path.dirname(d_fp), exist_ok=True)
+                        if not os.path.isfile(d_fp):
+                            try:
+                                os.link(s_fp, d_fp)
+                            except Exception:
+                                shutil.copy2(s_fp, d_fp)
+                        if fn.lower().endswith((".jpg", ".jpeg")):
+                            copied_jpg += 1
+            src_p4m = os.path.join(src_dir, "root.p4m")
+            if os.path.isfile(src_p4m):
+                p4m_dst_dir = os.path.join(proj_dir, "project")
+                os.makedirs(p4m_dst_dir, exist_ok=True)
+                shutil.copy2(src_p4m, os.path.join(p4m_dst_dir, "root.p4m"))
+
+        # 2. Build native 3D Tileset octree directly from scalable mesh cells (or existing tileset)
+        ts_dir = os.path.join(proj_dir, "tileset")
+        ts_json = os.path.join(ts_dir, "tileset.json")
+        if src_dir and os.path.isdir(os.path.join(src_dir, "processing", "meshes")):
+            build_native_octree_from_scalable_tileset(scan_id=sid, proj_dir=src_dir, target_proj_dir=proj_dir)
+        elif src_dir and os.path.isfile(os.path.join(src_dir, "tileset", "tileset.json")):
+            shutil.copytree(os.path.join(src_dir, "tileset"), ts_dir, dirs_exist_ok=True)
+
+        # 3. If replace_existing, move older completed scan(s) in the same project_group to Recycle Bin
+        target_grp = str(scan_row.get("project_group") or "").strip()
+        if mode == "replace_existing" and target_grp:
+            for other in DB.list_scans():
+                o_sid = str(other.get("scan_id") or "")
+                if o_sid and o_sid != sid and str(other.get("project_group") or "").strip().lower() == target_grp.lower():
+                    DB.trash_scans([o_sid], actor_email="gchat_bot")
+
+        extra = scan_row.get("extra_json") or {}
+        if isinstance(extra, str):
+            try:
+                extra = json.loads(extra)
+            except Exception:
+                extra = {}
+        extra["awaiting_import_decision"] = False
+        extra["awaiting_preset"] = False
+        extra["import_mode"] = mode
+        scan_row["extra_json"] = extra
+        scan_row["status"] = "completed" if os.path.isfile(ts_json) else "failed"
+        scan_row["progress_pct"] = 100.0 if os.path.isfile(ts_json) else 0.0
+        scan_row["stage_label"] = "Completed (Imported PIX4Dmatic Project)" if os.path.isfile(ts_json) else "Import failed: no mesh found"
+        scan_row["project_dir"] = proj_dir
+        scan_row["tileset_path"] = ts_json if os.path.isfile(ts_json) else ""
+        DB.upsert_scan(scan_row)
+
+        if src_dir and os.path.isdir(src_dir) and os.path.isfile(ts_json):
+            try:
+                marker_fp = os.path.join(src_dir, ".imported_to_gathering_scans.json")
+                with open(marker_fp, "w", encoding="utf-8") as mf:
+                    json.dump({"scan_id": sid, "mode": mode, "imported_at": time.time()}, mf, ensure_ascii=False, indent=2)
+            except Exception:
+                pass
+            try:
+                SURVEY.get_scan_cameras_response(sid, force_rebuild=True)
+                SURVEY.get_or_generate_true_nadir_ortho(sid, force=True)
+            except Exception:
+                pass
+            try:
+                from pc_worker.gdrive_cloud_sync import sync_all_scans_to_gdrive_and_vps
+
+                sync_all_scans_to_gdrive_and_vps(DB, AUTH_SHARE, force=False)
+            except Exception:
+                pass
+            try:
+                GCHAT.notify_scan_ready(sid)
+            except Exception:
+                pass
+    except Exception as e:
+        DB.update_job_progress(sid, "failed", 0.0, f"Manual import error: {e}")
+
+
 def apply_gchat_preset_decision(sid: str, dec: str, tok: str = "") -> Dict[str, Any]:
-    """Applies a Google Chat interactive preset decision ('cancel', 'optimal_nosky', 'optimal_sky', 'manual')."""
+    """Applies a Google Chat interactive preset or manual-project import decision."""
     from pc_worker.config import OPTIMAL_PRESET_NO_SKYMASK, OPTIMAL_PRESET_WITH_SKYMASK
     scan_row = DB.get_scan(sid)
     if not scan_row:
@@ -310,8 +416,37 @@ def apply_gchat_preset_decision(sid: str, dec: str, tok: str = "") -> Dict[str, 
 
     dec_clean = str(dec or "").strip().lower()
     if dec_clean == "cancel":
+        src_p = str(scan_row.get("source_zip_path") or "").strip()
+        if extra.get("awaiting_import_decision") and src_p and os.path.isdir(src_p):
+            try:
+                with open(os.path.join(src_p, ".imported_to_gathering_scans.json"), "w", encoding="utf-8") as mf:
+                    json.dump({"scan_id": sid, "decision": "cancelled", "cancelled_at": time.time()}, mf, indent=2)
+            except Exception:
+                pass
         DB.cancel_scan(sid, actor_email="gchat_bot")
         return {"status": "ok", "decision": "cancel", "scan_id": sid, "label": "已從佇列中取消此掃描"}
+    if dec_clean in ("replace_existing", "import_separate"):
+        extra["awaiting_import_decision"] = False
+        extra["awaiting_preset"] = False
+        scan_row["extra_json"] = extra
+        scan_row["status"] = "processing"
+        scan_row["progress_pct"] = 10.0
+        lbl = "直接匯入並取代現有掃描" if dec_clean == "replace_existing" else "匯入為新獨立掃描"
+        scan_row["stage_label"] = f"Importing finished PIX4Dmatic project ({lbl})..."
+        DB.upsert_scan(scan_row)
+        threading.Thread(target=_execute_manual_pix4d_import_from_inputs, args=(sid, dec_clean), daemon=True).start()
+        return {"status": "ok", "decision": dec_clean, "scan_id": sid, "label": f"已啟動：{lbl}"}
+    if dec_clean == "rerun_photos":
+        extra["awaiting_import_decision"] = False
+        extra["awaiting_preset"] = False
+        extra["force_from_photos"] = True
+        extra["pipeline_preset"] = "optimal_sky"
+        extra["pipeline_settings"] = OPTIMAL_PRESET_WITH_SKYMASK
+        scan_row["extra_json"] = extra
+        scan_row["stage_label"] = "Queued for Re-run from Original Photos (Optimal with SkyMask)"
+        DB.upsert_scan(scan_row)
+        _PIX4D_WAKE_EVENT.set()
+        return {"status": "ok", "decision": "rerun_photos", "scan_id": sid, "label": "已排入佇列：從原始照片重新計算 3D 網格"}
     if dec_clean == "optimal_nosky":
         extra["awaiting_preset"] = False
         extra["pipeline_preset"] = "optimal_nosky"
@@ -407,7 +542,51 @@ class ServerWriteRoutesMixin:
             self.send_json({"error": "Payload must be a JSON object"}, status=400)
             return
 
-        # 0. Google Drive .3tz Cloud Manifest Sync & Auth (handled directly on both VPS and PC)
+        # 0. Workstation Coordinator Heartbeat (authenticated via X-Tunnel-Key; handled directly on VPS & PC)
+        if path == "/api/workstation/heartbeat":
+            t_key = self.headers.get("X-Tunnel-Key", "").strip()
+            if t_key != TUNNEL_SHARED_KEY:
+                self.send_json({"error": "Invalid X-Tunnel-Key"}, status=403)
+                return
+            ws_id = str(payload.get("workstation_id") or self.headers.get("X-Workstation-Id") or "").strip()
+            if not ws_id:
+                self.send_json({"error": "workstation_id required"}, status=400)
+                return
+            client_ip = self._extract_client_ip()
+            hb_info: Dict[str, Any] = {
+                "hostname": str(payload.get("hostname") or ws_id).strip(),
+                "root_dir": str(payload.get("root_dir") or "").strip(),
+                "pix4d_busy": bool(payload.get("pix4d_busy", False)),
+                "active_scan_id": str(payload.get("active_scan_id") or "").strip(),
+                "ip": client_ip,
+                "last_seen": time.time(),
+            }
+            cur_ws_cfg = load_workstation_settings()
+            existing_ws = None
+            for wk, wv in (cur_ws_cfg.get("workstations") or {}).items():
+                if str(wk).strip().lower() == ws_id.lower() and isinstance(wv, dict):
+                    existing_ws = wv
+                    break
+            req_d_ts = float(payload.get("daemon_updated_at") or 0.0)
+            vps_d_ts = float((existing_ws or {}).get("daemon_updated_at") or 0.0)
+            if "daemon_running" in payload and req_d_ts >= vps_d_ts:
+                hb_info["daemon_enabled"] = bool(payload.get("daemon_running", True))
+                if req_d_ts > 0:
+                    hb_info["daemon_updated_at"] = req_d_ts
+            updated_ws = register_workstation_heartbeat(ws_id, hb_info)
+            in_iat = int(payload.get("min_valid_iat") or 0)
+            if in_iat > get_min_valid_session_iat():
+                set_min_valid_session_iat(in_iat)
+            self.send_json(
+                {
+                    "status": "ok",
+                    "workstation_settings": updated_ws,
+                    "min_valid_iat": get_min_valid_session_iat(),
+                }
+            )
+            return
+
+        # 0a. Google Drive .3tz Cloud Manifest Sync & Auth (handled directly on both VPS and PC)
         if path == "/api/cloud-manifest/sync":
             t_key = self.headers.get("X-Tunnel-Key", "")
             if t_key != TUNNEL_SHARED_KEY:
@@ -719,6 +898,21 @@ class ServerWriteRoutesMixin:
 
         try:
             actor_email, actor_role, actor_perms = self._resolve_request_role(payload, query, share_token)
+            is_public_post = path in (
+                "/api/auth/google",
+                "/api/auth/logout",
+                "/api/auth/roster-login",
+                "/api/gchat/preset-decision",
+                "/api/gchat/island-decision",
+                "/api/gchat/webhook",
+                "/api/share/telemetry",
+            )
+            if not is_public_post and not share_token and actor_role == "guest":
+                self.send_json(
+                    {"error": "Authentication required. Please sign in with Google.", "auth_required": True},
+                    status=401,
+                )
+                return
 
             # 0b. Rebuild & Sync .3tz Packages on Google Drive + Push Manifest to VPS
             if path == "/api/cloud-manifest/rebuild":
@@ -748,8 +942,8 @@ class ServerWriteRoutesMixin:
                 return
 
             if path == "/api/admin/pc-daemon":
-                if not actor_perms.get("can_manage_users") and not actor_perms.get("can_run_workflows"):
-                    self.send_json({"error": "Only Owner, Admin, or Editor accounts can control the PC daemon."}, status=403)
+                if share_token or not actor_perms.get("can_manage_users"):
+                    self.send_json({"error": "Only Owner or Admin accounts can control workstation daemons."}, status=403)
                     return
                 action = str(payload.get("action") or "").strip().lower()
                 if action == "sync_now":
@@ -1718,10 +1912,10 @@ class ServerWriteRoutesMixin:
                 self.send_json(res)
                 return
 
-            # 7. Smart Queue & PIX4Dmatic Automation Actions (including Re-run from Original Photos)
+            # 7. Smart Queue & PIX4Dmatic Automation Actions (Admin/Owner Only)
             if path in ("/api/queue/scan-inbox", "/api/queue/rescan"):
-                if not actor_perms.get("can_run_workflows"):
-                    self.send_json({"error": f"Role '{actor_role}' cannot trigger PC inbox rescans."}, status=403)
+                if share_token or not actor_perms.get("can_manage_users"):
+                    self.send_json({"error": "Admin or Owner role required to trigger inbox rescans."}, status=403)
                     return
                 if not is_pc_daemon_running():
                     set_pc_daemon_running(True, actor_email=actor_email)
@@ -1739,7 +1933,7 @@ class ServerWriteRoutesMixin:
                 return
 
             if path == "/api/pix4d/settings":
-                if not actor_perms.get("can_manage_users"):
+                if share_token or not actor_perms.get("can_manage_users"):
                     self.send_json({"error": f"Role '{actor_role}' cannot modify global PIX4Dmatic settings (Admin/Owner required)."}, status=403)
                     return
                 saved = save_pix4d_settings(payload.get("settings", payload) if isinstance(payload, dict) else {})
@@ -1747,8 +1941,8 @@ class ServerWriteRoutesMixin:
                 return
 
             if path in ("/api/queue/force-next", "/api/queue/prioritize"):
-                if not actor_perms.get("can_run_workflows"):
-                    self.send_json({"error": f"Role '{actor_role}' cannot reorder the PC processing queue."}, status=403)
+                if share_token or not actor_perms.get("can_manage_users"):
+                    self.send_json({"error": "Admin or Owner role required to reorder the processing queue."}, status=403)
                     return
                 if not is_pc_daemon_running():
                     set_pc_daemon_running(True, actor_email=actor_email)
@@ -1774,7 +1968,7 @@ class ServerWriteRoutesMixin:
                 return
 
             if path == "/api/queue/cancel":
-                if not actor_perms.get("can_manage_users"):
+                if share_token or not actor_perms.get("can_manage_users"):
                     self.send_json({"error": f"Role '{actor_role}' cannot cancel queued jobs (Admin or Owner required)."}, status=403)
                     return
                 scan_id = str(payload.get("scan_id") or "").strip()
@@ -1787,19 +1981,79 @@ class ServerWriteRoutesMixin:
                 return
 
             if path == "/api/admin/workstations":
-                from pc_worker.config import save_workstation_settings
-                if not actor_perms.get("can_manage_users"):
+                if share_token or not actor_perms.get("can_manage_users"):
                     self.send_json({"error": "Admin or Owner role required to update workstation settings."}, status=403)
                     return
-                updated = save_workstation_settings(payload)
+                now_upd = time.time()
+                ws_patch = dict(payload)
+                if isinstance(ws_patch.get("workstations"), dict):
+                    clean_ws_dict: Dict[str, Any] = {}
+                    cur_ws_all = (load_workstation_settings().get("workstations") or {})
+                    for wk, wv in ws_patch["workstations"].items():
+                        if not isinstance(wv, dict):
+                            continue
+                        item_w = dict(wv)
+                        prev_w = cur_ws_all.get(wk) or {}
+                        if "daemon_enabled" in item_w and bool(item_w["daemon_enabled"]) != bool(prev_w.get("daemon_enabled", True)):
+                            item_w["daemon_updated_at"] = now_upd
+                        elif "daemon_enabled" in item_w and "daemon_updated_at" not in item_w:
+                            item_w["daemon_updated_at"] = now_upd
+                        clean_ws_dict[wk] = item_w
+                    ws_patch["workstations"] = clean_ws_dict
+                updated = save_workstation_settings(ws_patch)
+                # Apply local daemon toggle immediately if running on Windows PC
+                if os.name == "nt":
+                    for wk, wv in (updated.get("workstations") or {}).items():
+                        if str(wk).strip().lower() == WORKSTATION_ID.lower() and isinstance(wv, dict) and "daemon_enabled" in wv:
+                            want_d = bool(wv.get("daemon_enabled", True))
+                            if want_d != is_pc_daemon_running():
+                                set_pc_daemon_running(want_d, actor_email=actor_email)
+                    if self.headers.get("X-From-Vps", "") != "1":
+                        def _sync_ws_to_vps(patch_copy: Dict[str, Any]):
+                            try:
+                                import http.client as _hc
+
+                                c_v = _hc.HTTPConnection(VPS_HOST, 8095, timeout=3.0)
+                                c_v.request(
+                                    "POST",
+                                    "/api/admin/workstations",
+                                    body=json.dumps(patch_copy).encode("utf-8"),
+                                    headers={
+                                        "Content-Type": "application/json",
+                                        "X-Tunnel-Key": TUNNEL_SHARED_KEY,
+                                        "X-From-Vps": "1",
+                                    },
+                                )
+                                c_v.getresponse().read()
+                                c_v.close()
+                            except Exception:
+                                pass
+
+                        threading.Thread(target=_sync_ws_to_vps, args=(ws_patch,), daemon=True).start()
+                else:
+                    # Running on VPS coordinator: push updated settings & daemon toggles immediately to online workstations
+                    def _push_ws_to_pcs(full_cfg: Dict[str, Any]):
+                        for wk in list((full_cfg.get("workstations") or {}).keys()):
+                            try:
+                                send_rpc_to_workstation_via_tunnel(
+                                    "POST",
+                                    "/api/admin/workstations",
+                                    full_cfg,
+                                    target_workstation=str(wk),
+                                    timeout=1.5,
+                                )
+                            except Exception:
+                                pass
+
+                    threading.Thread(target=_push_ws_to_pcs, args=(updated,), daemon=True).start()
                 _PIX4D_WAKE_EVENT.set()
                 _DAEMON_WAKE_EVENT.set()
                 self.send_json({"ok": True, "status": "ok", "settings": updated})
                 return
 
             if path in ("/api/scans/rerun", "/api/queue/enqueue", "/api/queue/reprocess"):
-                if not actor_perms.get("can_run_workflows"):
-                    self.send_json({"error": f"Role '{actor_role}' cannot run or re-run scans on the PC (Editor, Admin, or Owner required)."}, status=403)
+                if share_token or not actor_perms.get("can_manage_users"):
+                    self.send_json({"error": f"Role '{actor_role}' cannot run or re-run scans on the PC (Admin or Owner required)."}, status=403)
                     return
                 if not is_pc_daemon_running():
                     set_pc_daemon_running(True, actor_email=actor_email)
@@ -1887,6 +2141,9 @@ class ServerWriteRoutesMixin:
                 return
 
             if path == "/api/queue/preview-gst":
+                if share_token or not actor_perms.get("can_manage_users"):
+                    self.send_json({"error": "Admin or Owner role required to inspect GST processing scripts."}, status=403)
+                    return
                 scan_id = (payload.get("scan_id") or "").strip()
                 if not scan_id:
                     self.send_json({"error": "Missing required parameter: scan_id"}, status=400)
@@ -2367,23 +2624,37 @@ class ServerWriteRoutesMixin:
                     if not actor_perms.get("can_manage_shares"):
                         self.send_json({"error": f"Role '{actor_role}' cannot revoke external share links."}, status=403)
                         return
-                    token = payload.get("token", "")
+                    token = str(payload.get("token") or "").strip()
                     link = AUTH_SHARE.revoke_share_link(token)
-                    if not link and os.name != "nt" and token:
-                        m_cur = _load_cloud_manifest()
-                        for item in (m_cur.get("share_links") or []):
-                            if item.get("token") == token:
-                                item["revoked"] = True
-                                link = item
-                                break
-                        if link:
-                            _save_cloud_manifest(m_cur)
-                            _VPS_RAM_FALLBACK_CACHE.clear()
+                    if token:
+                        try:
+                            m_cur = _load_cloud_manifest()
+                            changed_m = False
+                            for item in (m_cur.get("share_links") or []):
+                                if isinstance(item, dict) and item.get("token") == token:
+                                    item["revoked"] = True
+                                    item["revoked_at"] = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
+                                    link = link or item
+                                    changed_m = True
+                            if changed_m:
+                                _save_cloud_manifest(m_cur)
+                        except Exception:
+                            pass
+                    _VPS_RAM_FALLBACK_CACHE.clear()
+                    if os.name != "nt" and token and self.headers.get("X-From-Vps", "") != "1":
+                        # Propagate revocation to connected workstation DB immediately so cloud sync never un-revokes it
+                        def _fwd_revoke_to_pc(tok_val: str):
+                            try:
+                                send_rpc_to_workstation_via_tunnel("POST", "/api/share/revoke", {"token": tok_val}, timeout=3.0)
+                            except Exception:
+                                pass
+
+                        threading.Thread(target=_fwd_revoke_to_pc, args=(token,), daemon=True).start()
                     if not link:
                         self.send_json({"error": "Share token not found"}, status=404)
                         return
                     _persist_share_links_cloud(link)
-                    self.send_json({"status": "ok", "link": link})
+                    self.send_json({"status": "ok", "revoked": True, "link": link})
                     return
 
                 if path == "/api/share/restore":
@@ -2601,14 +2872,72 @@ class ServerWriteRoutesMixin:
                 )
                 return
 
+            if path == "/api/auth/logout":
+                self.send_json(
+                    {"status": "ok", "logged_out": True},
+                    extra_headers={"Set-Cookie": self._build_session_cookie_header("", clear=True)},
+                )
+                return
+
+            if path == "/api/admin/logout-everyone":
+                if share_token or not actor_perms.get("can_manage_users"):
+                    self.send_json({"error": "Owner or Admin session required to log out all sessions."}, status=403)
+                    return
+                req_iat = int(payload.get("min_valid_iat") or int(time.time()) + 1)
+                saved_iat = set_min_valid_session_iat(req_iat)
+                _VPS_RAM_FALLBACK_CACHE.clear()
+                if self.headers.get("X-From-Peer", "") != "1":
+                    if os.name == "nt":
+                        def _sync_logout_to_vps(ts_val: int):
+                            try:
+                                import http.client as _hc
+
+                                c_lo = _hc.HTTPConnection(VPS_HOST, 8095, timeout=3.0)
+                                c_lo.request(
+                                    "POST",
+                                    "/api/admin/logout-everyone",
+                                    body=json.dumps({"min_valid_iat": ts_val}).encode("utf-8"),
+                                    headers={
+                                        "Content-Type": "application/json",
+                                        "X-Tunnel-Key": TUNNEL_SHARED_KEY,
+                                        "X-From-Peer": "1",
+                                    },
+                                )
+                                c_lo.getresponse().read()
+                                c_lo.close()
+                            except Exception:
+                                pass
+
+                        threading.Thread(target=_sync_logout_to_vps, args=(saved_iat,), daemon=True).start()
+                    else:
+                        def _sync_logout_to_pcs(ts_val: int):
+                            for wk in list((load_workstation_settings().get("workstations") or {}).keys()):
+                                try:
+                                    send_rpc_to_workstation_via_tunnel(
+                                        "POST",
+                                        "/api/admin/logout-everyone",
+                                        {"min_valid_iat": ts_val},
+                                        target_workstation=str(wk),
+                                        timeout=2.0,
+                                    )
+                                except Exception:
+                                    pass
+
+                        threading.Thread(target=_sync_logout_to_pcs, args=(saved_iat,), daemon=True).start()
+                self.send_json(
+                    {"status": "ok", "ok": True, "logged_out_everyone": True, "min_valid_iat": saved_iat},
+                    extra_headers={"Set-Cookie": self._build_session_cookie_header("", clear=True)},
+                )
+                return
+
             if path == "/api/auth/roster-login":
-                email = str(
-                    payload.get("email")
-                    or payload.get("user_email")
-                    or self.headers.get("X-User-Email")
-                    or actor_email
-                    or ""
-                ).strip().lower()
+                if actor_role == "guest":
+                    self.send_json(
+                        {"error": "Direct account selection is disabled. Please sign in with Google OAuth."},
+                        status=403,
+                    )
+                    return
+                email = str(actor_email or "").strip().lower()
                 if not email:
                     self.send_json({"error": "email is required"}, status=400)
                     return
@@ -2713,7 +3042,15 @@ class ServerWriteRoutesMixin:
             if path == "/api/auth/google":
                 cred = payload.get("credential", "")
                 fallback_profile = payload.get("profile") if isinstance(payload.get("profile"), dict) else None
-                user = AUTH_SHARE.verify_google_oauth_credential(cred, fallback_profile=fallback_profile)
+                try:
+                    user = AUTH_SHARE.verify_google_oauth_credential(cred, fallback_profile=fallback_profile)
+                except PermissionError as pe:
+                    self.send_json(
+                        {"error": str(pe), "unauthorized": True},
+                        status=403,
+                        extra_headers={"Set-Cookie": self._build_session_cookie_header("", clear=True)},
+                    )
+                    return
                 u_em = str(user.get("email") or "").strip().lower()
                 if u_em:
                     u_set = DB.get_user_settings(u_em)
@@ -2723,15 +3060,22 @@ class ServerWriteRoutesMixin:
                     user["language"] = u_lang
                 user_is_admin = bool((user.get("permissions") or {}).get("can_manage_users") or user.get("role") in ("owner", "admin"))
                 safe_user = self._sanitize_single_profile(user, is_admin=user_is_admin)
+                cookie_hdr = (
+                    {"Set-Cookie": self._build_session_cookie_header(str(user.get("session_token") or ""))}
+                    if user.get("session_token")
+                    else None
+                )
                 self.send_json(
                     {
                         "status": "ok",
+                        "session_token": user.get("session_token", ""),
                         "user": safe_user,
                         "language": user.get("language", "zh-TW"),
                         "profiles": self._filter_profiles_for_caller(
                             AUTH_SHARE.list_user_profiles(), u_em, user_is_admin
                         ),
-                    }
+                    },
+                    extra_headers=cookie_hdr,
                 )
                 return
 

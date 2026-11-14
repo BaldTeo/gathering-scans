@@ -5,7 +5,7 @@
  * Strictly zero scan cache is ever stored on the Linux VPS.
  */
 
-const CACHE_NAME = "gathering-scans-offline-v321";
+const CACHE_NAME = "gathering-scans-offline-v322";
 const SCAN_TILES_CACHE = "gathering-scans-tiles-v4";
 const APP_SHELL = [
   "/",
@@ -74,6 +74,12 @@ self.addEventListener("activate", (event) => {
       )
       .then(() => self.clients.claim())
   );
+});
+
+self.addEventListener("message", (event) => {
+  if (event.data && event.data.type === "PURGE_AUTH_CACHES") {
+    event.waitUntil(caches.delete(SCAN_TILES_CACHE).catch(() => {}));
+  }
 });
 
 async function matchStreamCache(req) {
@@ -145,6 +151,27 @@ self.addEventListener("fetch", (event) => {
             }
             return networkResp;
           }
+          if (networkResp && (networkResp.status === 401 || networkResp.status === 403)) {
+            if (tileCache) {
+              tileCache
+                .keys()
+                .then((allKeys) =>
+                  Promise.all(
+                    allKeys
+                      .filter((k) => {
+                        try {
+                          return new URL(k.url).pathname === url.pathname;
+                        } catch (_) {
+                          return false;
+                        }
+                      })
+                      .map((k) => tileCache.delete(k))
+                  )
+                )
+                .catch(() => {});
+            }
+            return networkResp;
+          }
           if (networkResp && (networkResp.status === 503 || networkResp.status === 502 || networkResp.status === 504)) {
             return existingCached || (await matchStreamCache(req)) || networkResp;
           }
@@ -170,9 +197,9 @@ self.addEventListener("fetch", (event) => {
     isShellAsset &&
     (url.pathname === "/" || url.pathname === "/index.html") &&
     url.search.includes("share=");
-  if (url.pathname === "/api/scans" || isShellAsset) {
-    const canonicalKey = isShellAsset ? new Request(url.origin + url.pathname) : req;
-    const matchOpts = isShellAsset ? { ignoreSearch: true } : undefined;
+  if (isShellAsset) {
+    const canonicalKey = new Request(url.origin + url.pathname);
+    const matchOpts = { ignoreSearch: true };
     event.respondWith(
       fetch(req, { cache: "no-cache" })
         .then((networkResp) => {

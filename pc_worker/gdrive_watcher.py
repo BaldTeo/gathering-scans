@@ -12,6 +12,7 @@ import re
 import json
 import time
 import math
+import hashlib
 import shutil
 import zipfile
 from datetime import datetime
@@ -2355,24 +2356,114 @@ def extract_input_preview_photo(source_zip_path: str, project_dir: str, scan_id:
             except Exception:
                 pass
 
-    # 2. Try from local scan folder inputs / cameras
-    for cand_root in [project_dir, os.path.join(LOCAL_SCANS_ROOT, scan_id)]:
+    # 2. Try from source folder (if directory) or local scan folder inputs / cameras
+    for cand_root in [source_zip_path.split(";")[0].strip() if source_zip_path else "", project_dir, os.path.join(LOCAL_SCANS_ROOT, scan_id)]:
         if not cand_root or not os.path.isdir(cand_root):
             continue
-        for sub in ["inputs", "cameras", ""]:
+        for sub in ["images", "inputs", "cameras", ""]:
             img_dir = os.path.join(cand_root, sub) if sub else cand_root
             if not os.path.isdir(img_dir):
                 continue
-            jpgs = [os.path.join(img_dir, f) for f in os.listdir(img_dir) if f.lower().endswith((".jpg", ".jpeg"))]
+            try:
+                jpgs = [os.path.join(img_dir, f) for f in os.listdir(img_dir) if f.lower().endswith((".jpg", ".jpeg", ".png"))]
+            except OSError:
+                jpgs = []
+            if not jpgs and sub in ("images", "inputs"):
+                for r_sub, _, r_fls in os.walk(img_dir):
+                    for fn in r_fls:
+                        if fn.lower().endswith((".jpg", ".jpeg")):
+                            jpgs.append(os.path.join(r_sub, fn))
+                    if len(jpgs) >= 20:
+                        break
             if jpgs:
                 chosen = jpgs[len(jpgs) // 2]
                 try:
-                    import shutil
                     shutil.copy2(chosen, out_path)
                     return out_path
                 except Exception:
                     pass
     return None
+
+
+def _is_manual_pix4dmatic_project_folder(folder_path: str) -> bool:
+    """
+    Returns True if `folder_path` is an already-processed PIX4Dmatic project folder
+    (`root.p4m` + `processing/meshes` or `.obj`/`tileset.json`) that has NOT yet been
+    imported/dismissed via `.imported_to_gathering_scans.json`.
+    """
+    if not os.path.isdir(folder_path):
+        return False
+    if os.path.isfile(os.path.join(folder_path, ".imported_to_gathering_scans.json")):
+        return False
+    has_p4m = os.path.isfile(os.path.join(folder_path, "root.p4m")) or os.path.isfile(
+        os.path.join(folder_path, "project", "root.p4m")
+    )
+    if not has_p4m:
+        return False
+    if os.path.isdir(os.path.join(folder_path, "processing", "meshes")):
+        return True
+    if os.path.isfile(os.path.join(folder_path, "tileset", "tileset.json")):
+        return True
+    if os.path.isdir(os.path.join(folder_path, "exports")):
+        for _, _, fls in os.walk(os.path.join(folder_path, "exports")):
+            if any(f.lower().endswith(".obj") for f in fls):
+                return True
+    return False
+
+
+def _extract_manual_pix4d_project_metadata(
+    folder_path: str,
+    parent_project: str = "",
+    dynamic_clusters: Optional[List[Dict[str, Any]]] = None,
+) -> Dict[str, Any]:
+    """Extracts TWD97 coordinates, image count, and matched site group from a finished PIX4Dmatic project folder."""
+    stat = os.stat(folder_path)
+    bname = os.path.basename(folder_path.rstrip("/\\"))
+    clean_slug = re.sub(r"[^a-zA-Z0-9_\u4e00-\u9fff]", "_", bname).strip("_") or "project"
+    scan_id = f"manual_{clean_slug}"
+    dfs_name, dfs_email = _resolve_drivefs_uploader(folder_path)
+    total_sz, img_cnt = _compute_folder_stats(folder_path)
+
+    info: Dict[str, Any] = {
+        "scan_id": scan_id,
+        "name": bname,
+        "source_zip_path": folder_path,
+        "project_dir": os.path.join(LOCAL_SCANS_ROOT, f"catch_{clean_slug}"),
+        "size_bytes": total_sz,
+        "uploaded_at": stat.st_mtime,
+        "capture_date": _infer_capture_date_from_name(bname, stat.st_mtime),
+        "uploader_email": dfs_email,
+        "uploader_name": dfs_name,
+        "image_count": img_cnt,
+        "rtk_accuracy_cm": 1.6,
+        "lat": None,
+        "lon": None,
+        "elev_m": 0.0,
+        "twd97_e": 0.0,
+        "twd97_n": 0.0,
+        "twd97_h": 0.0,
+        "crs": TWD97_TWVD2001_SHORT,
+        "texture_resolution": PIX4DMATIC_TEXTURE_SIZE,
+    }
+    try:
+        from pc_worker.native_octree_builder import _resolve_pix4d_origin_and_xy_jacobian
+
+        (ox, oy, oz), _ = _resolve_pix4d_origin_and_xy_jacobian(folder_path, folder_path)
+        if abs(ox) > 1.0 or abs(oy) > 1.0:
+            _apply_extracted_coords_to_info(info, ox, oy, oz, TWD97_TWVD2001_SHORT)
+    except Exception:
+        pass
+
+    proj_group, proj_zh = match_project_group(
+        info.get("lat"),
+        info.get("lon"),
+        hint_name=bname,
+        parent_project=parent_project,
+        dynamic_clusters=dynamic_clusters,
+    )
+    info["project_group"] = proj_group
+    info["project_name_zh"] = proj_zh
+    return info
 
 
 import threading as _threading
@@ -2398,6 +2489,28 @@ def _seed_and_discover_scans_locked(db: ScanQueueDB) -> List[Dict[str, Any]]:
     """
     discovered_ids = set()
     dynamic_clusters: List[Dict[str, Any]] = []
+    for _ex_sc in db.list_scans():
+        _ex_pg = str(_ex_sc.get("project_group") or "").strip()
+        _ex_lat, _ex_lon = _ex_sc.get("lat"), _ex_sc.get("lon")
+        if (
+            _ex_pg
+            and _ex_pg != "Unassigned Site"
+            and not _ex_pg.startswith("Site (")
+            and str(_ex_sc.get("group_type") or "site") == "site"
+            and _ex_lat is not None
+            and _ex_lon is not None
+            and (abs(float(_ex_lat)) > 0.001 or abs(float(_ex_lon)) > 0.001)
+            and not any(c.get("project_group") == _ex_pg for c in dynamic_clusters)
+        ):
+            dynamic_clusters.append(
+                {
+                    "project_group": _ex_pg,
+                    "project_name_zh": _ex_sc.get("project_name_zh") or f"{_ex_pg} 工程掃描群組",
+                    "lat": float(_ex_lat),
+                    "lon": float(_ex_lon),
+                    "radius_m": 1000.0,
+                }
+            )
     deleted_reg = db.load_deleted_scans_registry() if hasattr(db, "load_deleted_scans_registry") else {"scan_ids": [], "folder_names": [], "source_paths": []}
     deleted_scan_ids = set(deleted_reg.get("scan_ids") or [])
     deleted_folder_names = set(deleted_reg.get("folder_names") or [])
@@ -2430,6 +2543,7 @@ def _seed_and_discover_scans_locked(db: ScanQueueDB) -> List[Dict[str, Any]]:
     #    and collect .zip raw-photo archives AND raw-photo folders for the PIX4Dmatic queue.
     grouped_uploads: Dict[Tuple[str, str, int], Dict[str, Any]] = {}
     seen_zip_keys = set()
+    manual_pix4d_candidates: List[Tuple[str, str]] = []
 
     for idir in inbox_dirs:
         for entry in sorted(os.listdir(idir)):
@@ -2438,13 +2552,16 @@ def _seed_and_discover_scans_locked(db: ScanQueueDB) -> List[Dict[str, Any]]:
             epath = os.path.join(idir, entry)
             if not is_safe_jailed_path(epath, idir) or _is_entry_deleted(entry, epath):
                 continue
+            if os.path.isdir(epath) and os.path.isfile(os.path.join(epath, ".imported_to_gathering_scans.json")):
+                continue
 
             zip_candidates: List[Tuple[str, str, str]] = []
             if os.path.isfile(epath) and entry.lower().endswith(".zip"):
                 zip_candidates.append(("", entry, epath))
             elif os.path.isdir(epath):
-                # First check if epath itself is directly a completed scan folder
-                if _is_direct_scan_folder(epath):
+                if _is_manual_pix4dmatic_project_folder(epath):
+                    manual_pix4d_candidates.append(("", epath))
+                elif _is_direct_scan_folder(epath):
                     _sync_gdrive_folder_to_local_vault(epath, parent_project="")
                 else:
                     # Check if epath is a raw photo scan folder (e.g. 2026-09-21-11-39-49)
@@ -2460,16 +2577,22 @@ def _seed_and_discover_scans_locked(db: ScanQueueDB) -> List[Dict[str, Any]]:
                             sub_fpath = os.path.join(epath, sub_fn)
                             if not is_safe_jailed_path(sub_fpath, idir) or _is_entry_deleted(sub_fn, sub_fpath):
                                 continue
+                            if os.path.isdir(sub_fpath) and os.path.isfile(os.path.join(sub_fpath, ".imported_to_gathering_scans.json")):
+                                continue
                             if os.path.isfile(sub_fpath) and sub_fn.lower().endswith(".zip"):
                                 zip_candidates.append((entry, sub_fn, sub_fpath))
                             elif os.path.isdir(sub_fpath):
-                                sub_raw, _, _, _ = _inspect_raw_photo_scan_folder(sub_fpath)
-                                if sub_raw:
-                                    zip_candidates.append((entry, sub_fn, sub_fpath))
+                                if _is_manual_pix4dmatic_project_folder(sub_fpath):
+                                    manual_pix4d_candidates.append((entry, sub_fpath))
+                                    synced_nested = True
                                 else:
-                                    local_dst = _sync_gdrive_folder_to_local_vault(sub_fpath, parent_project=entry)
-                                    if local_dst:
-                                        synced_nested = True
+                                    sub_raw, _, _, _ = _inspect_raw_photo_scan_folder(sub_fpath)
+                                    if sub_raw:
+                                        zip_candidates.append((entry, sub_fn, sub_fpath))
+                                    else:
+                                        local_dst = _sync_gdrive_folder_to_local_vault(sub_fpath, parent_project=entry)
+                                        if local_dst:
+                                            synced_nested = True
 
                         if not synced_nested and not zip_candidates:
                             _sync_gdrive_folder_to_local_vault(epath, parent_project="")
@@ -2496,6 +2619,9 @@ def _seed_and_discover_scans_locked(db: ScanQueueDB) -> List[Dict[str, Any]]:
         if _is_entry_deleted(item.get("scan_id", ""), item.get("project_dir", "")):
             return
         existing_row = db.get_scan(item["scan_id"])
+        if existing_row and existing_row.get("user_edited_name") and existing_row.get("name") and not item.get("user_edited_name"):
+            item["name"] = existing_row["name"]
+            item["user_edited_name"] = 1
         if existing_row and existing_row.get("status") in ("queued", "processing", "waiting_parts"):
             item["status"] = existing_row["status"]
             item["progress_pct"] = float(existing_row.get("progress_pct", 0.0))
@@ -2542,6 +2668,8 @@ def _seed_and_discover_scans_locked(db: ScanQueueDB) -> List[Dict[str, Any]]:
                 continue
             sub_dir = os.path.join(LOCAL_SCANS_ROOT, entry)
             if not is_safe_jailed_path(sub_dir, LOCAL_SCANS_ROOT) or not os.path.isdir(sub_dir):
+                continue
+            if os.path.isfile(os.path.join(sub_dir, ".imported_to_gathering_scans.json")):
                 continue
             if os.path.normcase(os.path.abspath(sub_dir)) in active_job_dirs or entry in active_job_ids:
                 discovered_ids.add(entry)
@@ -2758,7 +2886,6 @@ def _seed_and_discover_scans_locked(db: ScanQueueDB) -> List[Dict[str, Any]]:
                         extra = {}
 
                 if is_new_job:
-                    import hashlib, time
                     primary_meta["stage_label"] = "待確認建模模式 (Google Chat 詢問中)"
                     primary_meta["notes"] = f"新掃描 '{base_name}' ({primary_meta['image_count']} 張照片) 已排隊，等待 Google Chat 確認處理模式。"
                     extra["awaiting_preset"] = True
@@ -2792,6 +2919,50 @@ def _seed_and_discover_scans_locked(db: ScanQueueDB) -> List[Dict[str, Any]]:
 
         db.upsert_scan(primary_meta)
         discovered_ids.add(scan_id)
+
+    # 2b. Register any un-imported manual PIX4Dmatic projects in INPUTS with 4-button Google Chat prompt
+    for m_parent_proj, m_dir in manual_pix4d_candidates:
+        try:
+            m_meta = _extract_manual_pix4d_project_metadata(m_dir, parent_project=m_parent_proj, dynamic_clusters=dynamic_clusters)
+            m_sid = m_meta["scan_id"]
+            if _is_entry_deleted(m_sid, m_dir):
+                continue
+            existing_m = db.get_scan(m_sid) or {}
+            if existing_m.get("status") in ("processing", "completed", "failed"):
+                discovered_ids.add(m_sid)
+                continue
+            ex_m = existing_m.get("extra_json") or {}
+            if isinstance(ex_m, str):
+                try:
+                    ex_m = json.loads(ex_m)
+                except Exception:
+                    ex_m = {}
+            is_new_manual = not existing_m or not ex_m.get("preset_token")
+            if is_new_manual:
+                dec_tok = hashlib.sha256(f"{m_sid}:{time.time()}:manual_import".encode()).hexdigest()[:16]
+                ex_m["awaiting_import_decision"] = True
+                ex_m["preset_token"] = dec_tok
+            m_meta["status"] = "queued"
+            m_meta["progress_pct"] = 0.0
+            m_meta["stage_label"] = "待確認匯入方式 (Google Chat 詢問中)"
+            m_meta["notes"] = f"手動 PIX4Dmatic 專案 '{m_meta['name']}' 已偵測，等待 Google Chat 確認匯入方式。"
+            m_meta["extra_json"] = ex_m
+            db.upsert_scan(m_meta)
+            discovered_ids.add(m_sid)
+            if is_new_manual:
+                try:
+                    extract_input_preview_photo(m_dir, m_meta.get("project_dir") or "", m_sid)
+                except Exception:
+                    pass
+                try:
+                    from server import GCHAT
+
+                    if GCHAT:
+                        GCHAT.notify_manual_project_import_question(m_sid, m_meta, decision_token=ex_m["preset_token"])
+                except Exception as ge:
+                    print(f"[InboxDiscovery] GChat manual project question note: {ge}")
+        except Exception as me:
+            print(f"[InboxDiscovery] Manual PIX4Dmatic folder inspection note ({m_dir}): {me}")
 
     # 3. Strictly remove any scans from SQLite that are no longer present in C:\GatheringScans or the jailed GDrive inbox
     with db._connect() as conn:

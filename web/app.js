@@ -1248,12 +1248,41 @@
     openOfflineCacheModal();
   });
 
+  document.getElementById("btnAdminLogoutEveryone")?.addEventListener("click", async () => {
+    const ok = window.confirm(
+      tr(
+        "確定要登出所有裝置與使用者嗎？所有瀏覽器與裝置（包含目前視窗）皆需重新透過 Google OAuth 登入。",
+        "Log out everyone across all browsers and devices? All active sessions (including this browser) will require signing in again with Google OAuth."
+      )
+    );
+    if (!ok) return;
+    const btn = document.getElementById("btnAdminLogoutEveryone");
+    if (btn) btn.disabled = true;
+    try {
+      await apiPost("/api/admin/logout-everyone", {
+        actor_email: STATE.currentUser?.email || "",
+      });
+      closeModal("modalOfflineCache");
+      await performUserLogout({
+        skipServerCall: true,
+        toastMessage: tr("已登出所有裝置與使用者", "Logged out everyone across all devices"),
+      });
+    } catch (err) {
+      showToast(tr(`全體登出失敗：${err.message}`, `Log out everyone failed: ${err.message}`));
+    } finally {
+      if (btn) btn.disabled = false;
+    }
+  });
+
   // Admin Control Panel (5-Level Permissions & User Management)
   async function renderAdminControlPanel() {
     const myInfo = getCurrentUserRoleInfo();
     const canManageUsers = Boolean(myInfo.canManageUsers || myInfo.can_manage_users);
     if (!canManageUsers) return;
     refreshAdminPcDaemonUI();
+    if (typeof window.refreshWorkstationCoordinatorPanels === "function") {
+      window.refreshWorkstationCoordinatorPanels();
+    }
     const tbody = document.getElementById("adminUsersTableBody");
     const rolePill =
       document.getElementById("badgeCurrentUserRoleLevel") ||
@@ -1675,11 +1704,10 @@
       if (closeBtn) closeBtn.style.display = "none";
       if (confirmBtn) confirmBtn.style.display = "none";
       if (btnLogout) btnLogout.style.display = "none";
+      const topMenu = document.getElementById("userTopDropdownMenu");
+      if (topMenu) topMenu.style.display = "none";
       if (gateStatus) {
-        gateStatus.textContent = tr(
-          "尚未登入 · 可使用唯讀訪客模式瀏覽",
-          "Not signed in · Read-Only Guest Mode available"
-        );
+        gateStatus.textContent = tr("請使用授權 Google 帳號登入", "Sign in with your authorized Google account");
       }
       const errBanner = document.getElementById("oauthErrorBanner");
       if (errBanner) {
@@ -1691,12 +1719,11 @@
       return;
     }
 
-    if (markAuthorized) {
+    const hasValidSessionToken = Boolean(userObj.session_token || userObj.sessionToken || STATE.currentUser?.session_token);
+    if (markAuthorized || hasValidSessionToken) {
       STATE.isAuthorized = true;
       try {
-        const rememberChk = document.getElementById("chkOauthRememberMe");
-        const persist30d = !rememberChk || Boolean(rememberChk.checked);
-        localStorage.setItem("gs_oauth_remember_30d", persist30d ? "1" : "0");
+        localStorage.setItem("gs_oauth_remember_30d", "1");
         localStorage.setItem("gs_auth_verified_v1", "1");
       } catch (e) {}
     }
@@ -1813,6 +1840,12 @@
     if (btnUser) {
       btnUser.title = `${cleanUserName} · ${STATE.currentUser.email || ""} · L${rInfo.level} ${localRoleLabel}`;
     }
+    const menuNameEl = document.getElementById("userTopMenuName");
+    const menuEmailEl = document.getElementById("userTopMenuEmail");
+    const menuRoleEl = document.getElementById("userTopMenuRole");
+    if (menuNameEl) menuNameEl.textContent = cleanUserName;
+    if (menuEmailEl) menuEmailEl.textContent = STATE.currentUser.email || "";
+    if (menuRoleEl) menuRoleEl.textContent = `L${rInfo.level} · ${localRoleLabel}`;
     if (avatarImg && svgIcon) {
       const picUrl = STATE.currentUser.avatar_url || STATE.currentUser.picture;
       if (picUrl) {
@@ -2061,12 +2094,10 @@
       msgEl.textContent = tr("正在驗證 Google 帳號與權限...", "Verifying Google account & role permissions...");
     }
     try {
-      const rememberChk = document.getElementById("chkOauthRememberMe");
-      const rememberMe = !rememberChk || Boolean(rememberChk.checked);
       const res = await apiPost("/api/auth/google", {
         credential: rawCredential,
         profile: profileData,
-        remember_me: rememberMe,
+        remember_me: true,
       });
       const verifiedUser = res.user || profileData;
       if (Array.isArray(res.profiles)) {
@@ -2075,22 +2106,22 @@
         STATE.teamProfiles = Object.values(res.profiles);
       }
       applyUserProfileToUI(verifiedUser, true);
-      renderTeamProfilesGrid();
+      closeModal("userProfileGateModal");
       if (msgEl) {
         msgEl.style.color = "var(--ui-accent)";
         msgEl.innerHTML = `${escapeHtml(tr("已通過驗證：", "Verified Google Account:"))} <b>${escapeHtml(verifiedUser.name)}</b> (${escapeHtml(verifiedUser.email)})`;
       }
-      showToast(`Signed in with Google OAuth as ${verifiedUser.name} (${verifiedUser.email})`);
-      setTimeout(() => {
-        closeModal("userProfileGateModal");
-        if (!STATE.isEmbedded && window.GatherenLoader) {
-          window.GatherenLoader.start({
-            targetSelector: ".top-navbar .brand-cluster",
-            minLoopDurationMs: 380,
-          });
-          window.requestAnimationFrame(() => window.GatherenLoader.complete());
-        }
-      }, 550);
+      showToast(tr(`已登入：${verifiedUser.name} (${verifiedUser.email})`, `Signed in as ${verifiedUser.name} (${verifiedUser.email})`));
+      if (!STATE.isEmbedded && window.GatherenLoader) {
+        window.GatherenLoader.start({
+          targetSelector: ".top-navbar .brand-cluster",
+          minLoopDurationMs: 320,
+        });
+      }
+      await refreshScansCatalog(false);
+      if (!STATE.isEmbedded && window.GatherenLoader) {
+        window.requestAnimationFrame(() => window.GatherenLoader.complete());
+      }
     } catch (err) {
       const errMsg = err?.message || "Unable to verify Google Sign-In token";
       if (errBanner) {
@@ -2174,97 +2205,83 @@
   }
 
   async function openUserProfileGateModal() {
-    try {
-      const rememberChk = document.getElementById("chkOauthRememberMe");
-      if (rememberChk) {
-        rememberChk.checked = localStorage.getItem("gs_oauth_remember_30d") !== "0";
-      }
-    } catch (_) {}
+    const topMenu = document.getElementById("userTopDropdownMenu");
+    if (topMenu) topMenu.style.display = "none";
     openModal("userProfileGateModal");
-    await loadTeamUserProfiles();
-    applyUserProfileToUI(STATE.currentUser, false);
-    renderTeamProfilesGrid();
     initGoogleIdentityServicesButton();
   }
 
-  window.openUserProfileGateModal = openUserProfileGateModal;
-  window.checkUserProfileGate = openUserProfileGateModal;
-
-  document.getElementById("btnGoogleUser")?.addEventListener("click", () => {
-    openUserProfileGateModal();
-  });
-  document.getElementById("btnCurrentUserProfile")?.addEventListener("click", () => {
-    openUserProfileGateModal();
-  });
-  document.getElementById("btnChooseGoogleAccountOAuth")?.addEventListener("click", () => {
-    promptChooseGoogleAccountOAuth();
-  });
-  document.getElementById("btnCloseAuthGateModal")?.addEventListener("click", () => {
-    closeModal("userProfileGateModal");
-  });
-  document.getElementById("btnGateConfirmEnter")?.addEventListener("click", () => {
-    if (!STATE.isAuthorized && !STATE.shareToken) {
-      showToast("Please sign in with Google or choose Guest Mode");
-      return;
-    }
-    closeModal("userProfileGateModal");
-    if (!STATE.isEmbedded && window.GatherenLoader) {
-      window.GatherenLoader.start({
-        targetSelector: ".top-navbar .brand-cluster",
-        minLoopDurationMs: 380,
-      });
-      window.requestAnimationFrame(() => window.GatherenLoader.complete());
-    }
-    if (STATE.currentUser) {
-      showToast(`Active user: ${STATE.currentUser.name} (${STATE.currentUser.email})`);
-    }
-  });
-  document.getElementById("btnGateGuestEnter")?.addEventListener("click", () => {
-    applyUserProfileToUI(
-      {
-        id: "guest_viewer",
-        name: "Guest Viewer",
-        email: "guest@gatheren.cloud",
-        role: "guest",
-        role_label: "Read-Only Guest",
-        avatar_url: "",
-        auth_provider: "guest",
-      },
-      true
-    );
-    closeModal("userProfileGateModal");
-    if (!STATE.isEmbedded && window.GatherenLoader) {
-      window.GatherenLoader.start({
-        targetSelector: ".top-navbar .brand-cluster",
-        minLoopDurationMs: 380,
-      });
-      window.requestAnimationFrame(() => window.GatherenLoader.complete());
-    }
-    showToast("Entered in Guest Mode");
-  });
-  document.getElementById("btnUserLogout")?.addEventListener("click", () => {
+  async function performUserLogout({ skipServerCall = false, toastMessage = "" } = {}) {
     if (window.GatherenLoader) window.GatherenLoader.hideImmediate();
+    const topMenu = document.getElementById("userTopDropdownMenu");
+    if (topMenu) topMenu.style.display = "none";
+    if (!skipServerCall) {
+      try {
+        await fetch("/api/auth/logout", {
+          method: "POST",
+          credentials: "include",
+          headers: apiHeaders(),
+          body: "{}",
+        });
+      } catch (_) {}
+    }
     try {
       localStorage.removeItem("gs_auth_verified_v1");
       localStorage.removeItem("gathering_user_profile");
       localStorage.removeItem("gs_current_user");
-    } catch (e) {}
+      localStorage.removeItem("gs_last_catalog_v1");
+    } catch (_) {}
+    try {
+      navigator.serviceWorker?.controller?.postMessage({ type: "PURGE_AUTH_CACHES" });
+    } catch (_) {}
     if (window.google?.accounts?.id) {
       try {
         window.google.accounts.id.disableAutoSelect();
-      } catch (e) {}
+      } catch (_) {}
     }
+    STATE.scans = [];
+    STATE.projects = [];
+    STATE.activeScan = null;
+    STATE.activeScanId = null;
     applyUserProfileToUI(null, false);
-    renderTeamProfilesGrid();
-    openModal("userProfileGateModal");
-    showToast("Signed out — Authorization required to continue");
+    openUserProfileGateModal();
+    showToast(toastMessage || tr("已登出 — 請使用 Google 帳號重新登入", "Signed out — Sign in with Google to continue"));
+  }
+
+  window.openUserProfileGateModal = openUserProfileGateModal;
+  window.checkUserProfileGate = openUserProfileGateModal;
+  window.performUserLogout = performUserLogout;
+
+  document.getElementById("btnGoogleUser")?.addEventListener("click", (ev) => {
+    ev.stopPropagation();
+    if (STATE.isAuthorized && (STATE.currentUser?.session_token || STATE.currentUser?.sessionToken)) {
+      const topMenu = document.getElementById("userTopDropdownMenu");
+      if (topMenu) {
+        topMenu.style.display = topMenu.style.display === "block" ? "none" : "block";
+        return;
+      }
+    }
+    openUserProfileGateModal();
   });
-  document.getElementById("gateUserSearchInput")?.addEventListener("input", () => {
-    renderTeamProfilesGrid();
+  document.getElementById("btnTopMenuLogout")?.addEventListener("click", (ev) => {
+    ev.stopPropagation();
+    performUserLogout();
   });
-  document.getElementById("btnCopyCurrentOriginGate")?.addEventListener("click", () => {
-    navigator.clipboard?.writeText(window.location.origin);
-    showToast(`Copied Authorized JavaScript Origin: ${window.location.origin}`);
+  document.addEventListener("click", (ev) => {
+    const topMenu = document.getElementById("userTopDropdownMenu");
+    const wrap = document.getElementById("topUserMenuWrap");
+    if (topMenu && topMenu.style.display === "block" && wrap && !wrap.contains(ev.target)) {
+      topMenu.style.display = "none";
+    }
+  });
+  document.getElementById("btnCurrentUserProfile")?.addEventListener("click", () => {
+    openUserProfileGateModal();
+  });
+  document.getElementById("btnCloseAuthGateModal")?.addEventListener("click", () => {
+    closeModal("userProfileGateModal");
+  });
+  document.getElementById("btnUserLogout")?.addEventListener("click", () => {
+    performUserLogout();
   });
 
   // ============================================================================
@@ -2630,6 +2647,9 @@
   window.addEventListener("resize", handleResize);
 
   async function refreshScansCatalog(isBackgroundPoll = false) {
+    if (!STATE.isAuthorized && !STATE.shareToken && !STATE.isEmbedded) {
+      return;
+    }
     try {
       if (
         isBackgroundPoll &&
@@ -2893,13 +2913,30 @@
       }
     } catch (err) {
       const errMsg = String(err?.message || "");
+      const errLower = errMsg.toLowerCase();
+      const isUnauthorized =
+        !STATE.shareToken &&
+        (errMsg.includes("401") || errLower.includes("sign in") || errLower.includes("auth_required"));
+      if (isUnauthorized) {
+        window.handleUnauthorizedSession?.();
+        return;
+      }
       const isRevokedShare =
         Boolean(STATE.shareToken) &&
-        (errMsg.toLowerCase().includes("revoked") ||
-          errMsg.toLowerCase().includes("invalid") ||
-          errMsg.includes("403"));
-      // Try offline cached catalog only when NOT an invalid/revoked share token
-      if (!isRevokedShare && (!STATE.scans || STATE.scans.length === 0)) {
+        (errLower.includes("revoked") ||
+          errLower.includes("expired") ||
+          errLower.includes("invalid") ||
+          errMsg.includes("403") ||
+          errMsg.includes("401"));
+      if (isRevokedShare) {
+        try {
+          localStorage.removeItem("gs_last_catalog_v1");
+          navigator.serviceWorker?.controller?.postMessage({ type: "PURGE_AUTH_CACHES" });
+        } catch (_) {}
+        STATE.scans = [];
+      }
+      // Try offline cached catalog only when authenticated (never for logged-out or revoked share links)
+      if (!isRevokedShare && STATE.isAuthorized && (!STATE.scans || STATE.scans.length === 0)) {
         try {
           const cached = JSON.parse(localStorage.getItem("gs_last_catalog_v1") || "null");
           if (cached && Array.isArray(cached.scans) && cached.scans.length > 0) {
@@ -3802,7 +3839,46 @@
       initCompactStudioToolbarAndPopovers();
     }
     await applyTheme(STATE.themePreference, false);
-    applyUserProfileToUI(STATE.currentUser, false);
+
+    if (!STATE.shareToken && !STATE.isEmbedded) {
+      // Validate & refresh persistent 90-day session cookie/token with server so Admin permissions persist across reloads
+      try {
+        const sessResp = await fetch("/api/auth/session", {
+          credentials: "include",
+          headers: apiHeaders(false),
+        });
+        if (sessResp.ok) {
+          const sessJson = await sessResp.json().catch(() => ({}));
+          if (sessJson && sessJson.authenticated && sessJson.user) {
+            applyUserProfileToUI(sessJson.user, true);
+          } else {
+            try {
+              localStorage.removeItem("gs_auth_verified_v1");
+              localStorage.removeItem("gathering_user_profile");
+              localStorage.removeItem("gs_current_user");
+              localStorage.removeItem("gs_last_catalog_v1");
+            } catch (_) {}
+            applyUserProfileToUI(null, false);
+          }
+        } else if (sessResp.status === 401 || sessResp.status === 403) {
+          try {
+            localStorage.removeItem("gs_auth_verified_v1");
+            localStorage.removeItem("gathering_user_profile");
+            localStorage.removeItem("gs_current_user");
+            localStorage.removeItem("gs_last_catalog_v1");
+          } catch (_) {}
+          applyUserProfileToUI(null, false);
+        } else {
+          applyUserProfileToUI(STATE.currentUser, Boolean(STATE.currentUser?.session_token));
+        }
+      } catch (_) {
+        // Genuine network offline: preserve existing cryptographically signed local user token if present
+        applyUserProfileToUI(STATE.currentUser, Boolean(STATE.currentUser?.session_token));
+      }
+    } else {
+      applyUserProfileToUI(STATE.currentUser, false);
+    }
+
     if (!STATE.isAuthorized && !STATE.shareToken && !STATE.isEmbedded) {
       document.body.classList.add("gs-auth-locked");
       openUserProfileGateModal();
@@ -3813,7 +3889,9 @@
           minLoopDurationMs: 420,
         });
       }
-      loadTeamUserProfiles();
+      if (STATE.isAuthorized && !STATE.shareToken) {
+        loadTeamUserProfiles();
+      }
       if (
         STATE.shareToken &&
         (!STATE.currentUser?.email || STATE.currentUser.email.startsWith("guest@")) &&

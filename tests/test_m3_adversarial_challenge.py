@@ -19,18 +19,25 @@ import urllib.request
 from typing import Any, Dict, Tuple
 
 
+REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+if REPO_ROOT not in sys.path:
+    sys.path.insert(0, REPO_ROOT)
+
+from pc_worker.config import DB_PATH
+from pc_worker.auth_and_sharing import issue_session_token
+
 SERVER_URL = "http://127.0.0.1:8095"
 RAW_DATA_DIR = r"C:\GatheringScans"
-DB_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data", "gathering_scans.db")
 
 
 def post_json(path: str, payload: Dict[str, Any], timeout: float = 15.0) -> Tuple[int, Dict[str, Any], str]:
     url = f"{SERVER_URL}{path}"
     data = json.dumps(payload).encode("utf-8")
+    tok = issue_session_token("glibivanov@gatheren.com.tw", role="owner")
     req = urllib.request.Request(
         url,
         data=data,
-        headers={"Content-Type": "application/json", "Accept": "application/json"},
+        headers={"Content-Type": "application/json", "Accept": "application/json", "X-Session-Token": tok},
         method="POST"
     )
     try:

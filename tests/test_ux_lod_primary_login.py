@@ -67,22 +67,24 @@ class UxLodPrimaryLoginTests(unittest.TestCase):
         self.assertIn(">scans.gatheren.cloud<", html)
         self.assertIn("oauth-security-badge", html)
         self.assertIn("oauth-google-mount", html)
-        self.assertIn('id="chkOauthRememberMe"', html)
         self.assertIn('id="oauthErrorBanner"', html)
-        self.assertIn('id="googleAuthOriginNotice"', html)
-        self.assertIn("oauth-origin-notice", html)
+        self.assertIn('id="googleAuthGateCard"', html)
 
-        # 2. Preserved GatheringScans auth flows (Google GIS, Guest, Account Switcher, Logout, Continue, Lang)
+        # 2. Clean Google-OAuth-only login gate + top-menu Logout + Admin "Log out everyone" (zero guest / account-list buttons)
         for req_id in (
             "googleSignInButtonContainer",
-            "btnGateGuestEnter",
-            "btnChooseGoogleAccountOAuth",
-            "gateExistingUsersSection",
-            "btnUserLogout",
-            "btnGateConfirmEnter",
+            "btnTopMenuLogout",
+            "btnAdminLogoutEveryone",
             "btnAuthToggleLanguage",
         ):
             self.assertIn(f'id="{req_id}"', html)
+        for removed_id in (
+            "btnGateGuestEnter",
+            "gateExistingUsersSection",
+            "btnGateConfirmEnter",
+            "btnChooseGoogleAccountOAuth",
+        ):
+            self.assertNotIn(f'id="{removed_id}"', html)
 
         # 3. CSS visual parity with files.gatheren.cloud (#0b101b dark root, #0f172a card, 440px max-width, 16px radius)
         self.assertIn(".oauth-login-gate", css)
@@ -94,8 +96,8 @@ class UxLodPrimaryLoginTests(unittest.TestCase):
         self.assertIn("MutationObserver", app_js)
 
         # 4. Asset cache-busting version synchronization between index.html and sw.js
-        self.assertIn("?v=20261111_v320", html)
-        self.assertIn("gathering-scans-offline-v320", sw_js)
+        self.assertIn("?v=20261114_v322", html)
+        self.assertIn("gathering-scans-offline-v322", sw_js)
 
     def test_62_primary_scan_star_api_persistence_and_default_selection(self):
         """Verify Primary Scan HTTP API, RBAC, disk persistence, site rename migration, and default site selection."""
@@ -208,9 +210,9 @@ class UxLodPrimaryLoginTests(unittest.TestCase):
                         with urllib.request.urlopen(req, timeout=8) as r:
                             return r.status, json.loads(r.read().decode("utf-8"))
 
-                    # 1. Guest & Viewer MUST receive 403 Forbidden when attempting to set primary scan
+                    # 1. Unauthenticated caller receives 401; authenticated Viewer receives 403 Forbidden
                     st_guest, _ = _post_json("/api/site/primary-scan", {"scan_id": "alpha_20260901_older", "is_primary": True})
-                    self.assertEqual(st_guest, 403)
+                    self.assertEqual(st_guest, 401)
                     st_viewer, _ = _post_json(
                         "/api/site/primary-scan",
                         {"scan_id": "alpha_20260901_older", "is_primary": True},
@@ -353,17 +355,37 @@ class UxLodPrimaryLoginTests(unittest.TestCase):
                     if msg.get("id") == mid:
                         return msg.get("result", {})
 
+            owner_test_tok = issue_session_token("glibivanov@gatheren.com.tw", role="owner")
             cdp("Page.enable")
             cdp("Runtime.enable")
+            cdp(
+                "Page.addScriptToEvaluateOnNewDocument",
+                {
+                    "source": f"""
+                      localStorage.setItem('gs_user_profile_v1', JSON.stringify({{
+                        email: 'glibivanov@gatheren.com.tw',
+                        name: 'Dr. Glib Ivanov',
+                        role: 'owner',
+                        session_token: {json.dumps(owner_test_tok)},
+                        isGoogleAuthenticated: true,
+                        isOwner: true,
+                        isAdmin: true
+                      }}));
+                      document.cookie = 'gs_session_token=' + encodeURIComponent({json.dumps(owner_test_tok)}) + '; path=/; SameSite=Lax';
+                    """
+                },
+            )
             cdp("Page.navigate", {"url": f"http://127.0.0.1:{port}/"})
             time.sleep(1.8)
 
-            # Authorize guest session and switch to Studio view
+            # Switch to Studio view as authenticated Owner (unlock gs-auth-locked body class)
             cdp(
                 "Runtime.evaluate",
                 {
                     "expression": """(() => {
-                      document.getElementById('btnGateGuestEnter')?.click();
+                      document.body.classList.remove('gs-auth-locked');
+                      const gate = document.getElementById('userProfileGateModal');
+                      if (gate) gate.classList.add('hidden');
                       if (window.__GS_API && typeof window.__GS_API.switchView === 'function') {
                         window.__GS_API.switchView('studio');
                       }
